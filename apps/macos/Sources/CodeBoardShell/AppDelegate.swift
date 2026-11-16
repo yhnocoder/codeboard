@@ -47,6 +47,8 @@ import CodeBoardResources
   /// The main window's shell, which menu actions act on
   private var shell: Shell { windows.main?.shell ?? first }
   private var window: NSWindow? { windows.main?.window }
+  /// The shell of the board window in front (the bug recorder's)
+  private var frontShell: Shell { BugRecorder.frontWindow().flatMap { windows.entry(of: $0) }?.shell ?? shell }
   private var watcher: VaultWatcher?
   /// The repositories added on this Mac, in the app's data folder
   private var repositories: RepositoriesModel?
@@ -108,7 +110,10 @@ import CodeBoardResources
       panes.summarySwitch = ai.summarySwitch
       panes.summaryWriter = keys.key() != nil ? ai.writer(keys: keys) : nil
     }
-    let window = windows.add(first).window
+    // where it was (the frame kept under "main" when nothing was saved with the windows yet)
+    let firstEntry = windows.add(first, frameName: savedWindows.isEmpty ? "main" : nil)
+    if let w = savedWindows.first { windows.place(firstEntry, w) }
+    let window = firstEntry.window
     if let driver {
       windows.present = { driver.opened(window: $0) }
       windows.focus = { $0.makeKey() }
@@ -154,11 +159,11 @@ import CodeBoardResources
       },
       entries: { [weak shell] in shell?.reading.entries ?? EntryIndex() },
       resources: { [weak shell] in shell?.tree?.allFolders.flatMap(\.resources) ?? [] },
-      readingFront: { [weak shell] in
-        guard let r = shell?.reading, let t = r.tabs.first(where: { $0.id == r.selected }) else { return nil }
+      readingFront: { [weak self] in
+        guard let r = self?.frontShell.reading, let t = r.tabs.first(where: { $0.id == r.selected }) else { return nil }
         return t.payload.merging(["kind": t.kind, "key": t.key ?? "", "title": t.title, "at": "0"]) { a, _ in a }
       },
-      look: { [weak shell] in (shell?.theme.rawValue ?? "?", shell?.dark ?? false) })
+      look: { [weak self] in (self?.frontShell.theme.rawValue ?? "?", self?.frontShell.dark ?? false) })
     return BugRecorder(folder: folder.appending(path: "Bug Reports", directoryHint: .isDirectory), source: source)
   }
 

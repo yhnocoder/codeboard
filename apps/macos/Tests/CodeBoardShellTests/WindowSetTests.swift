@@ -16,6 +16,7 @@ import Testing
   let n = CardID(rawValue: "n")
   let m = CardID(rawValue: "m")
   let k = CardID(rawValue: "k")
+  static let wide = CGRect(x: 0, y: 0, width: 4000, height: 3000)
 
   /// A vault of boards A (two notes) and B, the first window on A and a second from New Window, never on screen
   func twoWindows() throws -> (WindowSet, WindowSet.Entry, WindowSet.Entry, Vault) {
@@ -30,12 +31,13 @@ import Testing
     try vault.newBoard(in: "", title: "B", board: Board(id: b, cards: [note(k, x: 0)]))
     let set = WindowSet()
     set.present = { _ in }
+    // one screen, made up: never this Mac's
+    set.screens = { [Screen(id: "S1", frame: Self.wide, visible: Self.wide, scale: 2)] }
     let s = Shell(session: set.session)
     s.open(vault, restoring: nil)
     s.apply(.success(try vault.tree()))
     s.show(a)
     let first = set.add(s)
-    first.window.setFrameAutosaveName("")
     first.panes.sync()
     let second = try #require(set.open())
     return (set, first, second, vault)
@@ -519,7 +521,7 @@ import Testing
     made.window.close()
     let again = try #require(set.open(saved))
     #expect(again.shell.readingOnly && again.shell.tabs.isEmpty && again.shell.reading.tabs.map(\.id) == [ids[1]])
-    if saved.screen != nil { #expect(again.window.frame == frame) }
+    #expect(again.window.frame == frame)
 
     // its last reading tab closed: the window closes; in a window with a board tab the pane stays, empty
     again.shell.reading.close(ids[1])
@@ -650,5 +652,83 @@ import Testing
     set.onScreen = { _ in false }
     first.shell.sources.reveal(SourceAnchor(entry: e.id, place: Place(version: e.versions[0].id, block: .id("1.b2"))))
     #expect(first.shell.reading.tabs.map(\.key) == [page.key])
+  }
+
+  // MARK: Screens
+
+  @Test func aWindowOnAScreenUnpluggedGoesBackWhenItIsPluggedInAgainAndRemembersItAcrossARelaunch() async throws {
+    let (set, first, second, vault) = try twoWindows()
+    defer { try? FileManager.default.removeItem(at: vault.root) }
+    let (laptop, monitor) = (ScreenPlacesTests.laptop, ScreenPlacesTests.monitor)
+    var screens = [laptop, monitor]
+    set.screens = { screens }
+    // placed on the one screen they were made on, which these replace
+    for e in [first, second] { e.placed = nil }
+    let onMonitor = CGRect(x: 1700, y: 200, width: 1200, height: 800)
+    let onLaptop = CGRect(x: 60, y: 40, width: 1000, height: 700)
+    first.window.setFrame(onLaptop, display: false)
+    second.window.setFrame(onMonitor, display: false)
+    set.moved(first)
+    set.moved(second)
+    #expect(second.placed == ScreenPlace(screen: "MONITOR", frame: onMonitor))
+
+    // unplugged: the system moves the window to the laptop first; that is not a place of its own
+    screens = [laptop]
+    let put = CGRect(x: 100, y: 50, width: 1200, height: 800)
+    second.window.setFrame(put, display: false)
+    set.moved(second)
+    set.screensChanged()
+    #expect(second.window.frame == put && second.home == ScreenPlace(screen: "MONITOR", frame: onMonitor))
+    #expect(first.window.frame == onLaptop && first.home == nil)
+    set.screensChanged()
+    #expect(second.window.frame == put && second.home?.screen == "MONITOR", "the same again: nothing")
+
+    // moved by hand on the laptop meanwhile, saved and opened again on the laptop alone: its home kept
+    let byHand = CGRect(x: 200, y: 60, width: 1100, height: 760)
+    second.window.setFrame(byHand, display: false)
+    set.moved(second)
+    let name = "WindowSetTests-\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: name))
+    defer { defaults.removePersistentDomain(forName: name) }
+    set.save(in: defaults)
+    let saved = WindowSet.saved(in: defaults)[1]
+    #expect(saved.frame == byHand && saved.display == "LAPTOP" && saved.home?.frame == onMonitor)
+    second.window.close()
+    let again = try #require(set.open(saved))
+    #expect(again.window.frame == byHand && again.home?.frame == onMonitor)
+
+    // the monitor back: home; again: nothing
+    screens = [laptop, monitor]
+    set.screensChanged()
+    #expect(again.window.frame == onMonitor && again.home == nil && first.window.frame == onLaptop)
+    set.screensChanged()
+    #expect(again.window.frame == onMonitor && again.placed?.screen == "MONITOR")
+
+    // unplugged with the window left where it was: to the laptop, inside what it shows
+    screens = [laptop]
+    set.screensChanged()
+    #expect(again.window.frame == CGRect(x: 240, y: 75, width: 1200, height: 800) && again.home?.frame == onMonitor)
+  }
+
+  @Test func aFullScreenFrameIsNeverSavedAndNoWindowKeepsAFrameUnderAName() async throws {
+    let (set, first, _, vault) = try twoWindows()
+    defer { try? FileManager.default.removeItem(at: vault.root) }
+    let before = CGRect(x: 120, y: 80, width: 1000, height: 700)
+    first.window.setFrame(before, display: false)
+    first.windowWillEnterFullScreen(Notification(name: NSWindow.willEnterFullScreenNotification))
+    first.window.setFrame(CGRect(x: 0, y: 0, width: 4000, height: 3000), display: false)
+    set.moved(first)
+    let name = "WindowSetTests-\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: name))
+    defer { defaults.removePersistentDomain(forName: name) }
+    set.save(in: defaults)
+    #expect(WindowSet.saved(in: defaults)[0].frame == before && first.placed?.frame != first.window.frame)
+    first.window.setFrame(before, display: false)
+    first.windowDidExitFullScreen(Notification(name: NSWindow.didExitFullScreenNotification))
+    #expect(first.placed?.frame == before)
+
+    // every window's place is in its saved state: none is kept under the autosave name "main"
+    let made = try #require(set.open())
+    #expect(made.window.frameAutosaveName.isEmpty && first.window.frameAutosaveName.isEmpty)
   }
 }
