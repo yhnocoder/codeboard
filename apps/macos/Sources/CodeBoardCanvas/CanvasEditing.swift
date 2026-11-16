@@ -136,10 +136,12 @@ extension CanvasView {
   /// Shows an open board and edits it: what the document changes (an edit here, undo, another writer) is shown as it
   /// changes
   public func show(_ doc: BoardDocument, at board: VaultBoard, in vault: Vault, theme: Theme) async throws {
-    if document !== doc {
+    if document?.document !== doc {
       stopObserving?()
-      document = doc
-      stopObserving = doc.observe { [weak self] in self?.documentChanged($0) }
+      document?.leave()
+      let seat = doc.seat(for: self)
+      document = seat
+      stopObserving = seat.observe { [weak self] in self?.documentChanged($0) }
     }
     try await load(board, in: vault, theme: theme, keepCamera: false)
   }
@@ -153,6 +155,7 @@ extension CanvasView {
     mode = nil
     stopObserving?()
     stopObserving = nil
+    document?.leave()
     document = nil
     shelfChanged()
   }
@@ -194,11 +197,11 @@ extension CanvasView {
     refreshing = Task {
       let r = await Task.detached(priority: .userInitiated) {
         let package = vault.url(of: vb.path)
-        let ms = Scene.measures(board, package: package, vault: vault)
+        let ms = Scene.measures(board, package: package, vault: vault, sources: sources)
         var sizes: [CardID: NoteMetrics] = [:]
         var todo: [Scene.Measure] = []
         for m in ms {
-          if let k = known[m.card], k.note == m.note, k.width == m.width {
+          if let k = known[m.card], k.note == m.note, k.width == m.width, k.preamble == m.preamble {
             sizes[m.card] = k.size
           } else {
             todo.append(m)
@@ -237,7 +240,7 @@ extension CanvasView {
       }
       shownBoard = board
       measured = [:]
-      for m in r.2 { if let size = r.3[m.card] { measured[m.card] = (m.note, m.width, size) } }
+      for m in r.2 { if let size = r.3[m.card] { measured[m.card] = (m.note, m.width, m.preamble, size) } }
       measuredInline = [:]
       for m in r.4 { if let id = m.sidenote, let size = r.5[id] { measuredInline[id] = (m.note, m.width, size) } }
       reinstall(r.0, fresh: r.1)

@@ -28,15 +28,23 @@ import CodeBoardResources
   withExtendedLifetime(delegate) { NSApp.run() }
 }
 
+/// The shell an app window shows (there is one window, so one shell). The acceptance driver reads the app's state
+/// through it, typed: a change that moves that state then breaks the driver's build, not its answers
+@MainActor package func shell(of window: NSWindow?) -> Shell? {
+  (NSApp.delegate as? AppDelegate)?.shell
+}
+
 /// Owns the one window and does what touches the disk for the shell: the vault choice, its tree and watcher, the import,
 /// saving the state. Menu actions reach it through the responder chain.
 @MainActor final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
   private static let stateKey = "shell"
   private static let themeKey = "theme"
-  private let shell = Shell()
+  fileprivate let shell = Shell()
   private var window: NSWindow?
   private var panes: BoardPanes?
   private var watcher: VaultWatcher?
+  /// The repositories added on this Mac, in the app's data folder
+  private var repositories: RepositoriesModel?
   private var appearance: NSKeyValueObservation?
   /// Only the latest tree read is applied
   private var treeRead = 0
@@ -79,7 +87,8 @@ import CodeBoardResources
       // a build made with a vault to start in (make-app.sh's FIRST_VAULT): opened on its first launch only
       open(URL(filePath: first, directoryHint: .isDirectory), restoring: nil)
     }
-    let (window, panes) = makeMainWindow(shell: shell)
+    repositories = shell.machineFolder.map { RepositoriesModel.forApp(folder: $0) }
+    let (window, panes) = makeMainWindow(shell: shell, repositories: repositories)
     self.window = window
     self.panes = panes
     panes.onVaultChanged = { [weak self] in self?.readTree(reloadBoards: true) }
@@ -88,6 +97,7 @@ import CodeBoardResources
     let ai = AISettings(defaults: .standard)
     let keys = KeychainKeyStore()
     panes.summarySwitch = ai.summarySwitch
+    CanvasView.welcomeBack = ai.welcomeBack
     panes.summaryWriter = keys.key() != nil ? ai.writer(keys: keys) : nil
     window.title = shell.vault?.root.lastPathComponent ?? "CodeBoard"
     if let driver {
@@ -104,6 +114,7 @@ import CodeBoardResources
       guard let self, let state = shell.state, let data = try? JSONEncoder().encode(state) else { return }
       UserDefaults.standard.set(data, forKey: Self.stateKey)
     }
+    shell.importPages()
   }
 
   /// The bug report recorder, reading the shell and the board panes. Reports go to Application Support/CodeBoard/Bug
@@ -137,6 +148,8 @@ import CodeBoardResources
   }
 
   @objc func toggleBugReport(_ sender: Any?) { bugRecorder?.toggle() }
+
+  func applicationDidBecomeActive(_ notification: Notification) { shell.importPages() }
 
   /// Every board is written first; when one cannot be, quitting would lose its changes, so it asks
   func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
@@ -261,7 +274,18 @@ import CodeBoardResources
 
   /// The board's tabs; the reading pane answers the tab keys first while it has the keys (ReadingPaneView)
   @objc func closeTab(_ sender: Any?) {
-    if let tab = shell.selected { shell.close(tab) } else { window?.performClose(sender) }
+    // another window in front (Settings) is what ⌘W closes, not a tab of the window behind it
+    if let other = otherKeyWindow {
+      other.performClose(sender)
+    } else if let tab = shell.selected {
+      shell.close(tab)
+    } else {
+      window?.performClose(sender)
+    }
+  }
+
+  private var otherKeyWindow: NSWindow? {
+    NSApp.keyWindow.flatMap { $0 === window || $0.sheetParent != nil ? nil : $0 }
   }
 
   // Not toggleSidebar(_:): NSWindow answers that one itself (and disables it, having no split view)
@@ -280,8 +304,12 @@ import CodeBoardResources
   @objc func showSettings(_ sender: Any?) {
     let ai = AISettings(defaults: .standard)
     let keys = KeychainKeyStore()
-    let s = settings ?? SettingsWindow(settings: ai, keys: keys)
+    let s =
+      settings
+      ?? SettingsWindow(
+        settings: ai, keys: keys, search: BoardPanes.searchSettings, searchKeys: BoardPanes.embeddingKeys)
     s.onSwitchChange = { [weak self] in self?.panes?.summarySwitch = $0 }
+    s.onWelcomeChange = { CanvasView.welcomeBack = $0 }
     s.onKeyChange = { [weak self] set in self?.panes?.summaryWriter = set ? ai.writer(keys: keys) : nil }
     settings = s
     s.show()
@@ -297,7 +325,7 @@ import CodeBoardResources
     switch item.action {
     case #selector(importOldBoards(_:)): return shell.vault != nil && !shell.importing
     case #selector(closeTab(_:)):
-      item.title = shell.selected == nil ? "Close" : "Close Tab"
+      item.title = shell.selected == nil || otherKeyWindow != nil ? "Close" : "Close Tab"
       return window != nil
     case #selector(flipSidebar(_:)):
       item.title = shell.sidebarShown ? "Hide Sidebar" : "Show Sidebar"

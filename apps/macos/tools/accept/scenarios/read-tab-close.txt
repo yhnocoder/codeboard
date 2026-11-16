@@ -1,0 +1,15 @@
+# 阅读区的标签：指针移到标签上，左端出现 ×，点它关掉这个标签
+# only: mac
+# site: site/web
+zoom 1
+menubar File/New Web Tab
+wait 300
+type $SITE/a.html\n
+wait 500
+expect readtabs has * web: Page A
+move @view:ReadingTabRow<+40,0 300
+wait 300
+shot hovered
+click @view:ReadingTabRow<+14,0
+wait 500
+expect readtabs lacks Page A

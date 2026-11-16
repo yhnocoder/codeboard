@@ -686,3 +686,42 @@ extension CanvasStickerTests {
     #expect(r.bytes == start)
   }
 }
+
+/// A code card capped at its automatic height (50 lines, about 22 shown), a sticker on a shown line and one on a line
+/// past what it shows, and a Highlight with a sidenote there too
+func cappedStickerBoard() -> Board {
+  let seg = Segment(
+    id: s1, source: nil, language: "python", firstLine: 30, lines: (0..<50).map { "    step(\($0))" },
+    highlights: [72...74])
+  return Board(
+    id: BoardID(rawValue: "capped"),
+    cards: [
+      Card(id: cid("c1"), x: 0, y: 0, width: 420, content: .own(CardContent(body: .code(CodeCard(segments: [seg])))))
+    ],
+    sidenotes: [
+      Sidenote(
+        id: SidenoteID(rawValue: "l1"), anchor: .card(cid("c1"), segment: s1, lines: 72...74),
+        body: .text(TextNote(text: "后面")))
+    ],
+    stickers: [
+      Sticker(id: kid("k1"), glyph: .builtin(.check), anchor: .line(cid("c1"), segment: s1, line: 32)),
+      Sticker(id: kid("k2"), glyph: .builtin(.flag), anchor: .line(cid("c1"), segment: s1, line: 75)),
+    ])
+}
+
+@MainActor @Suite(.serialized) struct CanvasCappedLineTests {
+  /// The web board draws them inside the code's scrolling box (CodeBody.tsx .lstks, .hxm in .cbody): past what the
+  /// card shows they are clipped, never drawn under the card
+  @Test func aStickerOrAHighlightCountOnALinePastWhatTheCardShowsIsNotDrawn() async throws {
+    let r = try await Rig(cappedStickerBoard(), zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    let c1 = r.rect("c1")
+    #expect(c1.height < 500)
+    let shown = try #require(c.stickerSpots.first { $0.id == kid("k1") })
+    #expect(c1.contains(shown.board))
+    #expect(!c.stickerSpots.contains { $0.id == kid("k2") })
+    #expect(c.stickerSpots.allSatisfy { c1.contains($0.board) })
+    #expect(!c.marks.contains { $0.gutter && $0.owner == .card(cid("c1")) })
+  }
+}

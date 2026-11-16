@@ -8,7 +8,8 @@ import Testing
 @testable import CodeBoardReading
 
 /// A made-up two-page paper read by its blocks: a PDF made here, its block list built from where PDFKit finds each
-/// line, the TeX its lines are of, and a link from "(1)" to the equation
+/// line, the TeX its lines are of, a link from "(1)" to the equation and one from "[2]" to the second item of the
+/// bibliography
 @MainActor struct BlockPaper {
   let v: PDFVault
   let path: String
@@ -16,7 +17,8 @@ import Testing
   let version = VersionID(rawValue: "zh")
 
   static let pages = [
-    "1 Intro\nThe river runs north past the mill.\nBirds rest (1) by the bank.\n\nE = mc2 (1)\n\n[picture]\nFigure 1: A boat.",
+    "1 Intro\nThe river runs north past the mill.\nBirds rest (1) by the bank.\n\nE = mc2 (1)\n\n[picture]\nFigure 1: A boat."
+      + "\nAs in [2].\n\n[1] Smith. Mills.\n\n[2] Jones. Banks\nand fords.",
     "Evening light falls on the water.\nTable 1: Numbers.",
   ]
 
@@ -37,6 +39,11 @@ import Testing
     \begin{table}
     \caption{Numbers.}
     \end{table}
+    As in \cite{jones}.
+    \begin{thebibliography}{2}
+    \bibitem{smith} Smith. Mills.
+    \bibitem{jones} Jones. Banks and fords.
+    \end{thebibliography}
     \end{document}
     """#
 
@@ -71,6 +78,10 @@ import Testing
       try block("PAR-2-0", "text", 13...13, 2, ["Evening light falls on the water."]),
       try block("BLK-2", "table", 14...16, 2, ["Table 1: Numbers."]),
       try block("CAP-1", "caption", 15...15, 2, ["Table 1: Numbers."], parent: "BLK-2"),
+      try block("PAR-3-0", "text", 17...17, 1, ["As in [2]."]),
+      try block("BIB", "bibliography", 18...21, 1, ["[1] Smith. Mills.", "[2] Jones. Banks", "and fords."]),
+      try block("BIB-1", "bibitem", 19...19, 1, ["[1] Smith. Mills."], parent: "BIB"),
+      try block("BIB-2", "bibitem", 20...20, 1, ["[2] Jones. Banks", "and fords."], parent: "BIB"),
     ]
     let anchors = try JSONSerialization.data(withJSONObject: [
       "pdf": "p.zh.pdf", "tex": "zh.tex", "pages": [[String: Any]](), "blocks": blocks,
@@ -81,6 +92,11 @@ import Testing
     let eq = try line(1, "E = mc2 (1)")
     link.action = PDFActionGoTo(destination: PDFDestination(page: p1, at: CGPoint(x: eq.minX, y: eq.maxY + 4)))
     p1.addAnnotation(link)
+    // "[2]" to just above its item, between it and the one before
+    let cite = PDFAnnotation(bounds: try line(1, "[2]."), forType: .link, withProperties: nil)
+    let item = try line(1, "[2] Jones")
+    cite.action = PDFActionGoTo(destination: PDFDestination(page: p1, at: CGPoint(x: item.minX, y: item.maxY + 4)))
+    p1.addAnnotation(cite)
     let pdf = Self.pointingAtPage(try #require(doc.dataRepresentation()))
     let e = Entry(
       id: EntryID(rawValue: "e-paper"), title: "Rivers and Mills: A Study of Banks", added: 0,
@@ -96,15 +112,16 @@ import Testing
   }
 
   /// PDFKit writes a link's destination page as a name no reader resolves (`/D [ /##1 /XYZ … ]`): the first page's
-  /// object put there instead, padded to the same length so the file's offsets hold
+  /// object put there instead (every link here goes to the first page), padded to the same length so the file's
+  /// offsets hold
   static func pointingAtPage(_ pdf: Data) -> Data {
-    guard var text = String(data: pdf, encoding: .isoLatin1), let page = text.firstMatch(of: /\/Kids \[ (\d+) 0 R/),
-      let dest = text.firstMatch(of: /\/D \[ (\/\S+) \/XYZ/)
+    guard var text = String(data: pdf, encoding: .isoLatin1), let page = text.firstMatch(of: /\/Kids \[ (\d+) 0 R/)
     else { return pdf }
     let ref = "\(page.1) 0 R"
-    guard ref.count <= dest.1.count else { return pdf }
-    text.replaceSubrange(
-      dest.1.startIndex..<dest.1.endIndex, with: ref.padding(toLength: dest.1.count, withPad: " ", startingAt: 0))
+    for dest in text.matches(of: /\/D \[ (\/\S+) \/XYZ/).reversed() where ref.count <= dest.1.count {
+      text.replaceSubrange(
+        dest.1.startIndex..<dest.1.endIndex, with: ref.padding(toLength: dest.1.count, withPad: " ", startingAt: 0))
+    }
     return text.data(using: .isoLatin1) ?? pdf
   }
 
@@ -141,7 +158,7 @@ import Testing
     defer { p.v.remove() }
     let (w, t) = try open(p)
     defer { w.close() }
-    #expect(t.paper?.list.blocks.count == 8)
+    #expect(t.paper?.list.blocks.count == 12)
     // the caption is the figure's
     #expect(t.clickObject(at: try at(t, 1, "A boat.")))
     #expect(
@@ -302,6 +319,26 @@ import Testing
     #expect(t.refPreview.isHidden)
     // a link is not an object click
     #expect(!t.clickObject(at: try at(t, 1, "Birds")))
+  }
+
+  /// A citation's link previews the bibliography item it goes to, not the bibliography: the item's picture whole, its
+  /// two lines
+  @Test func aCitationsLinkPreviewsItsBibliographyItem() async throws {
+    let p = try BlockPaper()
+    defer { p.v.remove() }
+    let (w, t) = try open(p)
+    defer { w.close() }
+    let cite = try at(t, 1, "[2].")
+    #expect(t.linkTarget(at: cite)?.0.id == "BIB-2")
+    t.pointerMoved(to: cite)
+    await t.previewTask?.value
+    let image = try #require(t.refPreview.image)
+    let paper = try #require(t.paper)
+    let union = try #require(paper.block("BIB-2")?.union(on: 1))
+    #expect(!t.refPreview.isHidden && abs(image.size.width / image.size.height - union.width / union.height) < 0.05)
+    #expect(union.height > 30, "both its lines")
+    // the citation's own line is not an object, and the item is read as text
+    #expect(!t.clickObject(at: cite) && PDFBlocks.readable(paper).map(\.id).contains("BIB-2"))
   }
 }
 

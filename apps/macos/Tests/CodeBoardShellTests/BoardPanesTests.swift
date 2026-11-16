@@ -79,6 +79,47 @@ import Testing
     }
   }
 
+  /// Two windows' panes on the app's one table of documents: a board open in both is one document, and its tab closed
+  /// in one window leaves it open, and shown, in the other
+  @Test func twoWindowsShowingOneBoardShareItsDocumentAndClosingItsTabInOneKeepsItInTheOther() async throws {
+    let fm = FileManager.default
+    let root = fm.temporaryDirectory.appending(path: "panes-\(UUID().uuidString)")
+    defer { try? fm.removeItem(at: root) }
+    try fm.createDirectory(at: root, withIntermediateDirectories: true)
+    let vault = Vault(root: root)
+    let id = BoardID(rawValue: "a")
+    try vault.newBoard(in: "", title: "A", board: Board(id: id))
+    let session = VaultSession()
+    let s = Shell(session: session)
+    let t = Shell(session: session)
+    session.open(vault)
+    for w in [s, t] { w.vaultOpened(restoring: nil) }
+    session.apply(.success(try vault.tree()))
+    for w in [s, t] { w.treeChanged() }
+    let documents = BoardDocuments(session: session)
+    let panesS = BoardPanes(shell: s, documents: documents)
+    let panesT = BoardPanes(shell: t, documents: documents)
+    for p in [panesS, panesT] { p.frame = CGRect(x: 0, y: 0, width: 1000, height: 700) }
+    s.show(id)
+    t.show(id)
+    panesS.sync()
+    panesT.sync()
+    let doc = try #require(panesS.documents[id])
+    #expect(panesT.documents[id] === doc)
+    let paneS = try #require(s.selected.flatMap { panesS.panes[$0] })
+    let paneT = try #require(t.selected.flatMap { panesT.panes[$0] })
+    #expect(paneS.document === doc && paneT.document === doc)
+    await until("shown in both") {
+      paneS.canvas.scene != nil && paneT.canvas.scene != nil && paneT.canvas.shown?.board.id == id
+    }
+    // its tab closed in one window: the document stays, and the other window's pane stays on it
+    s.close(try #require(s.selected))
+    panesS.sync()
+    #expect(panesS.panes.isEmpty && s.tabs.isEmpty)
+    #expect(documents.open[id] === doc && panesT.documents[id] === doc)
+    #expect(paneT.document === doc && paneT.canvas.shown?.board.id == id)
+  }
+
   /// A double-click on a Web card opens its page in a web tab of the reading pane, never the browser
   @Test func aWebCardDoubleClickedOpensAWebReadingTab() async throws {
     let fm = FileManager.default

@@ -1,5 +1,5 @@
 {
-  "originHash" : "22408c4f6b75030123ded54494a1be47c71665ebe5f4b5694d7396e577349c21",
+  "originHash" : "ca52fd03ad1061ccf3838faeb018425669208f2fbd4015e4f1415b0046028c79",
   "pins" : [
     {
       "identity" : "better-swift-markdown",
@@ -8,6 +8,15 @@
       "state" : {
         "branch" : "main",
         "revision" : "c3fb30457914477418e6db1f14154e97a71648bd"
+      }
+    },
+    {
+      "identity" : "shiyi",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/yhnocoder/shiyi",
+      "state" : {
+        "revision" : "f090f21218a45c072860dc7e335e1563da3a493f",
+        "version" : "0.2.0"
       }
     },
     {

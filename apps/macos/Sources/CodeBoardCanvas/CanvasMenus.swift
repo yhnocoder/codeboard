@@ -101,10 +101,19 @@ extension CanvasView {
       case .own(let k)? = doc.board.card(id)?.content
     else { return toast("Only linked cards on several boards can be deleted everywhere. Press ⌫ to delete.") }
     guard let ask = onDeleteEverywhere else { return }
-    weak let d = doc
+    // the board asked about, though another be shown by the time it is answered: the canvas gives its seat up then,
+    // and the step is the document's; while this canvas is still on the board it is its seat's, with its selection
+    weak let d = doc.document
+    weak let seat = doc
     Task { [weak self] in
-      let n = await ask(id, cardTitle(k)) { d?.edit("Delete Everywhere", selection: []) { $0.delete([.card(id)]) } }
-      if let n, self?.document === d { self?.toast("Deleted from \(n) boards") }
+      let n = await ask(id, cardTitle(k)) {
+        if let seat {
+          seat.edit("Delete Everywhere", selection: []) { $0.delete([.card(id)]) }
+        } else {
+          d?.edit("Delete Everywhere", selection: []) { $0.delete([.card(id)]) }
+        }
+      }
+      if let n, self?.document?.document === d { self?.toast("Deleted from \(n) boards") }
     }
   }
 

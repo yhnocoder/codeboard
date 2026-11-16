@@ -133,6 +133,8 @@ struct Scene: Sendable {
     var folder: URL
     var refs: [NoteRef]
     var hideHead = false
+    /// The macros its formulas are typeset with (Drawing.Note's)
+    var preamble = ""
     /// An Always Show sidenote under its lines in the code card `card` (its height is the row it takes)
     var sidenote: SidenoteID?
   }
@@ -200,8 +202,8 @@ struct Scene: Sendable {
     return out
   }
 
-  /// The Notes the renderer must measure before the scene can be made
-  static func measures(_ board: Board, package: URL, vault: Vault) -> [Measure] {
+  /// The Notes the renderer must measure before the scene can be made; `sources`: as the scene is given them
+  static func measures(_ board: Board, package: URL, vault: Vault, sources: [String: Source] = [:]) -> [Measure] {
     let refs = RefResolver(board, package: package, vault: vault)
     var onBlocks = Set<CardID>()
     for a in board.arrows {
@@ -216,7 +218,8 @@ struct Scene: Sendable {
         let r = refs.refs(in: n.text)
         guard c.height == nil || onBlocks.contains(c.id) || !r.isEmpty else { return nil }
         return Measure(
-          card: c.id, note: .note(n), width: c.width, folder: folder, refs: r, hideHead: content.hidesHeading)
+          card: c.id, note: .note(n), width: c.width, folder: folder, refs: r, hideHead: content.hidesHeading,
+          preamble: content.source.flatMap { sources[Scene.key($0)]?.preamble } ?? "")
       // a Text or Box is as tall as its text, and as wide too unless it wraps
       case .text(let t):
         return Measure(card: c.id, note: .text(t), width: c.width, folder: folder, refs: refs.refs(in: t.text))
@@ -673,7 +676,7 @@ struct Scene: Sendable {
       let note = Drawing.Note(
         id: c.id.rawValue, title: title, content: .note(n), folder: folder, height: c.height.map { $0 - band },
         refs: refs.refs(in: n.text), hideHead: content.hidesHeading, locked: c.locked == true,
-        foot: foot.map { Drawing.Foot.inNote($0, width: c.width, t) })
+        foot: foot.map { Drawing.Foot.inNote($0, width: c.width, t) }, preamble: source?.preamble ?? "")
       return (.note(note), size, nil)
     case .text(let text):
       // as wide as its text unless it wraps at the card's width; as tall as its text unless its card keeps a height an

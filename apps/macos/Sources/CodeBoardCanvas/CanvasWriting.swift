@@ -30,7 +30,7 @@ struct Written {
 /// A card being written in
 struct Editing {
   /// Kept here: the card's text is written to it even when the canvas has let go of it (its tab closed meanwhile)
-  let doc: BoardDocument
+  let doc: BoardDocument.Seat
   var id: CardID
   /// Made by this editing (it goes, with no step, when left empty)
   var fresh: Bool

@@ -169,6 +169,8 @@ extension Scene {
     /// A block an image card shows: its natural size, and the widest picture of it held
     var size: CGSize?
     var picture: CGImage?
+    /// A Note's: the macros of the paper it was collected from, for its formulas
+    var preamble = ""
   }
 
   /// The anchor a card's foot shows: a Note's source, or an image card's (the block it shows, else its source)
@@ -202,15 +204,18 @@ extension CanvasView {
         s.size = p.blockSize(a)
         s.picture = sourcePictures.widest(key)
       }
+      if case .note = k.body { s.preamble = p.mathPreamble(for: a) ?? "" }
       out[key] = s
     }
     return out
   }
 
-  /// The provider said its entries changed: the feet are drawn again, and the pictures it had none of asked again
+  /// The provider said its entries changed: the feet are drawn again, the pictures it had none of asked again, and the
+  /// question list, open, lists the entries' questions again
   func sourcesChanged() {
     sourcePictures.asked = []
     refresh()
+    questionsChanged()
   }
 
   /// The resource blocks shown, each asked for at the width the zoom draws it at (as the redraws are)
