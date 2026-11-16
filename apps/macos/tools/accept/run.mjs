@@ -734,7 +734,7 @@ async function subject(d, subj) {
   // <title>", * on the one shown) and "pane shown|hidden"; webviews: each web view's address, title, whether it is
   // shown and what its page says of its visibility (Mac only)
   if (subj.startsWith("entry:")) return d.send(`entries ${subj.slice(6)}`);
-  if (["readtabs", "webviews", "subpv", "vaultstamp", "windows", "board"].includes(subj)) return d.send(subj);
+  if (["readtabs", "webviews", "subpv", "vaultstamp", "windows", "board", "shelfpv"].includes(subj)) return d.send(subj);
   if (subj.startsWith("wtext:")) return d.send(`wtext ${subj.slice(6)}`);
   if (subj.startsWith("cols:")) return d.send(`cols ${subj.slice(5)}`);
   // file:board / file:<path in the vault>: what the Mac app wrote there, read from disk (expect … has / lacks)
@@ -1095,7 +1095,7 @@ for (const file of scenarios) {
     lines = [shot("1-start", 0), ...kept.flatMap((l) => (l === mid ? [shot("2-middle", l.n), l] : [l])), shot("3-end", lines.length)];
   }
   // the subjects compared with `was`, taken at each `mark`
-  const marked = [...new Set(lines.filter((l) => / was\b/.test(l.text)).map((l) => l.text.replace(/^(mac|web):\s*/, "").split(" ")[1]))];
+  const marked = [...new Set(lines.filter((l) => !l.text.startsWith("#") && / was\b/.test(l.text)).map((l) => l.text.replace(/^(mac|web):\s*/, "").split(" ")[1]))];
   // `# known: <why>` (or `# known mac: <why>`, one side): a problem followed elsewhere; its failures are reported but do
   // not fail the run
   const knownOf = (side) =>
