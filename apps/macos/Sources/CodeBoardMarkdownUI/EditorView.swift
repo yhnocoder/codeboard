@@ -623,6 +623,14 @@ public final class MarkdownEditorView: NSView {
     }
   }
 
+  /// on a display of another scale: the strips made again at it (they waited for something else to draw the editor), or
+  /// let go when they would be too wide at it
+  public override func viewDidChangeBackingProperties() {
+    super.viewDidChangeBackingProperties()
+    if drawnByAppKit { letGoOfStrips() }
+    needsDisplay = true
+  }
+
   private func letGoOfStrips() {
     for s in strips.values { s.layer.removeFromSuperlayer() }
     strips = [:]

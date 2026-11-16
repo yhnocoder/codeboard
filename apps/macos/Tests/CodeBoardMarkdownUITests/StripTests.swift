@@ -200,4 +200,16 @@ private final class Flipped: NSView {
     r.view.frame.origin.y = -900
     #expect(r.wrong().isEmpty, "\(r.wrong())")
   }
+
+  /// A new backing scale (the window on another display): the next display pass draws the editor, its strips made
+  /// again at the new scale (they waited for a key or a move)
+  @Test func aNewBackingScaleRedrawsTheEditor() {
+    let r = StripRig()
+    defer { r.close() }
+    let drawn = r.view.draws
+    r.view.viewDidChangeBackingProperties()
+    r.show()
+    #expect(r.view.draws > drawn)
+    #expect(r.wrong().isEmpty, "\(r.wrong())")
+  }
 }
