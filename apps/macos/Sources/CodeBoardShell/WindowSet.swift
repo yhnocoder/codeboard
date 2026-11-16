@@ -31,6 +31,10 @@ struct SavedWindow: Codable, Equatable {
   @ObservationIgnored var repositories: RepositoriesModel?
   /// Puts a window made after the first on screen; a driver keeps it behind everything
   @ObservationIgnored var present: (NSWindow) -> Void = { $0.makeKeyAndOrderFront(nil) }
+  /// Gives a window the keys (a board tab moved into it); a driver never brings it in front
+  @ObservationIgnored var focus: (NSWindow) -> Void = { $0.makeKeyAndOrderFront(nil) }
+  /// A board tab dragged out of its row, every window's
+  @ObservationIgnored private(set) var tabDrag: TabDrag!
   static let stateKey = "windows"
   /// What one window saved before there were several
   static let oldStateKey = "shell"
@@ -38,6 +42,7 @@ struct SavedWindow: Codable, Equatable {
   init(session: VaultSession = VaultSession()) {
     self.session = session
     documents = BoardDocuments(session: session)
+    tabDrag = TabDrag(set: self)
   }
 
   @MainActor final class Entry: NSObject, NSWindowDelegate {
@@ -122,15 +127,24 @@ struct SavedWindow: Codable, Equatable {
       }
       return nil
     }
+    shell.tabDragging = tabDrag
     configure(panes)
     all.append(e)
     return e
   }
 
-  /// Another window on the vault open, as `saved` left it, or (nil) beside the main window with the board it shows
+  /// Another window on the vault open, as `saved` left it, or (nil) beside the main window with the board it shows,
+  /// on screen
   @discardableResult func open(_ saved: SavedWindow? = nil) -> Entry? {
+    guard let e = make(saved, from: main, showing: true) else { return nil }
+    present(e.window)
+    return e
+  }
+
+  /// A window on the vault open, not on screen yet: as `saved` left it, or beside `from` and (`showing`) with a tab on
+  /// the board `from` shows
+  private func make(_ saved: SavedWindow?, from: Entry?, showing: Bool) -> Entry? {
     guard session.vault != nil else { return nil }
-    let from = main
     let shell = Shell(session: session)
     prepare(shell)
     if let saved {
@@ -145,7 +159,7 @@ struct SavedWindow: Codable, Equatable {
     shell.vaultOpened(restoring: saved?.shell)
     if saved == nil, let from {
       shell.expanded = from.shell.expanded
-      if let b = from.shell.current?.board { shell.show(b) }
+      if showing, let b = from.shell.current?.board { shell.show(b) }
     }
     shell.treeChanged()
     let e = add(shell)
@@ -155,8 +169,77 @@ struct SavedWindow: Codable, Equatable {
       e.window.setFrame(from.window.frame.offsetBy(dx: 24, dy: -24), display: false)
     }
     e.panes.sync()
+    return e
+  }
+
+  // MARK: Board tabs between windows
+
+  /// Board tab `tab` moved whole from `from` into `to` at `index`: its board, its history and crumbs, and its pane as it
+  /// is (canvas, camera, selection, seat), so nothing is read or drawn again; what is being written in it ends first,
+  /// kept. `to` selects it and takes the keys; `from` selects the one beside it, and closes when it has no tab left,
+  /// board or reading
+  func move(_ tab: Tab.ID, from: Entry, to: Entry, at index: Int) async {
+    guard from !== to else { return }
+    if let p = from.panes.panes[tab], p.canvas.isWriting { await p.canvas.endWriting() }
+    guard all.contains(where: { $0 === from }), all.contains(where: { $0 === to }), let t = from.shell.take(tab)
+    else { return }
+    // the pane first: either window's sync would otherwise close it, or make the tab a new one
+    if let pane = from.panes.handOver(tab) { to.panes.adopt(pane, for: tab) }
+    to.shell.insert(t, at: index)
+    from.panes.sync()
+    to.panes.sync()
+    focus(to.window)
+    if from.shell.tabs.isEmpty, from.shell.reading.tabs.isEmpty { from.window.close() }
+  }
+
+  /// Board tab `tab` moved whole into a window of its own, at `frame` (nil: beside `from`, as New Window's), its
+  /// sidebar and reading pane as New Window's; a window's only tab stays, there being nothing to split
+  @discardableResult func moveToNewWindow(_ tab: Tab.ID, from: Entry, frame: CGRect?) async -> Entry? {
+    guard from.shell.tabs.count > 1, from.shell.tabs.contains(where: { $0.id == tab }),
+      let e = make(nil, from: from, showing: false)
+    else { return nil }
+    if let frame { e.window.setFrame(frame, display: false) }
+    await move(tab, from: from, to: e, at: 0)
     present(e.window)
     return e
+  }
+
+  /// The window whose board tabs hold `tab`
+  func entry(holding tab: Tab.ID) -> Entry? { all.first { $0.shell.tabs.contains { $0.id == tab } } }
+
+  /// A window's board tab row on screen
+  func tabRow(of e: Entry) -> CGRect? {
+    guard let row = e.window.contentView.flatMap({ Self.view($0, "ui-boardtabs") }), !row.isHiddenOrHasHiddenAncestor
+    else { return nil }
+    return e.window.convertToScreen(row.convert(row.bounds, to: nil))
+  }
+
+  private static func view(_ v: NSView, _ id: String) -> NSView? {
+    if v.accessibilityIdentifier() == id { return v }
+    for s in v.subviews { if let f = view(s, id) { return f } }
+    return nil
+  }
+
+  /// The board tab rows of the windows on screen, frontmost first
+  func tabRows() -> [(entry: Entry, frame: CGRect)] {
+    let z = NSApplication.shared.orderedWindows
+    return all.filter { onScreen($0.window) }
+      .sorted { (z.firstIndex(of: $0.window) ?? .max) < (z.firstIndex(of: $1.window) ?? .max) }
+      .compactMap { e in tabRow(of: e).map { (e, $0) } }
+  }
+
+  /// The window whose board tab row (of `rows`, frontmost first) is at `p` on screen, `slack` above and below it
+  /// counting, and where in it a tab let go there goes
+  func row(at p: CGPoint, slack: CGFloat, in rows: [(entry: Entry, frame: CGRect)]) -> (entry: Entry, index: Int)? {
+    guard let (e, r) = rows.first(where: { $0.frame.insetBy(dx: 0, dy: -slack).contains(p) }) else { return nil }
+    // the tabs as the row lays them out (TabStrip): from its padding, each its width and 2 apart
+    var x = r.minX + ShellTheme.stripPadding
+    for (i, t) in e.shell.stripTabs.enumerated() {
+      let w = TabItem.width(of: t.title)
+      if p.x < x + w / 2 { return (e, i) }
+      x += w + 2
+    }
+    return (e, e.shell.tabs.count)
   }
 
   private func closed(_ e: Entry) {
