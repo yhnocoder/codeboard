@@ -154,14 +154,16 @@ actor TestStore: PageStore {
   let machine = FileManager.default.temporaryDirectory.appending(path: "web-machine-\(UUID().uuidString)")
   private let store: (any PageStore)?
   private let scripts: URL?
+  private let translate: WebReading.Translator?
 
   init(
     vault: Vault? = nil, store: (any PageStore)? = nil, scripts: URL? = nil,
-    websiteData: WKWebsiteDataStore = .nonPersistent(), keeps: Bool = true
+    translate: WebReading.Translator? = nil, websiteData: WKWebsiteDataStore = .nonPersistent(), keeps: Bool = true
   ) throws {
     _ = NSApplication.shared
     self.store = store
     self.scripts = scripts
+    self.translate = translate
     self.websiteData = websiteData
     pane.vault = vault
     if let vault { pane.entries = EntryIndex(vault, try vault.tree()) }
@@ -179,7 +181,7 @@ actor TestStore: PageStore {
 
   /// A new web tab showing what `payload` names, selected; its view
   func open(_ payload: [String: String] = [:]) -> WebPageView {
-    WebReading.register(saving: store, scripts: scripts, websiteData: websiteData)
+    WebReading.register(saving: store, scripts: scripts, translate: translate, websiteData: websiteData)
     let id = pane.open("New Tab", kind: WebReading.kind, payload: payload)
     paneView.sync()
     window.layoutIfNeeded()
@@ -235,8 +237,8 @@ enum StandInScripts {
     """
 
   /// Marks the page as read and, in body mode, hides what the rule files' `body` selectors leave out, with an
-  /// attribute as the real one does
-  static let reader = """
+  /// attribute as the real one does. A reader older than translation: no blocks
+  static let olderReader = """
     document.documentElement.setAttribute("data-reader", "")
     var shiyiReader = {
       files: [], mode: "full",
@@ -253,8 +255,65 @@ enum StandInScripts {
     }
     """
 
-  /// A new folder holding them
-  static func folder() throws -> URL {
+  /// The older reader with the blocks: headings, paragraphs, items, captions, quotes, cells and code numbered `1.b1`,
+  /// `1.b2`… in document order, each with a hash of its text; translations shown under each block (`both`, as a
+  /// `[data-shiyi-translation]` after it) or in its place (`translation`). Whatever it shows, the block at the top of
+  /// the window stays there, as the real one promises
+  static let reader =
+    olderReader + "\n"
+      + """
+      Object.assign(shiyiReader, {
+        translations: {}, language: "original",
+        kinds: { H1: "heading", H2: "heading", H3: "heading", P: "paragraph", LI: "item", FIGCAPTION: "caption",
+          BLOCKQUOTE: "quote", TD: "cell", TH: "cell", PRE: "code" },
+        els() {
+          const all = [...document.body.querySelectorAll("h1,h2,h3,p,li,figcaption,blockquote,td,th,pre")]
+          all.forEach((e, i) => {
+            if (!e.dataset.shiyiId) { e.dataset.shiyiId = "1.b" + (i + 1); e.dataset.shiyiOriginal = e.textContent }
+          })
+          return all
+        },
+        hash(t) { let h = 5381; for (const c of t) h = (h * 33 + c.codePointAt(0)) >>> 0; return h.toString(16) },
+        blocks() {
+          const keep = this.files.map(f => f.body).filter(Boolean).join(",")
+          return { scheme: 1, blocks: this.els().map(e => {
+            const kind = this.kinds[e.tagName], text = e.dataset.shiyiOriginal
+            return { id: e.dataset.shiyiId, kind, text, textHash: this.hash(text), inBody: !keep || !!e.closest(keep),
+              translate: kind != "code" }
+          }) }
+        },
+        setTranslations(t) { Object.assign(this.translations, t); this.render() },
+        setLanguage(language) { this.language = language; this.render() },
+        render() {
+          const at = this.position()
+          for (const n of document.querySelectorAll("[data-shiyi-translation]")) n.remove()
+          for (const e of this.els()) {
+            const t = this.translations[e.dataset.shiyiId]
+            e.textContent = this.language == "translation" && t ? t : e.dataset.shiyiOriginal
+            if (this.language != "both" || !t) continue
+            const d = document.createElement("div")
+            d.dataset.shiyiTranslation = e.dataset.shiyiId
+            d.textContent = t
+            e.after(d)
+          }
+          if (at) this.scrollTo(at.id, null, at.offset)
+        },
+        position() {
+          for (const e of this.els()) {
+            const r = e.getBoundingClientRect()
+            if (r.bottom > 0) return { id: e.dataset.shiyiId, offset: -r.top }
+          }
+          return null
+        },
+        scrollTo(id, range, offset = 0) {
+          const e = this.els().find(e => e.dataset.shiyiId == id)
+          if (e) window.scrollTo(0, e.getBoundingClientRect().top + scrollY + offset)
+        },
+      })
+      """
+
+  /// A new folder holding them, the reader `reader`
+  static func folder(reader: String = reader) throws -> URL {
     let f = FileManager.default.temporaryDirectory.appending(path: "web-scripts-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: f, withIntermediateDirectories: true)
     try hooks.write(to: f.appending(path: "hooks.js"), atomically: true, encoding: .utf8)

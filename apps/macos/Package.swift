@@ -11,7 +11,12 @@ let package = Package(
     .package(url: "https://github.com/yhnocoder/shiyi", from: "0.2.0"),
   ],
   targets: [
-    .target(name: "CodeBoardModel", dependencies: [.product(name: "CodeCore", package: "better-swift-markdown")]),
+    // what the app says happened inside it while a bug report records (Diag.event); Foundation and Synchronization only,
+    // below everything
+    .target(name: "CodeBoardDiagnostics"),
+    .target(
+      name: "CodeBoardModel",
+      dependencies: ["CodeBoardDiagnostics", .product(name: "CodeCore", package: "better-swift-markdown")]),
     .target(name: "CodeBoardNotes", dependencies: ["CodeBoardModel"]),
     // the board's looks (Warm Ink, Ink Wash, light and dark) as the Markdown component's themes, and its fonts
     .target(
@@ -23,7 +28,7 @@ let package = Package(
     .target(
       name: "CodeBoardCanvas",
       dependencies: [
-        "CodeBoardModel", "CodeBoardNotes", "CodeBoardMarkdownLooks",
+        "CodeBoardModel", "CodeBoardNotes", "CodeBoardMarkdownLooks", "CodeBoardDiagnostics",
         .product(name: "TreeSitterHighlight", package: "better-swift-markdown"),
         .product(name: "TestGuard", package: "better-swift-markdown"),
         .product(name: "MarkdownCore", package: "better-swift-markdown"),
@@ -34,7 +39,7 @@ let package = Package(
       name: "CodeBoardShell",
       dependencies: [
         "CodeBoardModel", "CodeBoardCanvas", "CodeBoardNotes", "CodeBoardReading", "CodeBoardResources",
-        "CodeBoardWorkspace",
+        "CodeBoardWorkspace", "CodeBoardDiagnostics",
         .product(name: "Shiyi", package: "shiyi"),
       ]),
     .executableTarget(name: "CodeBoard", dependencies: ["CodeBoardShell"]),
@@ -87,7 +92,7 @@ let package = Package(
     .executableTarget(name: "MarkdownDemo", dependencies: ["MarkdownDemoKit"]),
     // Code analysis for reading code (symbols, calls, selections, peek, cross-language boundaries), a port of
     // packages/analysis with its tests as the specification. Foundation and the package's TreeSitterCore only, whose
-    // trees the highlighter colours too; no target depends on it yet
+    // trees the highlighter colours too; the reading pane's code tabs take a file's classes and functions from it
     .target(
       name: "CodeBoardAnalysis",
       dependencies: [.product(name: "TreeSitterCore", package: "better-swift-markdown")]),
@@ -118,12 +123,19 @@ let package = Package(
     .testTarget(
       name: "CodeBoardShellTests",
       dependencies: [
-        "CodeBoardShell", "CodeBoardCanvas", "CodeBoardNotes", "CodeBoardWorkspace",
+        "CodeBoardShell", "CodeBoardCanvas", "CodeBoardNotes", "CodeBoardWorkspace", "CodeBoardModel",
+        "CodeBoardDiagnostics",
         .product(name: "TestGuard", package: "better-swift-markdown"),
       ]),
-    // the reading pane beside the board and what its tabs show (PDF/, Web/, List/, Shared/); AppKit, PDFKit, the model
-    // and a resource's files, below the shell
-    .target(name: "CodeBoardReading", dependencies: ["CodeBoardModel", "CodeBoardResources"]),
+    // the reading pane beside the board and what its tabs show (PDF/, Web/, List/, Code/, Shared/); AppKit, PDFKit, the
+    // model and a resource's files, the code component and the code analysis, below the shell
+    .target(
+      name: "CodeBoardReading",
+      dependencies: [
+        "CodeBoardModel", "CodeBoardResources", "CodeBoardAnalysis", "CodeBoardDiagnostics",
+        .product(name: "CodeUI", package: "better-swift-markdown"),
+        .product(name: "TreeSitterHighlight", package: "better-swift-markdown"),
+      ]),
     .testTarget(
       name: "CodeBoardReadingTests", dependencies: ["CodeBoardReading", "CodeBoardModel", "CodeBoardResources"]),
     .testTarget(

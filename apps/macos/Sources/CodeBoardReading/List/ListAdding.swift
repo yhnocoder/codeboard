@@ -5,15 +5,15 @@ import UniformTypeIdentifiers
 import os
 
 /// What dropping, pasting or choosing would add to a resource, by its preset; nil when the preset takes none of it,
-/// and then nothing is added at all. Papers take PDFs and an arXiv paper (an id or an address), web pages take
+/// and then nothing is added at all. Papers take PDFs and a paper by its arXiv id or address or its DOI, web pages take
 /// addresses, files take any file; no preset takes a folder
 enum ListAdd: Equatable {
-  /// Copied in, each an entry alone under its own name
+  /// Copied in, each an entry alone under its own name (papers: a paper entry, ReadingPane.addPapers)
   case files([URL])
   /// Each a link entry, as the web bar saves a link
   case links([URL])
-  /// A new entry from arXiv: its metadata and the PDF of the version asked for (else its newest)
-  case arxiv(id: String, version: Int?)
+  /// A new entry from arXiv or doi.org (ReadingPane.addPaper)
+  case paper(PaperID)
 
   static func files(_ urls: [URL], for preset: ResourcePreset) -> ListAdd? {
     guard !urls.isEmpty, preset != .web else { return nil }
@@ -38,8 +38,7 @@ enum ListAdd: Equatable {
       let urls = lines.compactMap(WebAddress.url(from:))
       return !urls.isEmpty && urls.count == lines.count ? .links(urls) : nil
     case .papers:
-      // ponytail: a DOI is refused: the papers line has no DOI lookup yet
-      return Arxiv.parse(text).map { .arxiv(id: $0.id, version: $0.version) }
+      return PaperID.parse(text).map(ListAdd.paper)
     case .files, .images, .blank:
       return nil
     }
@@ -53,7 +52,7 @@ extension ListTabView {
   /// The empty list's one line: how things get into this preset's list
   static func emptyText(_ preset: ResourcePreset?) -> String {
     switch preset {
-    case .papers?: "Drop PDFs here or paste an arXiv address"
+    case .papers?: "Drop PDFs here or paste an arXiv address or DOI"
     case .web?: "Paste or drop an address here"
     case .files?, .images?, .blank?, nil: "Drop files here or add them with +"
     }
@@ -99,15 +98,21 @@ extension ListTabView {
 
   override func draggingEnded(_ info: NSDraggingInfo) { dropRing.isHidden = true }
 
+  /// What a drop would add; nil for a row dragged out of this list, which is not added to it again
+  private func dropped(_ info: NSDraggingInfo) -> ListAdd? {
+    guard (info.draggingSource as AnyObject?) !== table else { return nil }
+    return preset.flatMap { ListAdd.reading(info.draggingPasteboard, for: $0) }
+  }
+
   private func dropOperation(_ info: NSDraggingInfo) -> NSDragOperation {
-    let ok = preset.flatMap { ListAdd.reading(info.draggingPasteboard, for: $0) } != nil
+    let ok = dropped(info) != nil
     dropRing.isHidden = !ok
     return ok ? .copy : []
   }
 
   override func performDragOperation(_ info: NSDraggingInfo) -> Bool {
     dropRing.isHidden = true
-    guard let plan = preset.flatMap({ ListAdd.reading(info.draggingPasteboard, for: $0) }) else { return false }
+    guard let plan = dropped(info) else { return false }
     add(plan)
     window?.makeFirstResponder(table)
     return true
@@ -124,7 +129,11 @@ extension ListTabView {
     case .files(let urls):
       var added: [String] = []
       do {
-        for u in urls { added.append(try vault.addFile(u, to: r.path)) }
+        if r.preset == .papers {
+          added = try context.pane.addPapers(pdfs: urls, to: r).map(\.found.path)
+        } else {
+          for u in urls { added.append(try vault.addFile(u, to: r.path)) }
+        }
       } catch {
         // the copies made so far go again: a drop adds all or nothing
         for p in added { try? FileManager.default.removeItem(at: vault.url(of: p)) }
@@ -145,26 +154,25 @@ extension ListTabView {
         failed("The address could not be added: \(error)")
       }
       reveal(first)
-    case .arxiv(let id, let version):
-      if let found = context.pane.entries.arxiv(id) {
+    case .paper(let id):
+      if let found = context.pane.paper(id) {
         guard found.path.hasPrefix(r.path + "/") else {
           let home = found.path.split(separator: "/").dropLast().last.map { ($0 as NSString).deletingPathExtension }
           return failed("“\(found.entry.title)” is already in \(home ?? "another resource")")
         }
         return reveal(found.path)
       }
-      say("Adding arXiv \(id)…")
-      let arxiv = context.pane.arxiv
+      say("Adding \(id)…")
+      let pane = context.pane
       adding = Task { [weak self] in
         do {
-          let paper = try await arxiv.paper(id)
-          let pdf = try await arxiv.pdf(id, version: version ?? paper.latest)
+          let path = try await pane.addPaper(id, to: r).found.path
           guard let self else { return }
-          let (e, path) = try vault.newEntry(paper, version: version ?? paper.latest, pdf: pdf, in: r.path)
-          context.pane.entries.update(e, at: path)
           say(nil)
           reveal(path)
         } catch let e as ArxivError {
+          self?.failed(e.description)
+        } catch let e as DOIError {
           self?.failed(e.description)
         } catch {
           self?.failed("The paper could not be added: \(error)")
@@ -185,7 +193,7 @@ extension ListTabView {
     if let i = shown.firstIndex(where: { $0.key == path }) { select(i) }
   }
 
-  private func failed(_ why: String) {
+  func failed(_ why: String) {
     Self.log.error("\(why, privacy: .public)")
     NSSound.beep()
     say(why)

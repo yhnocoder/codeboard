@@ -1,4 +1,5 @@
 import AppKit
+import CodeBoardReading
 import CodeBoardWorkspace
 import Foundation
 import Synchronization
@@ -220,6 +221,49 @@ private func remove(_ dirs: String...) {
     #expect(m.selected == "b.py" && opened.map(\.0) == ["b.py", "b.py"] && opened.map(\.1) == [true, false])
     m.close()
     #expect(m.opened == nil && m.rows.isEmpty)
+  }
+
+  /// In the window: a click on a file previews it in the reading pane, the next click's preview takes its place, a
+  /// double-click keeps it; the tree's selected row is the current code tab's file, as tabs are switched and closed
+  @Test func aFileClickedOpensInTheReadingPaneAndTheTreeSelectsTheCurrentTabsFile() async throws {
+    let data = tempDir()
+    let r = try repo(["a.py": "x = 1\n", "b.py": "y = 2\n", "src/c.py": "z = 3\n"])
+    defer { remove(data, r) }
+    let m = RepositoriesModel(folder: URL(filePath: data), runner: ProcessGitRunner(), defaults: nil)
+    await m.addFolder(r)
+    await m.open(m.list[0])
+    let shell = Shell()
+    let (window, _) = makeMainWindow(shell: shell, repositories: m)
+    window.setFrameAutosaveName("")
+    defer { window.close() }
+    let pane = shell.reading
+    func until(_ what: String, _ ok: () -> Bool) async {
+      let end = ContinuousClock.now + .seconds(10)
+      while !ok() {
+        guard ContinuousClock.now < end else {
+          Issue.record("\(what): not within 10 s")
+          return
+        }
+        try? await Task.sleep(for: .milliseconds(5))
+      }
+    }
+    m.click("a.py", preview: true)
+    m.click("b.py", preview: true)
+    #expect(pane.tabs.map(\.title) == ["b.py"] && pane.tabs[0].preview && pane.shown)
+    m.click("b.py", preview: false)
+    m.click("src/c.py", preview: true)
+    #expect(pane.tabs.map(\.title) == ["b.py", "c.py"] && pane.tabs.map(\.preview) == [false, true])
+    #expect(pane.currentCode?.repository == r && pane.currentCode?.path == "src/c.py")
+    pane.select(pane.tabs[0].id)
+    await until("the tree follows the tab switched to") { m.selected == "b.py" }
+    pane.open("Notes", key: "resource:n", kind: "list")
+    await until("no code tab, no file selected") { m.selected == nil }
+    pane.close(pane.tabs[1].id)
+    await until("the tab after the closed one") { m.selected == "src/c.py" }
+    m.close()
+    await m.open(m.list[0])
+    await until("the repository opened again selects the tab's file") { m.selected == "src/c.py" }
+    #expect(await pane.commitOf(r) == m.head && m.head?.count == 7)
   }
 
   @Test func theBlockKeepsThreeRowsAndTheTreeThreeAndItsDefaultIsItsListOrHalf() async throws {

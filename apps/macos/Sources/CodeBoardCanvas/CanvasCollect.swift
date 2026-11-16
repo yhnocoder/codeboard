@@ -5,12 +5,20 @@ import TreeSitterHighlight
 // What a reading pane collects onto the board (Collected): selected text as an ordinary Note with its source, a figure
 // or a table as an image card showing that block of the entry. Its Add to Board and ⌥↵ (`collect`) put it in a free
 // place of the view; dragged over the board, the card as it will be is in hand, centred on the pointer as a sticker
-// being placed is, and let go it lands there. Either way it is selected, one step, in the Section it lands in.
+// being placed is, and let go it lands there. Either way it is selected, one step, in the Section it lands in. A web
+// address dragged alone (a resource list's web page, a link from a page or a browser) is held and let go the same way,
+// as the Web card a pasted address makes, its page read once it lands.
+
+/// What a drag over the board holds that becomes a card
+enum Held: Equatable {
+  case collected(Collected)
+  case web(String)
+}
 
 /// A collected card in hand while its drag is over the board: laid out and drawn once, then only moved
 struct InHand {
   var drag: Int
-  var collected: Collected
+  var held: Held
   /// The pointer's board point: the card's middle
   var at: CGPoint
   /// Its size and layers once laid out
@@ -24,12 +32,20 @@ extension CanvasView {
   /// Collected from a reading pane: its card in a free place of the view, selected. False when it cannot be a card (an
   /// image with no source to draw it from)
   @discardableResult public func collect(_ c: Collected) -> Bool {
-    guard document != nil, let size = collectedSize(c) else { return false }
-    return add(c, at: pastePlace(size, at: nil, besideSelection: false), size: size, reveal: true)
+    guard document != nil, let size = heldSize(.collected(c)) else { return false }
+    return add(.collected(c), at: pastePlace(size, at: nil, besideSelection: false), size: size, reveal: true)
   }
 
-  /// The card collected, its top left at `p`: a Note as wide as a new one, or an image card at the block's width
-  func collectedCard(_ c: Collected, id: CardID, at p: CGPoint) -> Card? {
+  /// The card held, its top left at `p`: a Note as wide as a new one, an image card at the block's width, a Web card
+  /// as a pasted address makes it (Board.addWeb)
+  func heldCard(_ h: Held, id: CardID, at p: CGPoint) -> Card? {
+    let c: Collected
+    switch h {
+    case .web(let url):
+      return Card(
+        id: id, x: p.x, y: p.y, width: Board.webWidth, content: .own(CardContent(body: .web(WebCard(url: url)))))
+    case .collected(let it): c = it
+    }
     switch c.body {
     case .note(let md):
       return Card(
@@ -44,26 +60,43 @@ extension CanvasView {
     }
   }
 
-  /// How big its card is before it is laid out: an image's natural size, a Note as tall as a pasted one is taken to be
-  func collectedSize(_ c: Collected) -> CGSize? {
-    switch c.body {
-    case .note: CGSize(width: Board.newNoteWidth, height: 160)
-    case .image(_, let w, let h): c.source == nil ? nil : CGSize(width: w.rounded(), height: h)
+  /// How big its card is before it is laid out: an image's natural size, a Note or a Web card as tall as a pasted one
+  /// is taken to be
+  func heldSize(_ held: Held) -> CGSize? {
+    switch held {
+    case .web: CGSize(width: Board.webWidth, height: 112)
+    case .collected(let c):
+      switch c.body {
+      case .note: CGSize(width: Board.newNoteWidth, height: 160)
+      case .image(_, let w, let h): c.source == nil ? nil : CGSize(width: w.rounded(), height: h)
+      }
     }
   }
 
+  /// What a drag holds: a collected card (nil when it does not read), else one web address alone, from its link or its
+  /// text
+  func held(_ pb: NSPasteboard) -> Held? {
+    if let data = pb.data(forType: Self.collectedType) { return (try? Collected(data: data)).map(Held.collected) }
+    let links = (pb.readObjects(forClasses: [NSURL.self]) as? [URL] ?? []).filter { !$0.isFileURL }
+    return
+      (links.lazy.compactMap { webAddress($0.absoluteString) }.first
+      ?? pb.string(forType: .string).flatMap(webAddress)).map(Held.web)
+  }
+
   /// `reveal`: brought into view when it is not (a card let go where the pointer is: the camera stays)
-  @discardableResult private func add(_ c: Collected, at p: CGPoint, size: CGSize, reveal: Bool = false) -> Bool {
+  /// A Web card's page read once it is there
+  @discardableResult private func add(_ h: Held, at p: CGPoint, size: CGSize, reveal: Bool = false) -> Bool {
     let id = CardID(rawValue: Board.newID("card-"))
-    guard let card = collectedCard(c, id: id, at: p) else { return false }
+    guard let card = heldCard(h, id: id, at: p) else { return false }
     settle(id, size, "Add to Board", reveal: reveal) { $0.cards.append(card) }
+    if case .web(let url) = h { fetchWeb(id, url: url) }
     return true
   }
 
   // MARK: Dragging
 
-  /// A collected card dragged over the board: in hand at the pointer, laid out the first time it comes over; nil for any
-  /// other drag, none for one that cannot be a card
+  /// A collected card or an address dragged over the board: in hand at the pointer, laid out the first time it comes
+  /// over; nil for any other drag, none for one that cannot be a card
   func holdCollected(_ info: NSDraggingInfo) -> NSDragOperation? {
     let at = camera.board(convert(info.draggingLocation, from: nil))
     if var h = inHand, h.drag == info.draggingSequenceNumber {
@@ -72,28 +105,25 @@ extension CanvasView {
       placeHand()
       return .copy
     }
-    guard let data = info.draggingPasteboard.data(forType: Self.collectedType) else { return nil }
-    guard document != nil, let c = try? Collected(data: data), collectedSize(c) != nil else { return [] }
+    guard let held = held(info.draggingPasteboard) else { return nil }
+    guard document != nil, heldSize(held) != nil else { return [] }
     dropHand()
-    inHand = InHand(drag: info.draggingSequenceNumber, collected: c, at: at)
+    inHand = InHand(drag: info.draggingSequenceNumber, held: held, at: at)
     // the card in hand is the picture: the drag's own is not drawn over the board (AppKit gives it back off the board)
     info.enumerateDraggingItems(
       options: [], for: self, classes: [NSPasteboardItem.self], searchOptions: [:]
     ) { item, _, _ in item.imageComponentsProvider = { [] } }
-    layOutHand(c, drag: info.draggingSequenceNumber)
+    layOutHand(held, drag: info.draggingSequenceNumber)
     return .copy
   }
 
   /// Let go over the board: its card where the one in hand was, selected, the board taking the keys. Nil for any other
   /// drag
   func dropCollected(_ info: NSDraggingInfo) -> Bool? {
-    guard info.draggingPasteboard.types?.contains(Self.collectedType) == true else { return nil }
-    let h = inHand?.drag == info.draggingSequenceNumber ? inHand : nil
+    let hand = inHand?.drag == info.draggingSequenceNumber ? inHand : nil
+    guard let c = hand?.held ?? held(info.draggingPasteboard) else { return nil }
     dropHand()
-    let data = info.draggingPasteboard.data(forType: Self.collectedType)
-    guard document != nil, let c = h?.collected ?? data.flatMap({ try? Collected(data: $0) }),
-      let size = h?.size ?? collectedSize(c)
-    else { return false }
+    guard document != nil, let size = hand?.size ?? heldSize(c) else { return false }
     let p = camera.board(convert(info.draggingLocation, from: nil))
     guard add(c, at: CGPoint(x: (p.x - size.width / 2).rounded(), y: (p.y - size.height / 2).rounded()), size: size)
     else { return false }
@@ -115,16 +145,16 @@ extension CanvasView {
 
   /// The card in hand laid out alone and drawn as the board draws it, at the zoom now, once (an image's block asked of
   /// the provider first, and kept for the card it becomes)
-  private func layOutHand(_ c: Collected, drag: Int) {
+  private func layOutHand(_ held: Held, drag: Int) {
     guard let (vb, vault) = shown, let doc = document,
-      let card = collectedCard(c, id: CardID(rawValue: "in-hand"), at: .zero)
+      let card = heldCard(held, id: CardID(rawValue: "in-hand"), at: .zero)
     else { return }
     let mini = Board(id: doc.board.id, cards: [card])
     let (t, display, images, zoom, backing) = (theme, display, images, camera.zoom, backing)
     let highlighter = CanvasView.highlighter ?? Highlighter()
     let package = vault.url(of: vb.path)
     Task { [weak self] in
-      if case .image(_, let w, let h) = c.body, let a = c.source, let p = self?.sources {
+      if case .collected(let c) = held, case .image(_, let w, let h) = c.body, let a = c.source, let p = self?.sources {
         let k = Levels.scale(zoom, backing: backing, size: CGSize(width: w, height: h))
         let key = SourcePictures.Key(anchor: Scene.key(a), width: SourcePictures.level(Int((w * k).rounded(.up))))
         if self?.sourcePictures.holds(key) == false, let img = await p.blockImage(a, pixelWidth: key.width) {

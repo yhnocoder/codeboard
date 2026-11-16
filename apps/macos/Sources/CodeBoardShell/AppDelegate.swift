@@ -52,6 +52,8 @@ import CodeBoardResources
   /// This app's own record of where each board was last looked at (never the vault's)
   private let cameras = CameraStore.ofThisApp()
   var driver: AppDriver?
+  private var bugRecorder: BugRecorder?
+  private var bugKey: HotKey?
 
   func applicationDidFinishLaunching(_ notification: Notification) {
     CanvasView.warmUp()
@@ -104,6 +106,10 @@ import CodeBoardResources
       window.makeKeyAndOrderFront(nil)
       NSApp.activate()
     }
+    bugRecorder = makeBugRecorder()
+    bugRecorder?.onChange = { NSApp.mainMenu?.update() }
+    // a driver's run never takes the keys from the apps of the person at the Mac: it uses the menu item
+    if driver == nil, BugRecorder.personal { bugKey = HotKey { [weak self] in self?.bugRecorder?.toggle() } }
     track { [weak self] in
       guard let self, let state = shell.state, let data = try? JSONEncoder().encode(state) else { return }
       UserDefaults.standard.set(data, forKey: Self.stateKey)
@@ -111,10 +117,51 @@ import CodeBoardResources
     shell.importPages()
   }
 
+  /// The bug report recorder, reading the shell and the board panes. Reports go to Application Support/CodeBoard/Bug
+  /// Reports; a build of another bundle id (a driver's run, a build to try beside the app) keeps them in its own folder
+  private func makeBugRecorder() -> BugRecorder {
+    let own = Bundle.main.bundleIdentifier == "com.yhnocoder.codeboard"
+    let folder =
+      (own ? nil : shell.machineFolder)
+      ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appending(
+        path: "CodeBoard")
+    let source = BugRecorder.Source(
+      vault: { [weak shell] in shell?.vault },
+      frontBoard: { [weak self] w in w === self?.window ? self?.shell.current?.board : nil },
+      board: { [weak self] id in
+        guard let self, let at = shell.board(id), let vault = shell.vault,
+          let board = panes?.documents[id]?.board ?? (try? vault.board(at: at.path))
+        else { return nil }
+        return (at.title, at.path, board)
+      },
+      titles: { [weak shell] in
+        Dictionary((shell?.tree?.allBoards ?? []).map { ($0.id, $0.title) }, uniquingKeysWith: { a, _ in a })
+      },
+      entries: { [weak shell] in shell?.reading.entries ?? EntryIndex() },
+      resources: { [weak shell] in shell?.tree?.allFolders.flatMap(\.resources) ?? [] },
+      readingFront: { [weak shell] in
+        guard let r = shell?.reading, let t = r.tabs.first(where: { $0.id == r.selected }) else { return nil }
+        return t.payload.merging(["kind": t.kind, "key": t.key ?? "", "title": t.title, "at": "0"]) { a, _ in a }
+      },
+      look: { [weak shell] in (shell?.theme.rawValue ?? "?", shell?.dark ?? false) })
+    return BugRecorder(folder: folder.appending(path: "Bug Reports", directoryHint: .isDirectory), source: source)
+  }
+
+  @objc func toggleBugReport(_ sender: Any?) { bugRecorder?.toggle() }
+
   func applicationDidBecomeActive(_ notification: Notification) { shell.importPages() }
 
   /// Every board is written first; when one cannot be, quitting would lose its changes, so it asks
   func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+    // a bug report being recorded or put together is finished first, then quitting goes on as below
+    if let r = bugRecorder, r.isBusy {
+      Task {
+        await r.finishForQuit()
+        // when the rest answers later (a card being written in, a board that could not be saved), the answer is its
+        if self.applicationShouldTerminate(sender) == .terminateNow { NSApp.reply(toApplicationShouldTerminate: true) }
+      }
+      return .terminateLater
+    }
     // a card being written in: what was typed goes to its board first
     if let panes, panes.isEditing {
       Task {
@@ -299,6 +346,9 @@ import CodeBoardResources
     case #selector(goBack(_:)): return shell.canGoBack
     case #selector(goForward(_:)): return shell.canGoForward
     case #selector(showNextTab(_:)), #selector(showPreviousTab(_:)): return shell.tabs.count > 1
+    case #selector(toggleBugReport(_:)):
+      item.title = bugRecorder?.isRecording == true ? "Stop Recording Bug Report" : "Record Bug Report"
+      return true
     case #selector(chooseTheme(_:)):
       item.state = item.representedObject as? String == shell.theme.rawValue ? .on : .off
       return true
@@ -315,6 +365,8 @@ import CodeBoardResources
     )
     app.addItem(.separator())
     app.addItem(withTitle: "Settings…", action: #selector(showSettings(_:)), keyEquivalent: ",")
+    // the shortcut is a hot key (it works from any app), shown here; the item is how a driver's run starts it
+    app.addItem(item("Record Bug Report", #selector(toggleBugReport(_:)), "b", [.command, .option, .control]))
     app.addItem(.separator())
     let services = NSMenu(title: "Services")
     app.addItem(withTitle: "Services", action: nil, keyEquivalent: "").submenu = services

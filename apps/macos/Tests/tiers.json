@@ -447,7 +447,9 @@
             "OpeningWritesNothingTests",
             "WritingWhenClosingTests",
             "ShellPDFTests/addPDFCopiesTheFileUnderAFreeNameAndOpensItsTab",
-            "ShellPDFTests/addArxivPaperMakesAnEntryOpensItAndTheSameIdAgainOpensThatEntry"
+            "ShellPDFTests/aPDFAddedToAResourceOfPapersIsAPaperEntryAtOnceTitledFromThePDF",
+            "ShellPDFTests/addArxivPaperMakesAnEntryOpensItAndTheSameIdAgainOpensThatEntry",
+            "ShellPDFTests/addDOIPaperMakesAnEntryWithoutAVersionAndTheSameDOIAgainFindsIt"
           ]
         },
         "search": {
@@ -461,6 +463,10 @@
         "keys and the shortcut list": {
           "sources": ["CodeBoardCanvas/CanvasShortcuts.swift", "CodeBoardCanvas/CanvasKeys.swift"],
           "tests": ["FullWindowKeysTests", "ParityMenuKeysTests"]
+        },
+        "bug reports": {
+          "sources": ["CodeBoardShell/BugReport"],
+          "tests": ["BugReportTests"]
         },
         "summary writing": {
           "sources": [
@@ -495,13 +501,19 @@
           "sources": [
             "CodeBoardShell/RepositoriesModel.swift",
             "CodeBoardShell/RepositoriesBlock.swift",
-            "CodeBoardWorkspace/Repositories.swift"
+            "CodeBoardWorkspace/Repositories.swift",
+            "CodeBoardReading/Code"
           ],
           "tests": ["RepositoriesBlockTests"]
         },
         "web": {
-          "sources": ["CodeBoardShell/ShellWeb.swift", "CodeBoardShell/ShellPages.swift", "CodeBoardReading/Web"],
-          "tests": ["ShellWebTests", "PageStoreChoiceTests", "ShiyiStoreTests", "ShiyiWebTabTests"]
+          "sources": [
+            "CodeBoardShell/ShellWeb.swift",
+            "CodeBoardShell/ShellPages.swift",
+            "CodeBoardShell/ShellTranslate.swift",
+            "CodeBoardReading/Web"
+          ],
+          "tests": ["ShellWebTests", "PageStoreChoiceTests", "ShiyiStoreTests", "ShiyiWebTabTests", "ShellTranslateTests"]
         },
         "reading pane": {
           "sources": [
@@ -531,7 +543,15 @@
         },
         "reading: pdf": {
           "sources": ["CodeBoardReading/PDF", "CodeBoardResources"],
-          "tests": ["PDFPlaceTests", "PDFTabTests", "PDFSourceTests", "PDFAnnotationTests", "PDFVersionTests", "PDFBlockTests"]
+          "tests": [
+            "PDFPlaceTests",
+            "PDFTabTests",
+            "PDFSourceTests",
+            "PDFAnnotationTests",
+            "PDFVersionTests",
+            "PDFBlockTests",
+            "PaperPDFTests"
+          ]
         },
         "reading: web": {
           "sources": ["CodeBoardReading/Web"],
@@ -542,8 +562,14 @@
             "WebPageTests",
             "WebSiteDataTests",
             "WebSavingTests",
-            "WebSavedPageTests"
+            "WebSavedPageTests",
+            "WebTranslatingTests",
+            "WebTranslationTests"
           ]
+        },
+        "reading: code": {
+          "sources": ["CodeBoardReading/Code"],
+          "tests": ["CodeReadingTests"]
         },
         "reading: list": {
           "sources": ["CodeBoardReading/List"],

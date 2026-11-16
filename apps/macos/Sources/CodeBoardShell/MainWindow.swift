@@ -22,6 +22,18 @@ import UniformTypeIdentifiers
   window.isReleasedWhenClosed = false
   let root = RootView(shell: shell, repositories: repositories)
   window.contentView = root
+  if let repositories {
+    // a file clicked in a repository opens in the reading pane, and the tree selects the current code tab's file
+    repositories.onOpen = { [weak shell] r, rel, preview in
+      shell?.reading.openCode(
+        CodeFile(repository: r.path, name: RepositoriesModel.name(r), path: rel), preview: preview)
+    }
+    shell.reading.commitOf = { [weak repositories] in await repositories?.head(of: $0) }
+    track { [weak shell, weak repositories] in
+      let f = shell?.reading.currentCode
+      repositories?.follow(repository: f?.repository, path: f?.path)
+    }
+  }
   let panes = root.panes
   shell.confirm = { [weak window, weak panes] alert in await panes?.confirm(alert, window) ?? false }
   shell.askPDFs = { [weak window] in
@@ -45,7 +57,7 @@ import UniformTypeIdentifiers
     var sheet: ArxivSheet?
     sheet = ArxivSheet(
       missing: shell.reading.translations.map { $0.missing } ?? "Translations are not set up.",
-      add: { await shell.addArxiv($0, translate: $1, to: resource) },
+      add: { await shell.addPaper($0, translate: $1, to: resource) },
       done: {
         if let s = sheet?.window { window.endSheet(s) }
         sheet = nil
@@ -113,6 +125,8 @@ private final class RootView: NSView {
         // the board's bar look reaches the tabs' bars
         let t = shell.look
         let look = t.id == .inkWash ? ReadingBarLook.inkWash(dark: t.dark) : .warmInk(dark: t.dark)
+        // before the bar look, whose change the tabs' views hear
+        shell.reading.codeLook = t.codeLook
         if shell.reading.barLook != look { shell.reading.barLook = look }
         readingView?.sync()
       })

@@ -33,6 +33,12 @@ public struct EntryIndex: Sendable {
   /// The entry of the arXiv paper `id` (without a version), the first by its folder's path when there are several
   public func arxiv(_ id: String) -> Found? { all.first { $0.entry.origin == .arxiv(id) } }
 
+  /// The entry of the paper with the DOI `doi`, compared lowercased, the first by its folder's path when there are
+  /// several
+  public func doi(_ doi: String) -> Found? {
+    all.first { if case .doi(let d)? = $0.entry.origin { d.lowercased() == doi.lowercased() } else { false } }
+  }
+
   /// Every entry, by its folder's path
   public var all: [Found] { byID.values.sorted { $0.path < $1.path } }
 

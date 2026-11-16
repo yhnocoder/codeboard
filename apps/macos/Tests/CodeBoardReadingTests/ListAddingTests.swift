@@ -87,8 +87,8 @@ private final class Outside {
 // Adding to a resource from its list: files dropped, an address or files pasted, files chosen with +; what each preset
 // takes and refuses; the first added selected; the empty list says how
 @MainActor @Suite(.serialized) struct ListAddingTests {
-  /// PDFs dropped on a papers list: each an entry alone under its name, the first selected, the filter that hid it
-  /// cleared
+  /// PDFs dropped on a papers list: each a paper entry titled from the PDF (here its name), the first selected, the
+  /// filter that hid it cleared
   @Test func pdfsDroppedOnAPapersListAreAddedAndTheFirstIsSelected() async throws {
     let v = try ListVault(empty: true)
     defer { v.remove() }
@@ -102,7 +102,7 @@ private final class Outside {
     #expect(
       list.rows.map(\.title).sorted() == ["Bay survey", "Weir survey"] && list.rows.allSatisfy { $0.kind == "PDF" })
     #expect(list.search.stringValue.isEmpty)
-    #expect(selectedKey(list) == "\(v.resource.path)/Weir survey.pdf")
+    #expect(selectedKey(list) == "\(v.resource.path)/Weir survey")
     #expect(FileManager.default.fileExists(atPath: pdfs[0].path), "a copy is added; the file stays where it was")
   }
 
@@ -169,7 +169,7 @@ private final class Outside {
   }
 
   /// An arXiv address pasted in a papers list: the paper's metadata and newest PDF from arXiv (its fake here), a new
-  /// entry, selected; pasted again, the same entry; a DOI is not taken (no DOI lookup yet)
+  /// entry, selected; pasted again, the same entry
   @Test func anArxivAddressPastedInAPapersListAddsThePaper() async throws {
     let v = try ListVault(empty: true)
     defer { v.remove() }
@@ -187,8 +187,55 @@ private final class Outside {
     list.adding = nil
     paste(v, list) { $0.setString("arXiv:1706.03762v1", forType: .string) }
     #expect(list.adding == nil && list.rows.count == 1 && selectedKey(list) == found.path)
-    paste(v, list) { $0.setString("10.1000/xyz", forType: .string) }
-    #expect(list.adding == nil && list.rows.count == 1)
+  }
+
+  /// A DOI pasted in a papers list: its metadata from doi.org (its fake here), a new entry without a PDF, selected
+  @Test func aDOIPastedInAPapersListAddsThePaper() async throws {
+    let v = try ListVault(empty: true)
+    defer { v.remove() }
+    v.pane.doi = DOI { req in
+      let body = #"{"title": "Weirs of the Bay", "author": [{"given": "Ada", "family": "Brook"}]}"#
+      return (Data(body.utf8), HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+    }
+    let (_, list) = try await v.openList()
+    paste(v, list) { $0.setString("https://doi.org/10.1000/xyz", forType: .string) }
+    #expect(list.note.stringValue == "Adding DOI 10.1000/xyz…")
+    await list.adding?.value
+    let found = try #require(v.pane.entries.doi("10.1000/xyz"))
+    #expect(found.entry.title == "Weirs of the Bay" && found.entry.versions.isEmpty)
+    #expect(list.note.stringValue.isEmpty && selectedKey(list) == found.path && list.rows.count == 1)
+  }
+
+  /// A PDF dropped on a papers list is titled from the PDF itself (its document info here)
+  @Test func aPDFDroppedOnAPapersListIsAPaperTitledFromThePDF() async throws {
+    let v = try ListVault(empty: true)
+    defer { v.remove() }
+    let out = try Outside()
+    defer { out.remove() }
+    let (_, list) = try await v.openList()
+    let pdf = try out.file(
+      "scan 7.pdf", makePaperPDF(title: nil, body: "Weirs.", info: ("Weirs of the Bay", "Ada Brook")))
+    #expect(drop(list, ListDrag(files: [pdf])) == (true, true))
+    let items = try v.vault.items(in: v.resource.path)
+    guard case .entry(let e, let path)? = items.first, items.count == 1 else {
+      Issue.record("\(items)")
+      return
+    }
+    #expect(e.title == "Weirs of the Bay" && e.authors == ["Ada Brook"] && selectedKey(list) == path)
+  }
+
+  /// A drop whose second PDF cannot be read adds none of it, and the bar says why
+  @Test func aDropWhoseSecondPDFCannotBeReadAddsNothing() async throws {
+    let v = try ListVault(empty: true)
+    defer { v.remove() }
+    let out = try Outside()
+    defer { out.remove() }
+    let (_, list) = try await v.openList()
+    let locked = try out.file("Bay survey.pdf", makePDF(["Bay"]))
+    try FileManager.default.setAttributes([.posixPermissions: 0], ofItemAtPath: locked.path)
+    #expect(drop(list, ListDrag(files: [try out.file("Weir survey.pdf", makePDF(["Weir"])), locked])) == (true, true))
+    #expect(try v.vault.items(in: v.resource.path).isEmpty && list.rows.isEmpty)
+    #expect(list.note.stringValue.hasPrefix("The files could not be added"))
   }
 
   /// arXiv not having the paper: nothing added, and the bar says why
@@ -217,7 +264,7 @@ private final class Outside {
     #expect(list.rows.isEmpty)
     let pdf = try out.file("Bay survey.pdf", makePDF(["Bay"]))
     paste(v, list) { $0.writeObjects([pdf as NSURL]) }
-    #expect(list.rows.map(\.title) == ["Bay survey"] && selectedKey(list) == "\(v.resource.path)/Bay survey.pdf")
+    #expect(list.rows.map(\.title) == ["Bay survey"] && selectedKey(list) == "\(v.resource.path)/Bay survey")
   }
 
   /// + beside the filter: what its chooser gives added, as a drop would be; nothing chosen, nothing added
@@ -240,7 +287,7 @@ private final class Outside {
     chooser.give = [try out.file("Bay survey.pdf", makePDF(["Bay"]))]
     list.addButton.performClick(nil)
     await list.choosing?.value
-    #expect(list.rows.map(\.title) == ["Bay survey"] && selectedKey(list) == "\(v.resource.path)/Bay survey.pdf")
+    #expect(list.rows.map(\.title) == ["Bay survey"] && selectedKey(list) == "\(v.resource.path)/Bay survey")
   }
 
   /// The empty list's one line says how to add to it, by its preset
@@ -248,7 +295,7 @@ private final class Outside {
     let v = try ListVault(empty: true)
     defer { v.remove() }
     let (_, papers) = try await v.openList()
-    #expect(papers.empty.stringValue == "Drop PDFs here or paste an arXiv address" && !papers.empty.isHidden)
+    #expect(papers.empty.stringValue == "Drop PDFs here or paste an arXiv address or DOI" && !papers.empty.isHidden)
     let files = try v.vault.newResource(in: "", title: "Files", preset: .files)
     let (_, list) = try await v.openList(files)
     #expect(list.empty.stringValue == "Drop files here or add them with +" && list.addButton.toolTip == "Add Files…")

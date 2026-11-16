@@ -239,9 +239,7 @@ import os
     children = [:]
     selected = nil
     await list("")
-    if let store, await gitWorks(), let h = try? await store.git.headOf(r.path), opened == r {
-      head = String(h.prefix(7))
-    }
+    if let h = await head(of: r.path), opened == r { head = h }
   }
 
   struct TreeRow: Hashable {
@@ -286,6 +284,19 @@ import os
     guard let opened else { return }
     selected = rel
     onOpen?(opened, rel, preview)
+  }
+
+  /// The file the reading pane's current tab shows (a repository's folder and the file in it) is the selected one; a
+  /// file of another repository, or none, selects nothing
+  func follow(repository: String?, path: String?) {
+    let rel = repository == opened?.path ? path : nil
+    if selected != rel { selected = rel }
+  }
+
+  /// A repository's HEAD, short; nil when it is no git repository or git cannot run
+  func head(of path: String) async -> String? {
+    guard let store, await gitWorks(), let h = try? await store.git.headOf(path) else { return nil }
+    return String(h.prefix(7))
   }
 
   /// Off the main actor: a folder of thousands of files lists without holding up a frame

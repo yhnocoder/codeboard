@@ -167,5 +167,92 @@ extension CanvasPasteTests {
       #expect(!r.canvas.performDragOperation(bad))
       #expect(r.doc.board.cards.count == 1 && !r.doc.history.canUndo)
     }
+
+    /// An entry dragged from a resource's list: a Note whose source is the entry as a whole (no place), its foot the
+    /// provider's, a click on it showing that anchor
+    @Test func anEntryDroppedIsANoteWithAPlacelessSourceWhoseFootShowsIt() async throws {
+      let (r, fake) = try await rig()
+      defer { r.close() }
+      fake.labels["e2"] = SourceLabel(title: "Tidal mills", number: nil, icon: .paper)
+      let whole = SourceAnchor(entry: EntryID(rawValue: "e2"))
+      let entry = Collected(
+        body: .note(markdown: "**Tidal mills**\nAna Ruíz, Bo Chen"), source: whole, title: "Tidal mills", label: "")
+      let d = try drag(entry, at: CGPoint(x: 700, y: 500), r)
+      defer { d.draggingPasteboard.releaseGlobally() }
+      _ = r.canvas.draggingEntered(d)
+      await r.until("the card in hand") { r.canvas.inHand?.layers != nil }
+      #expect(r.canvas.performDragOperation(d))
+      r.canvas.draggingEnded(d)
+      let c = try #require(r.doc.board.cards.last)
+      guard case .own(let k) = c.content, case .note(let n) = k.body else {
+        Issue.record("not a Note: \(c)")
+        return
+      }
+      #expect(n.text == "**Tidal mills**\nAna Ruíz, Bo Chen" && k.source == whole && k.source?.place == nil)
+      #expect(r.doc.selection == [.card(c.id)] && r.doc.history.undoSteps.count == 1)
+      await r.until("its foot drawn") {
+        r.canvas.index(of: .card(c.id)).flatMap { r.canvas.scene?.items[$0].drawing.foot } != nil
+      }
+      let foot = try #require(r.canvas.index(of: .card(c.id)).flatMap { r.canvas.scene?.items[$0].drawing.foot })
+      #expect(foot.title == "Tidal mills" && foot.number == nil && foot.anchor == whole)
+      let at = foot.frame.offsetBy(dx: r.rect(c.id.rawValue).minX, dy: r.rect(c.id.rawValue).maxY)
+      r.click(CGPoint(x: at.midX, y: at.midY))
+      #expect(fake.revealed == [whole])
+    }
+
+    /// A web address dragged alone (a list's web page, a link from a browser): held as the Web card a pasted address
+    /// makes, let go there, selected, one step, its page read through the canvas's own fetch
+    @Test func anAddressDroppedIsAWebCardWhereItWasLetGo() async throws {
+      let (r, _) = try await rig()
+      defer { r.close() }
+      let pages = CanvasWebTests.Pages()
+      r.canvas.fetchPage = pages.fetch
+      let d = Drag(at: r.at(CGPoint(x: 700, y: 500))) { pb in
+        pb.writeObjects([URL(string: "https://harbour.example.org/log")! as NSURL])
+      }
+      defer { d.draggingPasteboard.releaseGlobally() }
+      #expect(r.canvas.draggingEntered(d) == .copy)
+      await r.until("the card in hand") { r.canvas.inHand?.layers != nil }
+      let held = try #require(r.canvas.inHand?.layers?.box.frame)
+      #expect(held.width == Board.webWidth && held.midX == 700 && held.midY == 500)
+      #expect(r.canvas.performDragOperation(d))
+      r.canvas.draggingEnded(d)
+      let c = try #require(r.doc.board.cards.last)
+      guard case .own(let k) = c.content, case .web(let w) = k.body else {
+        Issue.record("not a Web card: \(c)")
+        return
+      }
+      #expect(w.url == "https://harbour.example.org/log" && c.width == Board.webWidth)
+      #expect(c.x == held.minX.rounded() && c.y == held.minY.rounded(), "where it was held")
+      #expect(
+        r.doc.selection == [.card(c.id)] && r.doc.undoName == "Add to Board" && r.doc.history.undoSteps.count == 1)
+      await r.until("its page read") { pages.asked == ["https://harbour.example.org/log"] }
+    }
+
+    /// An address with other words around it is no address alone: no Web card, the drag left alone as plain text is
+    @Test func anAddressWithOtherWordsDroppedIsNoWebCard() async throws {
+      let (r, _) = try await rig()
+      defer { r.close() }
+      let d = Drag(at: r.at(CGPoint(x: 700, y: 500))) {
+        $0.setString("see https://harbour.example.org/log", forType: .string)
+      }
+      defer { d.draggingPasteboard.releaseGlobally() }
+      #expect(r.canvas.draggingEntered(d) == [] && r.canvas.inHand == nil)
+      #expect(!r.canvas.performDragOperation(d))
+      #expect(r.doc.board.cards.count == 1 && !r.doc.history.canUndo)
+    }
+
+    /// An address that is not http or https is no Web card
+    @Test func anAddressNotHTTPDroppedIsNoWebCard() async throws {
+      let (r, _) = try await rig()
+      defer { r.close() }
+      let d = Drag(at: r.at(CGPoint(x: 700, y: 500))) { pb in
+        pb.writeObjects([URL(string: "ftp://harbour.example.org/log")! as NSURL])
+      }
+      defer { d.draggingPasteboard.releaseGlobally() }
+      #expect(r.canvas.draggingEntered(d) == [] && r.canvas.inHand == nil)
+      #expect(!r.canvas.performDragOperation(d))
+      #expect(r.doc.board.cards.count == 1 && !r.doc.history.canUndo)
+    }
   }
 }
