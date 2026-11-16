@@ -84,7 +84,7 @@ extension CanvasView {
     do {
       l = try display.laid(
         n.content, width: card.width, folder: n.folder, look: theme.id.rawValue, dark: theme.dark, refs: n.refs,
-        hideHead: false)
+        hideHead: false, preamble: n.preamble)
     } catch {
       // a double-click that opens nothing says why, each time
       Logger(subsystem: "CodeBoard", category: "writing").error(
@@ -92,7 +92,7 @@ extension CanvasView {
       return false
     }
     let text = n.content.markdown
-    let layout = display.editorLayout(l, folder: n.folder, refs: n.refs, dark: theme.dark)
+    let layout = display.editorLayout(l, folder: n.folder, refs: n.refs, dark: theme.dark, preamble: n.preamble)
     let v = MarkdownEditorView(layout: layout, caret: (text as NSString).length)
     v.delegate = self
     // the header folded under it keeps its buttons (.chead.fold > .ib: pointer-events auto)
@@ -160,7 +160,8 @@ extension CanvasView {
         guard let list = await self?.refCandidates(), let self, let v, self.editing?.session == session else { return }
         self.editing?.refList = list
         v.core.relayout(
-          display.editorLayout(v.core.layout, folder: n.folder, refs: refs + list.refs, dark: self.theme.dark))
+          display.editorLayout(
+            v.core.layout, folder: n.folder, refs: refs + list.refs, dark: self.theme.dark, preamble: n.preamble))
       }
     }
     return true

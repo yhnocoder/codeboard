@@ -92,6 +92,7 @@ import CodeBoardResources
     let ai = AISettings(defaults: .standard)
     let keys = KeychainKeyStore()
     panes.summarySwitch = ai.summarySwitch
+    CanvasView.welcomeBack = ai.welcomeBack
     panes.summaryWriter = keys.key() != nil ? ai.writer(keys: keys) : nil
     window.title = shell.vault?.root.lastPathComponent ?? "CodeBoard"
     if let driver {
@@ -104,7 +105,10 @@ import CodeBoardResources
       guard let self, let state = shell.state, let data = try? JSONEncoder().encode(state) else { return }
       UserDefaults.standard.set(data, forKey: Self.stateKey)
     }
+    shell.importPages()
   }
+
+  func applicationDidBecomeActive(_ notification: Notification) { shell.importPages() }
 
   /// Every board is written first; when one cannot be, quitting would lose its changes, so it asks
   func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
@@ -245,6 +249,7 @@ import CodeBoardResources
       ?? SettingsWindow(
         settings: ai, keys: keys, search: BoardPanes.searchSettings, searchKeys: BoardPanes.embeddingKeys)
     s.onSwitchChange = { [weak self] in self?.panes?.summarySwitch = $0 }
+    s.onWelcomeChange = { CanvasView.welcomeBack = $0 }
     s.onKeyChange = { [weak self] set in self?.panes?.summaryWriter = set ? ai.writer(keys: keys) : nil }
     settings = s
     s.show()

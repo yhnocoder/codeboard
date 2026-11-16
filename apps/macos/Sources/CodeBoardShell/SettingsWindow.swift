@@ -1,4 +1,5 @@
 import AppKit
+import CodeBoardCanvas
 import CodeBoardModel
 import CodeBoardResources
 
@@ -8,9 +9,10 @@ import CodeBoardResources
 /// the window); a saved key is never shown, the field then holds a stand-in that shows as dots, and clearing it removes
 /// the key. The address and the model are saved the same way, to the defaults.
 /// Where tongtu is (translating papers) is this machine's: typed, or chosen with Choose…; empty, it is looked for
-/// in PATH and the usual places. Under Search, Related by Meaning's (search.embeddingUrl, search.embeddingModel,
-/// search.rerank, search.rerankModel; an empty address is off): its key is saved as the AI key is, to its own
-/// KeyStore, the rest to the defaults, read the next time ⌘K opens.
+/// in PATH and the usual places. The welcome back hint: when reopening a board, whether it says how many of the board's
+/// questions are still open (questions.welcomeBack), saved to the defaults when chosen. Under Search, Related by
+/// Meaning's (search.embeddingUrl, search.embeddingModel, search.rerank, search.rerankModel; an empty address is off):
+/// its key is saved as the AI key is, to its own KeyStore, the rest to the defaults, read the next time ⌘K opens.
 @MainActor final class SettingsWindow: NSObject, NSWindowDelegate, NSTextFieldDelegate {
   /// What the field holds while a key is saved; committed unchanged, it keeps the key
   static let saved = String(repeating: "•", count: 12)
@@ -23,6 +25,8 @@ import CodeBoardResources
   let modelField = NSTextField()
   let tongtuField = NSTextField()
   let tongtuStatus = NSTextField(labelWithString: "")
+  let welcomeControl = NSSegmentedControl(
+    labels: WelcomeBack.allCases.map(\.label), trackingMode: .selectOne, target: nil, action: nil)
   let embeddingURLField = NSTextField()
   let embeddingModelField = NSTextField()
   let embeddingKeyField = NSSecureTextField()
@@ -35,6 +39,7 @@ import CodeBoardResources
   private let search: SearchSettings
   private let searchKeys: any KeyStore
   var onSwitchChange: (SummarySwitch) -> Void = { _ in }
+  var onWelcomeChange: (WelcomeBack) -> Void = { _ in }
   /// The key, the address or the model changed: whether a key is saved now
   var onKeyChange: (Bool) -> Void = { _ in }
 
@@ -44,7 +49,7 @@ import CodeBoardResources
     self.search = search
     self.searchKeys = searchKeys
     window = NSWindow(
-      contentRect: CGRect(x: 0, y: 0, width: 460, height: 440), styleMask: [.titled, .closable], backing: .buffered,
+      contentRect: CGRect(x: 0, y: 0, width: 460, height: 470), styleMask: [.titled, .closable], backing: .buffered,
       defer: false)
     super.init()
     window.title = "Settings"
@@ -53,6 +58,9 @@ import CodeBoardResources
     switchControl.target = self
     switchControl.action = #selector(switchChanged(_:))
     switchControl.selectedSegment = SummarySwitch.allCases.firstIndex(of: settings.summarySwitch) ?? 0
+    welcomeControl.target = self
+    welcomeControl.action = #selector(welcomeChanged(_:))
+    welcomeControl.selectedSegment = WelcomeBack.allCases.firstIndex(of: settings.welcomeBack) ?? 0
     for (f, placeholder) in [(keyField, "sk-…"), (embeddingKeyField, "Optional")] {
       f.placeholderString = placeholder
       f.delegate = self
@@ -105,6 +113,7 @@ import CodeBoardResources
       [NSTextField(labelWithString: "Model"), modelField],
       [NSTextField(labelWithString: "tongtu"), tongtuRow],
       [NSGridCell.emptyContentView, tongtuStatus],
+      [NSTextField(labelWithString: "Welcome-back hint"), welcomeControl],
       [heading, NSGridCell.emptyContentView],
       [NSTextField(labelWithString: "Embedding URL"), embeddingURLField],
       [NSTextField(labelWithString: "Embedding Model"), embeddingModelField],
@@ -137,6 +146,12 @@ import CodeBoardResources
     let s = SummarySwitch.allCases[sender.selectedSegment]
     settings.summarySwitch = s
     onSwitchChange(s)
+  }
+
+  @objc func welcomeChanged(_ sender: NSSegmentedControl) {
+    let w = WelcomeBack.allCases[sender.selectedSegment]
+    settings.welcomeBack = w
+    onWelcomeChange(w)
   }
 
   /// The AI key, or with the embedding key's field (`sender`) that one, saved to its own KeyStore

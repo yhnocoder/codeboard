@@ -1,4 +1,5 @@
 import AppKit
+import CodeBoardCanvas
 import CodeBoardNotes
 import Foundation
 import Testing
@@ -177,6 +178,36 @@ private func withDefaults(_ body: (UserDefaults, String) throws -> Void) rethrow
       let again = AISettings(defaults: d)
       #expect(again.summarySwitch == .continuous && again.baseURL == "http://local:8080/v1/" && again.model == "qwen")
       #expect(again.writer(keys: MemoryKeyStore()).endpoint?.absoluteString == "http://local:8080/v1/chat/completions")
+    }
+  }
+
+  /// The welcome back hint's row: After 2 Days by default, its choice kept in the defaults and passed on
+  @MainActor @Test func theSettingsWindowStoresWhenTheWelcomeBackHintShows() {
+    _ = NSApplication.shared
+    withDefaults { d, _ in
+      #expect(AISettings(defaults: d).welcomeBack == .twoDays)
+      let w = SettingsWindow(
+        settings: AISettings(defaults: d), keys: MemoryKeyStore(), search: SearchSettings(defaults: d),
+        searchKeys: MemoryKeyStore()
+      )
+      defer { w.window.close() }
+      var chosen: [WelcomeBack] = []
+      w.onWelcomeChange = { chosen.append($0) }
+      #expect(
+        (0..<w.welcomeControl.segmentCount).map { w.welcomeControl.label(forSegment: $0) } == [
+          "After 2 Days", "Always", "Off",
+        ])
+      #expect(w.welcomeControl.selectedSegment == 0)
+      w.welcomeControl.selectedSegment = 2
+      w.welcomeControl.sendAction(w.welcomeControl.action, to: w.welcomeControl.target)
+      #expect(chosen == [.off] && AISettings(defaults: d).welcomeBack == .off)
+      #expect(d.string(forKey: "questions.welcomeBack") == "off")
+      let again = SettingsWindow(
+        settings: AISettings(defaults: d), keys: MemoryKeyStore(), search: SearchSettings(defaults: d),
+        searchKeys: MemoryKeyStore()
+      )
+      defer { again.window.close() }
+      #expect(again.welcomeControl.selectedSegment == 2)
     }
   }
 

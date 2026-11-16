@@ -16,7 +16,7 @@ extension WebReading {
 
   /// The resource saving goes into: the vault's first with the web preset, in the sidebar's order (the top level's
   /// first, then each folder's), or with none a new one, 网页, at the top level. Its path
-  static func webResource(in vault: Vault) throws -> String {
+  public static func webResource(in vault: Vault) throws -> String {
     if let r = try vault.tree().allFolders.lazy.flatMap(\.resources).first(where: { $0.preset == .web }) {
       return r.path
     }
