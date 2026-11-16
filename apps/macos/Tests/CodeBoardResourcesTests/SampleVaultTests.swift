@@ -23,8 +23,9 @@ private let sample = Vault(
 
   // the resources and their entries
   var entries: [EntryID: (Entry, URL)] = [:]
+  var values: [(field: Resource.Field, value: Entry.Value, path: String)] = []
   for r in folders.flatMap(\.resources) {
-    _ = try sample.resource(at: r.path)
+    let resource = try sample.resource(at: r.path)
     let items = try sample.items(in: r.path)
     #expect(!items.isEmpty, "\(r.title) has no entries")
     for item in items {
@@ -33,6 +34,7 @@ private let sample = Vault(
         #expect(entries[e.id] == nil, "entry \(e.id.rawValue) twice")
         let folder = sample.url(of: path)
         entries[e.id] = (e, folder)
+        values += resource.fields.compactMap { f in e.fields[f.id].map { (f, $0, path) } }
         for v in e.versions {
           if case .pdf(let file, _, _) = v.content {
             #expect(PDFDocument(url: folder.appending(path: file)) != nil, "\(path)/\(file)")
@@ -67,6 +69,15 @@ private let sample = Vault(
 
   // the boards, what their cards show and where they point
   let ids = Set(tree.allBoards.map(\.id))
+  // the values of the resources' own fields: a select's one of its options, a board's a board there is
+  #expect(!values.isEmpty)
+  for (f, v, path) in values {
+    switch (f.type, v) {
+    case (.select, .text(let o)): #expect(f.options?.contains { $0.id == o } == true, "\(path): \(f.name)")
+    case (.board, .text(let b)): #expect(ids.contains(BoardID(rawValue: b)), "\(path): \(f.name)")
+    default: break
+    }
+  }
   for vb in tree.allBoards {
     let board = try sample.board(at: vb.path)
     let package = sample.url(of: vb.path)
