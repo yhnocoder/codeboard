@@ -22,8 +22,6 @@ func lineIndex(_ t: JSText) -> (Int) -> Int {
   }
 }
 
-func short(_ s: String, _ n: Int = 24) -> String { jsLength(s) > n ? jsPrefix(s, n - 1) + "…" : s }
-
 /// One registration: its line, the C++ / Rust symbol it registers (`target`, maybe with namespaces), or `lambda` when
 /// it registers a lambda written in place (whose target is that line)
 public struct Registration: Hashable, Codable, Sendable {
@@ -363,15 +361,10 @@ public func torchOpOf(name: String, recv: String?) -> TorchOp? {
 private let pyo3FileRe = JSRegex(#"#\[py(function|methods|module|class)"#)
 private let pyo3NameRe = JSRegex(#"#\[pyo3\([^)]*name\s*=\s*"(\w+)""#)
 private let pyfunctionRe = JSRegex(#"#\[pyfunction"#)
-private let newlineRe = JSRegex(#"\r?\n"#)
-
-/// `text.split(/\r?\n/)`
-func splitLines(_ text: String) -> [String] { newlineRe.split(text).map { $0 ?? "" } }
-
 /// Rust functions exported to Python: #[pyfunction] fn name / #[pyo3(name = "name")]; methods in a #[pymethods] impl
 public func pyo3Defs(_ text: String, _ syms: [Sym], _ name: String) -> [Sym] {
   guard pyo3FileRe.test(text) else { return [] }
-  let lines = splitLines(text)
+  let lines = text.units.lines().map(string)
   var out: [Sym] = []
   for s in syms where s.kind == .def {
     let attrs = jsSlice(lines, s.start - 1, s.defLine - 1).joined(separator: "\n")

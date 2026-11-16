@@ -115,7 +115,7 @@ private let continuedRe = JSRegex(#"\\\s*$"#)
 /// #define NAME(params) body, with lines continued by \ joined
 public func macroDefs(_ text: String) -> NameMap<MacroDef> {
   var out = NameMap<MacroDef>()
-  let lines = splitLines(text)
+  let lines = text.units.lines().map(string)
   for i in 0..<lines.count {
     guard let m = defineMacroRe.exec(lines[i]) else { continue }
     var body = m[3] ?? ""

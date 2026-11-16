@@ -190,7 +190,7 @@ final class Context {
     self.r1 = r1
   }
 
-  func text(_ s: Int, _ e: Int) -> Units { units[...].js(s, e) }
+  func text(_ s: Int, _ e: Int) -> Units { jsSlice(units, s, e) }
   func meets(_ n: Node) -> Bool { n.startRow <= r1 && n.endRow >= r0 }
 }
 
@@ -282,8 +282,8 @@ private func comments(_ nodes: [Node], _ cx: Context) {
       let line = r < cx.lines.count ? cx.lines[r] : Units()
       let s = r == aRow ? n.startColumn : 0
       let e = r == bRow ? n.endColumn : line.count
-      let before = !line.js(0, s).isBlank
-      let after = !line.js(e).isBlank
+      let before = !jsSlice(line, 0, s).isBlank
+      let after = !jsSlice(line, e).isBlank
       if !before && !after {
         cx.out.flags[r] |= LineFlag.comment
       } else if before && r == aRow && cx.out.trailing[r + 1] == nil {

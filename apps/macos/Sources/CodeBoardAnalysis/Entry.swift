@@ -23,7 +23,7 @@ private let scriptRe = JSRegex(#"^["']?([\w.-]+)["']?\s*=\s*["']([\w.]+):([\w.]+
 public func pyprojectScripts(_ toml: String) -> [ProjectScript] {
   var out: [ProjectScript] = []
   var inSection = false
-  for raw in splitLines(toml) {
+  for raw in toml.units.lines().map(string) {
     let line = jsTrim(raw)
     if line.jsStartsWith("[") {
       inSection = scriptSectionRe.test(line)
@@ -56,7 +56,7 @@ private let asRe = JSRegex(#"\s+as\s+"#)
 public func initExports(_ text: String) -> [InitExport] {
   var out: [InitExport] = []
   let src = parenthesizedRe.replace(text, global: true) { m in spacesRe.replace(m[1] ?? "", global: true, with: " ") }
-  for line in splitLines(src) {
+  for line in src.units.lines().map(string) {
     guard let m = fromImportRe.exec(jsTrim(line)) else { continue }
     for part in (m[2] ?? "").jsSplit(",") {
       let p = commentRe.replace(jsTrim(part), with: "")

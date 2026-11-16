@@ -48,7 +48,7 @@ func pyDef(_ cx: Context, _ def: Node, _ up: DefFrame?) -> DefFrame {
 /// `s.replace(/:\s*$/, "")`
 private func withoutColon(_ s: String) -> String {
   let u = s.units
-  let t = u.trimmedEnd()
+  let t = jsTrimEnd(u)
   guard let last = t.last, last == unit(":") else { return s }
   return string(t.dropLast())
 }
@@ -99,16 +99,16 @@ private func unquoted(_ s: Units) -> String {
 
 /// A string literal's text as a docstring, as Python's inspect.cleandoc gives it
 public func cleanDoc(_ lit: String) -> String {
-  let trimmed = lit.units.trimmed()
+  let trimmed = jsTrim(lit.units)
   let content = quotedContent(trimmed) ?? lit.units
   var detabbed: [UInt16] = []
   for u in content {
     if u == unit("\t") { detabbed += Array("    ".utf16) } else { detabbed.append(u) }
   }
   let lines = detabbed[...].lines()
-  let indents = lines.dropFirst().filter { !$0.isBlank }.map { $0.count - $0.trimmedStart().count }
+  let indents = lines.dropFirst().filter { !$0.isBlank }.map { $0.count - jsTrimStart($0).count }
   let ind = indents.min()
-  var out = [lines[0].trimmed()] + lines.dropFirst().map { l in (ind.map { l.js($0) } ?? l).trimmedEnd() }
+  var out = [jsTrim(lines[0])] + lines.dropFirst().map { l in jsTrimEnd(ind.map { jsSlice(l, $0) } ?? l) }
   while let f = out.first, f.isEmpty { out.removeFirst() }
   while let l = out.last, l.isEmpty { out.removeLast() }
   return out.map(string).joined(separator: "\n")

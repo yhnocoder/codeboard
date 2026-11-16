@@ -37,7 +37,7 @@ public struct PeekPlan: Hashable, Codable, Sendable {
 private let fnRows = 3
 private let maxRows = 16
 
-private func indentOf(_ l: String) -> Int { jsLength(l) - jsLength(jsTrimStart(l)) }
+private func indentOf(_ l: String) -> Int { l.jsLength - jsTrimStart(l).jsLength }
 
 /// `x || undefined` for a count
 private func nonZero(_ n: Int) -> Int? { n == 0 ? nil : n }
