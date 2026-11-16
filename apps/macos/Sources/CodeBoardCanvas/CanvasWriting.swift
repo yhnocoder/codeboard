@@ -442,14 +442,14 @@ extension CanvasView {
   }
 
   /// A double-click writes in a Note, Text or Box, the caret where it was; on the canvas it makes a Text there
-  /// (Canvas.tsx: its first line under the pointer)
-  func doubleClick(at p: CGPoint) {
+  /// (Canvas.tsx: its first line under the pointer). `command`: ⌘ held, a Web card's page opens in the browser
+  func doubleClick(at p: CGPoint, command: Bool = false) {
     guard let doc = document else { return }
     // on an arrow or its label: its label is written
     if let id = arrowAt(p) { return editLabel(id) }
     if let id = hitCard(p) {
       if openSubBoard(id, at: p) { return }
-      if openPage(at: p) { return }
+      if openPage(at: p, browser: command) { return }
       // a code card's or a Link List's title: written in place
       if let t = codeTitle(id), t.hit.contains(p) { return editCodeTitle(id) }
       if onListTitle(id, p) { return editWebText(id, .listTitle) }

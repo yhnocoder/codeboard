@@ -1,0 +1,28 @@
+# 拖预览的头（PR 277）：第三个预览拖到第一个上面，排到最前；排到第二的（原来的第一个）拖到卡下面，进了标题行；看拖动过程（录像）
+# only: mac
+# storage: storage-sub
+zoom 1
+center @csub:c+200,0
+wait 600
+click @csub+59,78
+wait 300
+click @csub+180,78
+wait 300
+click @csub+300,122
+wait 1200
+expect subpv = csub open kalpha,kbeta,kepsilon exp kalpha,kbeta,kepsilon tit - fold false cols 1
+rec drag
+move @csub+470,423 300
+down
+move @csub+470,300 300
+shot dragging
+move @csub+470,-5 400
+up
+wait 800
+stop
+expect subpv has exp kepsilon,kalpha,kbeta
+shot reordered
+drag @csub+470,219 @csub+100,290 800
+wait 800
+expect subpv has tit kalpha
+shot titles
