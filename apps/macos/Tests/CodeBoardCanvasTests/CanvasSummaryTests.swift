@@ -324,6 +324,32 @@ final class FakeWriter: SummaryWriter, @unchecked Sendable {
     #expect(w.asked.count == 2)
   }
 
+  /// imageai.ts aiFailed: a failed ↻ says why, per cause, and the text stays as it was
+  @Test func aFailedRewriteSaysWhyInAToast() async throws {
+    let r = try await Rig(summaryBoard(), zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    atSummaries(r)
+    let w = FakeWriter()
+    c.summaryWriter = w
+    let before = r.doc.board.summary(for: sec1)
+    for (f, said) in [
+      (SummaryFailure.badKey("Authentication Fails"), "DeepSeek rejected the API key"),
+      (.balance(nil), "DeepSeek: the account balance is used up"),
+      (.http("HTTP 500"), "DeepSeek: HTTP 500"),
+      (.timeout, "DeepSeek didn't answer in time"),
+      (.network("offline"), "Couldn't reach api.deepseek.com: check the network or proxy"),
+      (.noKey, "No DeepSeek API key · Set it in Settings… (⌘,)"),
+    ] {
+      c.toastText = nil
+      w.answer = .failure(f)
+      c.rewriteSummary(sec1)
+      await r.until("failed") { !c.summaryWriting.contains(sec1) }
+      #expect(c.toastText == said)
+      #expect(r.doc.board.summary(for: sec1) == before)
+    }
+  }
+
   @Test func aSectionWhoseCardsChangedShowsItsDotAndKeepClearsItAsOneStep() async throws {
     let r = try await Rig(summaryBoard(), zoom: 1)
     defer { r.close() }

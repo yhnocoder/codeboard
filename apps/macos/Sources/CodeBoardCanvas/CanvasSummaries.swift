@@ -569,10 +569,9 @@ extension CanvasView {
   // MARK: ↻
 
   /// The AI writes this one summary again: it breathes meanwhile; the answer is one step (Rewrite Summary); a failure
-  /// leaves the old text as it was
+  /// leaves the old text as it was and says why in a toast
   func rewriteSummary(_ key: SummaryKey) {
-    // no key: where to set it (imageai.ts aiFailed nokey, whose toast offers Set DeepSeek API Key… and AI Settings…)
-    guard let writer = summaryWriter else { return toast("No DeepSeek API key · Set it in Settings… (⌘,)") }
+    guard let writer = summaryWriter else { return toast(SummaryFailure.noKey.toast) }
     guard let doc = document, !summaryWriting.contains(key), let (vb, vault) = shown else { return }
     let package = vault.url(of: vb.path)
     let contents: CardContents = { Scene.content(of: $0, package: package, vault: vault)?.0 }
@@ -588,17 +587,17 @@ extension CanvasView {
         ((try? vault.tree().allBoards) ?? []).filter { $0.id != board.id }.compactMap { try? vault.board(at: $0.path) }
       }.value
       let examples = summaryExamples([board] + others, n: 4, but: (board.id, key))
-      let r: Result<Summary, SummaryFailure>
+      // nil: the item went meanwhile (main's ↻ then asks nothing)
+      var r: Result<Summary, SummaryFailure>?
       if let req = board.summaryRequest(key, examples: examples, contents: contents) {
         r = await summarize(req, with: writer, now: (Date().timeIntervalSince1970 * 1000).rounded())
-      } else {
-        r = .failure(.http("gone"))
       }
       guard let self else { return }
       summaryWriting.remove(key)
       // a failure leaves the text as it was
-      if case .success(let s) = r, let d { d.edit("Rewrite Summary") { _ = $0.putSummary(s, for: key) } }
+      if case .success(let s)? = r, let d { d.edit("Rewrite Summary") { _ = $0.putSummary(s, for: key) } }
       if document === d {
+        if case .failure(let f)? = r { toast(f.toast) }
         breathe(key, false)
         if let i = summaryColumns.firstIndex(where: { $0.col.key == key }), summaryHover == key {
           placeSummaryButtons(summaryColumns[i])
@@ -624,6 +623,21 @@ extension CanvasView {
     a.repeatCount = .infinity
     a.timingFunctions = [CAMediaTimingFunction(name: .easeInEaseOut), CAMediaTimingFunction(name: .easeInEaseOut)]
     c.layer.add(a, forKey: "breathe")
+  }
+}
+
+extension SummaryFailure {
+  /// A failed ↻'s toast (imageai.ts aiFailed; summaries go through DeepSeek's endpoint, as main's host says). No key:
+  /// where to set it, as the Mac's toasts have no buttons (main's offers Set DeepSeek API Key… and AI Settings…)
+  var toast: String {
+    switch self {
+    case .noKey: "No DeepSeek API key · Set it in Settings… (⌘,)"
+    case .badKey: "DeepSeek rejected the API key"
+    case .balance: "DeepSeek: the account balance is used up"
+    case .network: "Couldn't reach api.deepseek.com: check the network or proxy"
+    case .timeout: "DeepSeek didn't answer in time"
+    case .http(let m): "DeepSeek: \(m.isEmpty ? "the request failed" : m)"
+    }
   }
 }
 
