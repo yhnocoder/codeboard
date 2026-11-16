@@ -301,17 +301,16 @@ enum VersionPause {
 
   // MARK: Watching
 
-  /// One stream per repository (its folder and, a worktree's, its git folder elsewhere), HEAD read now
+  /// One stream per repository (RepoWatcher.place), HEAD read now
   private func watch(_ root: String, sources: Sources) async {
     guard watching[root] == nil else { return }
     watching[root] = {}
     let git = sources.git
-    let gd = (try? await git.gitDirOf(root)) ?? nil
+    let at = await RepoWatcher.place(root, git: git)
     if let h = (try? await git.headOf(root)) ?? nil { heads[root] = h }
     guard watching[root] != nil else { return }
-    let paths = [root] + (gd.map { $0.hasPrefix(root + "/") ? [] : [$0] } ?? [])
-    watching[root] = RepoWatcher.listen(paths) { [weak self] changed in
-      self?.repoChanged(root, gitDir: gd ?? root + "/.git", changed, git: git)
+    watching[root] = RepoWatcher.listen(at.paths) { [weak self] changed in
+      self?.repoChanged(root, gitDir: at.gitDir, changed, git: git)
     }
   }
 
@@ -319,20 +318,10 @@ enum VersionPause {
   /// once its HEAD moved; the rules of what git ignores changed, its answers are forgotten; any other file's segments
   /// are checked again
   func repoChanged(_ root: String, gitDir: String, _ paths: [String], git: GitCache) {
-    var head = false
-    var ignore = false
-    for p in paths {
-      if p == gitDir || p.hasPrefix(gitDir + "/") {
-        let g = p == gitDir ? "" : String(p.dropFirst(gitDir.count + 1))
-        if g == "HEAD" || g == "packed-refs" || g == "config" || g.hasPrefix("refs/") { head = true }
-        if g == "info/exclude" { ignore = true }
-      } else if p.hasPrefix(root + "/") {
-        if (p as NSString).lastPathComponent == ".gitignore" { ignore = true }
-        filesDue.insert(p)
-      }
-    }
-    if ignore { Task { await git.forgetIgnored() } }
-    if head {
+    let heard = RepoWatcher.sort(paths, root: root, gitDir: gitDir)
+    filesDue.formUnion(heard.files)
+    if heard.ignore { Task { await git.forgetIgnored() } }
+    if heard.head {
       gitDue.insert(root)
       gitWait?.cancel()
       gitWait = Task { [weak self, pause] in
@@ -840,6 +829,36 @@ struct VersionDiffView: View {
   private static var all: [String: RepoWatcher] = [:]
   private var listeners: [UUID: @MainActor ([String]) -> Void] = [:]
   private var stream: FSEventStreamRef?
+
+  /// What to watch for a repository whose git root is `root`: its folder and, a worktree's, its git folder elsewhere;
+  /// and that git folder (`root`/.git when git cannot say)
+  static func place(_ root: String, git: GitCache) async -> (paths: [String], gitDir: String) {
+    let gd = (try? await git.gitDirOf(root)) ?? nil
+    return ([root] + (gd.map { $0.hasPrefix(root + "/") ? [] : [$0] } ?? []), gd ?? root + "/.git")
+  }
+
+  /// What a repository's watcher heard, sorted: its HEAD, refs or config changed (a commit, a checkout, a fetch); the
+  /// rules of what git ignores changed; the repository's other files
+  struct Heard {
+    var head = false
+    var ignore = false
+    var files: [String] = []
+  }
+
+  static func sort(_ paths: [String], root: String, gitDir: String) -> Heard {
+    var h = Heard()
+    for p in paths {
+      if p == gitDir || p.hasPrefix(gitDir + "/") {
+        let g = p == gitDir ? "" : String(p.dropFirst(gitDir.count + 1))
+        if g == "HEAD" || g == "packed-refs" || g == "config" || g.hasPrefix("refs/") { h.head = true }
+        if g == "info/exclude" { h.ignore = true }
+      } else if p.hasPrefix(root + "/") {
+        if (p as NSString).lastPathComponent == ".gitignore" { h.ignore = true }
+        h.files.append(p)
+      }
+    }
+    return h
+  }
 
   /// `f` hears the paths changed under `paths`; what is returned stops it
   static func listen(_ paths: [String], _ f: @escaping @MainActor ([String]) -> Void) -> () -> Void {

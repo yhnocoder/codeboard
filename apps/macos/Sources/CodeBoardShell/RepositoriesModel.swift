@@ -49,6 +49,13 @@ import os
   @ObservationIgnored private let runner: any GitRunner
   @ObservationIgnored private let defaults: UserDefaults?
   @ObservationIgnored private var gitCheck: Task<Bool, Never>?
+  // The opened repository followed on disk: its folders listed again when what is in them changes, its HEAD read again
+  @ObservationIgnored private var watch: (() -> Void)?
+  @ObservationIgnored private var listDue: Set<String> = []
+  @ObservationIgnored private var listWait: Task<Void, Never>?
+  @ObservationIgnored private var headWait: Task<Void, Never>?
+  /// How long to wait before listing again (the tests' wait nothing)
+  @ObservationIgnored var pause: @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) }
   private static let heightKey = "repositoriesHeight"
   private static let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "CodeBoard", category: "repositories")
 
@@ -255,6 +262,7 @@ import os
 
   /// Shows the repository's files in place of the list
   func open(_ r: Repository) async {
+    unwatch()
     opened = r
     head = nil
     expanded = []
@@ -262,6 +270,49 @@ import os
     selected = nil
     await list("")
     if let h = await head(of: r.path), opened == r { head = h }
+    guard opened == r, watch == nil, let git else { return }
+    let base = ShellCode.realPath(r.path)
+    let root = (try? await git.repoRootOfDir(base)) ?? nil ?? base
+    let at = await RepoWatcher.place(root, git: git)
+    guard opened == r, watch == nil else { return }
+    watch = RepoWatcher.listen(at.paths) { [weak self] paths in
+      self?.heard(RepoWatcher.sort(paths, root: root, gitDir: at.gitDir), base: base, r)
+    }
+  }
+
+  /// Files added or removed: the folders listed that hold them listed again; a commit: HEAD read again
+  private func heard(_ h: RepoWatcher.Heard, base: String, _ r: Repository) {
+    for p in h.files where p.hasPrefix(base + "/") {
+      let parent = (String(p.dropFirst(base.count + 1)) as NSString).deletingLastPathComponent
+      if children[parent] != nil { listDue.insert(parent) }
+    }
+    if !listDue.isEmpty {
+      listWait?.cancel()
+      listWait = Task { [weak self, pause] in
+        await pause(VersionPause.recheck)
+        guard !Task.isCancelled, let self, self.opened == r else { return }
+        let due = self.listDue
+        self.listDue = []
+        for rel in due where self.children[rel] != nil { await self.list(rel) }
+      }
+    }
+    if h.head {
+      headWait?.cancel()
+      headWait = Task { [weak self, pause] in
+        await pause(VersionPause.git)
+        guard !Task.isCancelled, let self, self.opened == r else { return }
+        let h = await self.head(of: r.path)
+        if self.opened == r, self.head != h { self.head = h }
+      }
+    }
+  }
+
+  private func unwatch() {
+    watch?()
+    watch = nil
+    listDue = []
+    listWait?.cancel()
+    headWait?.cancel()
   }
 
   struct TreeRow: Hashable {
@@ -287,6 +338,7 @@ import os
   }
 
   func close() {
+    unwatch()
     opened = nil
     head = nil
     expanded = []

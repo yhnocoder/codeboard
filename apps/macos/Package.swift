@@ -132,7 +132,7 @@ let package = Package(
     .target(
       name: "CodeBoardReading",
       dependencies: [
-        "CodeBoardModel", "CodeBoardResources", "CodeBoardAnalysis", "CodeBoardDiagnostics",
+        "CodeBoardModel", "CodeBoardResources", "CodeBoardAnalysis", "CodeBoardDiagnostics", "CodeBoardWorkspace",
         .product(name: "CodeUI", package: "better-swift-markdown"),
         .product(name: "TreeSitterHighlight", package: "better-swift-markdown"),
       ]),
