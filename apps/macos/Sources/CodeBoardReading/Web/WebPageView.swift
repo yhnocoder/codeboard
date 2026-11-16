@@ -408,9 +408,13 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
     return menu
   }
 
-  /// Escape stops a saving under way
+  /// Escape stops a saving under way; with none it goes on up the chain (NSView has no cancelOperation of its own to
+  /// call: super would throw)
   override func cancelOperation(_ sender: Any?) {
-    guard let capture else { return super.cancelOperation(sender) }
+    guard let capture else {
+      nextResponder?.doCommand(by: #selector(NSResponder.cancelOperation(_:)))
+      return
+    }
     capture.cancel()
   }
 

@@ -198,6 +198,8 @@ import WebKit
     let (v, tabs) = try tab("/a?hold", store: store)
     defer { done(tabs) }
     try await loaded(v, "Page A")
+    tabs.window.makeFirstResponder(v.web)
+    #expect(v.web.tryToPerform(#selector(NSResponder.cancelOperation(_:)), with: nil), "with nothing to stop, on up")
     v.saveMenu().performActionForItem(at: 1)
     try await until("the first stage") { v.saveState == .saving(stage: "prepare") }
     #expect(v.bar.save.toolTip?.contains(WebBar.stageName("prepare")) == true)
