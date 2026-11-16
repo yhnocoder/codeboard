@@ -322,16 +322,23 @@ private final class Panel: NSView {
     clip.frame = bounds
     layer?.shadowPath = CGPath(
       roundedRect: bounds, cornerWidth: ShellTheme.panelRadius, cornerHeight: ShellTheme.panelRadius, transform: nil)
-    var end = bounds.width - 8
-    if let trailing {
-      let size = trailing.fittingSize
-      end -= size.width
-      trailing.frame = NSRect(x: end, y: (barHeight - size.height) / 2, width: size.width, height: size.height)
-      end -= 4
+    // What is in the panel takes its place at once, also while the panel slides (the sidebar hiding or showing): a
+    // frame set inside the slide's implicit animation sometimes never arrived (the canvas stayed as narrow as it was,
+    // the tabs where they were, over the title controls)
+    NSAnimationContext.runAnimationGroup { context in
+      context.duration = 0
+      context.allowsImplicitAnimation = false
+      var end = bounds.width - 8
+      if let trailing {
+        let size = trailing.fittingSize
+        end -= size.width
+        trailing.frame = NSRect(x: end, y: (barHeight - size.height) / 2, width: size.width, height: size.height)
+        end -= 4
+      }
+      tabs.frame = NSRect(x: tabsLeading, y: 0, width: max(0, end - tabsLeading), height: barHeight)
+      content.frame = NSRect(x: 0, y: barHeight, width: bounds.width, height: max(0, bounds.height - barHeight))
+      glass.frame = NSRect(x: 0, y: 0, width: bounds.width, height: barHeight + ShellTheme.glassDissolve)
     }
-    tabs.frame = NSRect(x: tabsLeading, y: 0, width: max(0, end - tabsLeading), height: barHeight)
-    content.frame = NSRect(x: 0, y: barHeight, width: bounds.width, height: max(0, bounds.height - barHeight))
-    glass.frame = NSRect(x: 0, y: 0, width: bounds.width, height: barHeight + ShellTheme.glassDissolve)
     glass.place(bar: barHeight)
     if let empty {
       let size = empty.fittingSize

@@ -36,6 +36,7 @@ layout-keep.txt
 lift-over-text.txt
 line-port-tip.txt
 lock-head.txt
+menubar-web-tab.txt
 new-code.txt
 new-text-flow.txt
 note-title.txt
@@ -58,6 +59,7 @@ sel-read.txt
 sel-redbl.txt
 settings-keys.txt
 select-all-bar.txt
+sidebar-hide-chrome.txt
 sidenote-menu.txt
 snap-guide.txt
 space-pan.txt
