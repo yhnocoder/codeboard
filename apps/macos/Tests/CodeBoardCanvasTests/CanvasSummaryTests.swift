@@ -362,6 +362,51 @@ final class FakeWriter: SummaryWriter, @unchecked Sendable {
     #expect(r.doc.board.summary(for: k)?.text == text + "补")
   }
 
+  /// Summaries.tsx tip: ↻ says what the summary is (never that it is rewritten by itself), ✓ 保留 what it does; the
+  /// canvas's one tip shows them, and goes when the pointer leaves
+  @Test func theRewriteAndKeepButtonsSayWhatTheyDoInTheirTips() async throws {
+    let r = try await Rig(summaryBoard(), zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    let tips = ownTips(c)
+    atSummaries(r)
+    func move(_ p: CGPoint) { c.mouseMoved(with: r.mouse(.mouseMoved, p)) }
+    func button(_ i: Int) throws -> CGPoint {
+      let b = try #require(c.summaryButtons.sublayers?[i])
+      return c.summaryButtons.convert(CGPoint(x: b.frame.midX, y: b.frame.midY), to: c.summaryLayer)
+    }
+    func over(_ key: SummaryKey, _ i: Int = 0) throws -> Tip? {
+      let col = try column(r, key)
+      move(CGPoint(x: col.rect.midX, y: col.rect.minY + col.bodyTop + 10))
+      move(try button(i))
+      return tips.shown?.tip
+    }
+    #expect(try over(sec2) == Tip("AI summary · Not written yet · ↻ writes it now"))
+    // off the column: gone
+    move(CGPoint(x: -5000, y: -5000))
+    #expect(tips.shown == nil && c.summaryButtonHover == nil)
+    let at = try #require(r.doc.board.summary(for: sec1)).at
+    #expect(c.summaryTip(sec1, keep: false, now: at + 20_000) == Tip("AI summary · just now"))
+    #expect(c.summaryTip(sec1, keep: false, now: at + 5 * 60_000) == Tip("AI summary · 5 min ago"))
+    #expect(c.summaryTip(sec1, keep: false, now: at + 3 * 3_600_000) == Tip("AI summary · 3 h ago"))
+    c.summaryWriting.insert(sec1)
+    #expect(c.summaryTip(sec1, keep: false) == Tip("AI summary · Writing…"))
+    c.summaryWriting.remove(sec1)
+    var b = r.doc.board
+    _ = b.editSummary(sec1, text: "我自己写的。", now: 2)
+    r.doc.edit("Edit Summary") { $0 = b }
+    await r.settle()
+    #expect(c.summaryTip(sec1, keep: false) == Tip("AI summary · Edited by hand · rewrites follow your edits"))
+    // its cards changed: says so, and that ✓ 保留 keeps it, whose own tip says what it does
+    b = r.doc.board
+    b.cards[0].content = .own(CardContent(body: .note(Note(text: "## 合并访存与对齐\n\n改了。"))))
+    r.doc.edit("Edit") { $0 = b }
+    await r.settle()
+    move(CGPoint(x: -5000, y: -5000))
+    #expect(try over(sec1) == Tip("AI summary · Cards changed since it was written · ✓ 保留 keeps it"))
+    #expect(try over(sec1, 1) == Tip("保留 · Keep this summary as it is for these changes"))
+  }
+
   /// imageai.ts aiFailed: a failed ↻ says why, per cause, and the text stays as it was
   @Test func aFailedRewriteSaysWhyInAToast() async throws {
     let r = try await Rig(summaryBoard(), zoom: 1)

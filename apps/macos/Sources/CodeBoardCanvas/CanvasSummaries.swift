@@ -251,6 +251,10 @@ extension CanvasView {
   /// its ↻, dot and ✓ 保留
   package func hoverSummary(_ key: SummaryKey?) {
     guard key != summaryHover else { return }
+    if summaryButtonHover != nil {
+      summaryButtonHover = nil
+      showTip()
+    }
     if let old = summaryHover, let i = summaryColumns.firstIndex(where: { $0.col.key == old }) {
       let c = summaryColumns[i]
       fade(c.panel, to: 0, duration: 0.09)
@@ -366,6 +370,19 @@ extension CanvasView {
     summaryButtons.setAffineTransform(CGAffineTransform(scaleX: k, y: k))
     summaryButtons.zPosition = 4
     summaryLayer.addSublayer(summaryButtons)
+  }
+
+  /// What ↻ says when the pointer rests on it (Summaries.tsx tip; `now` in ms), and ✓ 保留. The Mac never writes a
+  /// summary by itself, so cards changed since only say so
+  func summaryTip(_ key: SummaryKey, keep: Bool, now: Double = Date().timeIntervalSince1970 * 1000) -> Tip? {
+    if keep { return Tip("保留 · Keep this summary as it is for these changes") }
+    guard let doc = document, let c = summaryColumns.first(where: { $0.col.key == key }) else { return nil }
+    guard !summaryWriting.contains(key) else { return Tip("AI summary · Writing…") }
+    guard let sum = doc.board.summary(for: key) else { return Tip("AI summary · Not written yet · ↻ writes it now") }
+    if c.text.stale { return Tip("AI summary · Cards changed since it was written · ✓ 保留 keeps it") }
+    if sum.edited { return Tip("AI summary · Edited by hand · rewrites follow your edits") }
+    let m = ((now - sum.at) / 60_000).rounded()
+    return Tip("AI summary · \(m < 1 ? "just now" : m < 60 ? "\(Int(m)) min ago" : "\(Int((m / 60).rounded())) h ago")")
   }
 
   /// Which of the hovered column's buttons is under a board point

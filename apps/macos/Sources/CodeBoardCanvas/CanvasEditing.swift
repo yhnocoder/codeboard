@@ -1015,8 +1015,13 @@ extension CanvasView {
     }
     if levels.level == .summaries {
       let p = camera.board(v)
-      if summaryButton(at: p) == nil { hoverSummary(summaryColumn(at: p).map { summaryColumns[$0].col.key }) }
-      (summaryButton(at: p) != nil ? NSCursor.pointingHand : NSCursor.arrow).set()
+      let b = summaryButton(at: p)
+      if b == nil { hoverSummary(summaryColumn(at: p).map { summaryColumns[$0].col.key }) }
+      if b?.key != summaryButtonHover?.key || b?.keep != summaryButtonHover?.keep {
+        summaryButtonHover = b
+        showTip()
+      }
+      (b != nil ? NSCursor.pointingHand : NSCursor.arrow).set()
       return
     }
     if placing != nil {

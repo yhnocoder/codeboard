@@ -318,8 +318,8 @@ extension CanvasView {
     drawChrome()
   }
 
-  /// The canvas's one tip (main's TooltipLayer): of the header button, Section control, sticker or port under the
-  /// pointer
+  /// The canvas's one tip (main's TooltipLayer): of the header button, Section control, sticker, summary button or port
+  /// under the pointer
   func showTip() {
     func inView(_ r: CGRect) -> CGRect {
       let (a, b) = (camera.view(CGPoint(x: r.minX, y: r.minY)), camera.view(CGPoint(x: r.maxX, y: r.maxY)))
@@ -337,6 +337,10 @@ extension CanvasView {
       tip = (t, inView(r))
     } else if let id = hoveredSticker, let s = stickerSpots.first(where: { $0.id == id }) {
       tip = (Tip(Sticker.label(s.glyph)), inView(s.board))
+    } else if let (k, keep) = summaryButtonHover, let t = summaryTip(k, keep: keep),
+      let b = summaryButtons.sublayers?[keep ? 1 : 0]
+    {
+      tip = (t, inView(summaryButtons.convert(b.frame, to: summaryLayer)))
     } else {
       tip = portTip()
     }
