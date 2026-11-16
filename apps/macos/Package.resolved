@@ -1,13 +1,13 @@
 {
-  "originHash" : "8ea395ba37d124fa170e366da0a0c5a6085a044e74ce004b68a0ca6cfb36b12f",
+  "originHash" : "19abd8c62ba665db4ee44d32dc117f3909aac8bcbf79eb30009d28b816e7650c",
   "pins" : [
     {
       "identity" : "better-swift-markdown",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/yhnocoder/better-swift-markdown",
       "state" : {
-        "branch" : "import",
-        "revision" : "d970ac629a47f6444662070d648fdbf78d45a861"
+        "branch" : "main",
+        "revision" : "7a0e299fcea76295403a55ee0cc32aae06b3ae97"
       }
     },
     {

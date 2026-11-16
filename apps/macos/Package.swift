@@ -7,7 +7,7 @@ let package = Package(
   // the code and Markdown components (CodeCore, CodeUI, TreeSitterHighlight, MarkdownCore, MarkdownUI) and the test
   // guard: a package of their own, knowing nothing of CodeBoard
   dependencies: [
-    .package(url: "https://github.com/yhnocoder/better-swift-markdown", branch: "import"),
+    .package(url: "https://github.com/yhnocoder/better-swift-markdown", branch: "main"),
     // tree-sitter and the grammars, as the package pins them, for CodeBoardAnalysis
     .package(url: "https://github.com/tree-sitter/tree-sitter", exact: "0.25.10"),
     .package(url: "https://github.com/tree-sitter/tree-sitter-python", exact: "0.25.0"),
