@@ -390,21 +390,9 @@ extension CanvasView {
   /// The place on the line nearest the pointer (less the grab) where the box keeps clear of the end cards, sampled at
   /// 0.01 (geom.ts nearestT, labelpos.ts dragT); the middle when none is clear
   static func dragT(_ d: LabelDrag, _ p: CGPoint) -> CGFloat {
-    let x = p.x - d.grab.dx
-    let y = p.y - d.grab.dy
-    var best: CGFloat = 0.5
-    var bd = CGFloat.infinity
-    for i in 0...100 {
-      let t = CGFloat(i) / 100
-      let q = ArrowRoute.bezAt(d.pts, t)
-      guard ArrowRoute.boxClear(q, d.box, d.ends) else { continue }
-      let dd = (q.x - x) * (q.x - x) + (q.y - y) * (q.y - y)
-      if dd < bd {
-        bd = dd
-        best = t
-      }
+    ArrowRoute.nearestT(d.pts, CGPoint(x: p.x - d.grab.dx, y: p.y - d.grab.dy)) {
+      ArrowRoute.boxClear($0, d.box, d.ends)
     }
-    return best
   }
 
   func showLabelDrag(_ d: LabelDrag) {
