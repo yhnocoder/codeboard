@@ -11,13 +11,44 @@ import Testing
 /// What a reading side would say of its entries, made up, and what the canvas asked of it
 @MainActor final class FakeSources: SourceProvider {
   var labels: [String: SourceLabel] = [:]
+  var sizes: [String: CGSize] = [:]
   var revealed: [SourceAnchor] = []
+  /// The blocks' pictures asked for (entry, width), each answered with `picture` once let go
+  var asked: [(entry: String, width: Int)] = []
+  var picture: CGImage?
+  private var waiting: [CheckedContinuation<Void, Never>] = []
   var onSourcesChanged: (() -> Void)?
 
   func sourceLabel(_ a: SourceAnchor) -> SourceLabel? { labels[a.entry.rawValue] }
-  func blockSize(_ a: SourceAnchor) -> CGSize? { nil }
-  func blockImage(_ a: SourceAnchor, pixelWidth: Int) async -> CGImage? { nil }
+  func blockSize(_ a: SourceAnchor) -> CGSize? { sizes[a.entry.rawValue] }
+  func blockImage(_ a: SourceAnchor, pixelWidth: Int) async -> CGImage? {
+    asked.append((a.entry.rawValue, pixelWidth))
+    await withCheckedContinuation { waiting.append($0) }
+    return picture
+  }
   func reveal(_ a: SourceAnchor) { revealed.append(a) }
+
+  func letGo() {
+    for w in waiting { w.resume() }
+    waiting = []
+  }
+}
+
+/// A picture `w` wide, made up
+func flat(_ w: Int, _ h: Int) -> CGImage {
+  let ctx = CGContext(
+    data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
+    bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+  ctx.setFillColor(CGColor(red: 0.3, green: 0.5, blue: 0.2, alpha: 1))
+  ctx.fill(CGRect(x: 0, y: 0, width: w, height: h))
+  return ctx.makeImage()!
+}
+
+/// The power of two from 128 a picture `pixels` wide is asked at
+func level(_ pixels: CGFloat) -> Int {
+  var l = 128
+  while CGFloat(l) < pixels { l *= 2 }
+  return l
 }
 
 func anchor(_ entry: String, _ block: String = "b3") -> SourceAnchor {
@@ -179,6 +210,80 @@ extension CanvasRemoteImageTests {
       await r.until("drawn again") { foot(r, "n1")?.title == "Sparse Gradient Notes" }
       await other.until("drawn again in the other") { foot(other, "n1")?.title == "Sparse Gradient Notes" }
       #expect(foot(r, "n1")?.missing == false)
+    }
+
+    func picture(_ r: Rig, _ id: String) -> Drawing.Picture? {
+      guard let i = r.canvas.index(of: .card(cid(id))), case .image(let p) = r.canvas.scene?.items[i].drawing else {
+        return nil
+      }
+      return p
+    }
+
+    func block(_ id: String, entry: String) -> Card {
+      Card(
+        id: cid(id), x: 100, y: 100, width: 300,
+        content: .own(CardContent(body: .image(ImageCard(source: .resource(anchor(entry, "fig2")))))))
+    }
+
+    @Test func aResourceBlockIsAsTallAsItsProportionsAndDrawnFromPicturesAskedAtTheWidthTheZoomNeeds() async throws {
+      let fake = FakeSources()
+      fake.labels["e1"] = SourceLabel(title: "Sparse Gradient Notes", number: "2405.01234", icon: .paper)
+      fake.sizes["e1"] = CGSize(width: 400, height: 100)
+      let r = try await Rig(
+        Board(id: BoardID(rawValue: "blocks"), cards: [block("i1", entry: "e1")]), zoom: 0.5, sources: fake)
+      defer { r.close() }
+      let strip: CGFloat = 7 + (12 * 1.55).rounded(.up) + 6 + 1
+      #expect(r.rect("i1").height == 75 + strip, "as the block's proportions make it, its source on a strip under it")
+      #expect(foot(r, "i1")?.anchor == anchor("e1", "fig2"), "its source the block it shows")
+      #expect(picture(r, "i1")?.still == nil, "not drawn until it comes: the missing picture's look meanwhile")
+      // the widths its bitmaps are drawn at: the zoom's, and the level held near the view (Levels.held)
+      func need(_ zoom: CGFloat) -> Int {
+        level(300 * Levels.scale(Levels.held(zoom), backing: r.canvas.backing, size: r.rect("i1").size))
+      }
+      await r.until("asked for") { fake.asked.map(\.width).max() == need(0.5) }
+      #expect(fake.asked.allSatisfy { $0.entry == "e1" && $0.width <= need(0.5) })
+      let small = flat(need(0.5), need(0.5) / 4)
+      fake.picture = small
+      fake.letGo()
+      await r.until("drawn with it") { picture(r, "i1")?.still === small }
+      // closer: more pixels asked for, drawn once they come
+      let asked = fake.asked.count
+      r.canvas.place(zoom: 2, centre: r.centre("i1"))
+      await r.idle()
+      await r.until("asked wider") { fake.asked.map(\.width).max() == need(2) }
+      #expect(need(2) > need(0.5))
+      let large = flat(need(2), need(2) / 4)
+      fake.picture = large
+      fake.letGo()
+      await r.until("drawn again with the wider one") { picture(r, "i1")?.still === large }
+      // farther again: nothing more asked, the wider one kept
+      let wider = fake.asked.count
+      #expect(wider > asked)
+      r.canvas.place(zoom: 0.5, centre: r.centre("i1"))
+      await r.idle()
+      #expect(fake.asked.count == wider && picture(r, "i1")?.still === large)
+    }
+
+    @Test func aBlockWithNoPictureShowsTheMissingPictureAndOneGoneItsSourceMissing() async throws {
+      let fake = FakeSources()
+      let r = try await Rig(
+        Board(id: BoardID(rawValue: "blocks-gone"), cards: [block("i1", entry: "gone")]), zoom: 1, sources: fake)
+      defer { r.close() }
+      await r.until("asked for") { !fake.asked.isEmpty }
+      await r.idle()
+      fake.letGo()
+      await r.idle()
+      let p = try #require(picture(r, "i1"))
+      #expect(p.still == nil && p.url == nil, "the missing picture's look")
+      #expect(r.rect("i1").height == 300 * 0.6 + p.strip, "no size known: as a missing picture is")
+      #expect(p.foot?.missing == true && p.foot?.title == "Source not found")
+      let asked = fake.asked.count
+      r.canvas.refresh()
+      await r.idle()
+      #expect(fake.asked.count == asked, "not asked again until the sources change")
+      fake.onSourcesChanged?()
+      await r.until("asked again") { fake.asked.count > asked }
+      fake.letGo()
     }
   }
 }

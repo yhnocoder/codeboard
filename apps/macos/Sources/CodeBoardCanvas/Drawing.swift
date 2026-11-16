@@ -109,6 +109,9 @@ enum Drawing: Sendable {
     var framed: Bool
     /// Its description under the picture (Card.tsx ImageView's Desc)
     var desc: Desc?
+    /// The block of a resource entry it shows, and the provider's picture of it held now (CanvasSources.swift)
+    var resource: SourceAnchor?
+    var still: CGImage?
     /// Its source after its description, or on a strip of its own under the picture without one
     var foot: Foot?
     var strip: CGFloat = 0
@@ -266,7 +269,7 @@ enum Drawing: Sendable {
             images.image($0, frame: p.frame, width: Int((size.width * scale).rounded(.up)), fileSize: p.fileSize)
           }
         if got?.decoded == true { decodes += 1 }
-        if let img = got?.image {
+        if let img = p.still ?? got?.image {
           ctx.interpolationQuality = .high
           ctx.translateBy(x: 0, y: size.height)
           ctx.scaleBy(x: 1, y: -1)

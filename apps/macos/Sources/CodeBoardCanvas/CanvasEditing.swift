@@ -238,6 +238,7 @@ extension CanvasView {
       measuredInline = [:]
       for m in r.4 { if let id = m.sidenote, let size = r.5[id] { measuredInline[id] = (m.note, m.width, size) } }
       reinstall(r.0, fresh: r.1)
+      askSourcePictures()
       if let f = flyingOut, f.cards.allSatisfy({ index(of: .card($0)) != nil }) {
         flyingOut = nil
         flyOut(f)

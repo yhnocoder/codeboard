@@ -166,6 +166,9 @@ extension Scene {
   /// What the source provider says of an anchor
   struct Source: Sendable, Equatable {
     var foot: Drawing.Foot
+    /// A block an image card shows: its natural size, and the widest picture of it held
+    var size: CGSize?
+    var picture: CGImage?
   }
 
   /// The anchor a card's foot shows: a Note's source, or an image card's (the block it shows, else its source)
@@ -193,14 +196,47 @@ extension CanvasView {
     for c in b.cards {
       guard case .own(let k) = c.content, let a = Scene.anchor(k) else { continue }
       let key = Scene.key(a)
-      if out[key] == nil { out[key] = Scene.Source(foot: Drawing.Foot(a, p.sourceLabel(a))) }
+      guard out[key] == nil else { continue }
+      var s = Scene.Source(foot: Drawing.Foot(a, p.sourceLabel(a)))
+      if case .image(let img) = k.body, case .resource = img.source {
+        s.size = p.blockSize(a)
+        s.picture = sourcePictures.widest(key)
+      }
+      out[key] = s
     }
     return out
   }
 
-  /// The provider said its entries changed: the feet are drawn again
+  /// The provider said its entries changed: the feet are drawn again, and the pictures it had none of asked again
   func sourcesChanged() {
+    sourcePictures.asked = []
     refresh()
+  }
+
+  /// The resource blocks shown, each asked for at the width the zoom draws it at (as the redraws are)
+  func askSourcePictures() {
+    for it in scene?.items ?? [] {
+      guard case .image(let p) = it.drawing, let a = p.resource else { continue }
+      let k = Levels.scale(camera.zoom, backing: backing, size: it.bitmapSize)
+      askSourcePicture(a, pixels: Int((it.rect.width * k).rounded(.up)))
+    }
+  }
+
+  /// Asks the provider for a block's picture at least `pixels` wide (a power of two from 128, DecodeCache's levels),
+  /// unless one as wide is held or asked for; the board is drawn again with it once it comes. A picture the provider
+  /// has none of is asked again only once it says its sources changed
+  func askSourcePicture(_ a: SourceAnchor, pixels: Int) {
+    guard let provider = sources else { return }
+    var level = 128
+    while level < pixels { level *= 2 }
+    let key = SourcePictures.Key(anchor: Scene.key(a), width: level)
+    guard !sourcePictures.holds(key), sourcePictures.asked.insert(key).inserted else { return }
+    Task { [weak self] in
+      let img = await provider.blockImage(a, pixelWidth: level)
+      guard let self, let img else { return }
+      sourcePictures.put(key, img)
+      refresh()
+    }
   }
 
   /// The source at a board point: the foot of a card at rest (not one being written in)
@@ -225,5 +261,31 @@ extension CanvasView {
       out.append(uiElement("source-\(id.rawValue)", v, label: "Source: \(said)", in: self))
     }
     return out
+  }
+}
+
+/// The pictures of resource blocks the provider gave, by anchor and width, kept within a byte cap as DecodeCache keeps
+/// what it decodes
+struct SourcePictures {
+  struct Key: Hashable {
+    var anchor: String
+    var width: Int
+  }
+
+  private var lru = ByteLRU<Key>(cap: 64 << 20)
+  private var images: [Key: CGImage] = [:]
+  var asked: Set<Key> = []
+
+  /// Whether one at least as wide as `k` is held
+  func holds(_ k: Key) -> Bool { images.keys.contains { $0.anchor == k.anchor && $0.width >= k.width } }
+
+  /// The widest held of an anchor
+  func widest(_ anchor: String) -> CGImage? {
+    images.filter { $0.key.anchor == anchor }.max { $0.key.width < $1.key.width }?.value
+  }
+
+  mutating func put(_ k: Key, _ img: CGImage) {
+    images[k] = img
+    for old in lru.insert(k, bytes: img.bytesPerRow * img.height) { images[old] = nil }
   }
 }

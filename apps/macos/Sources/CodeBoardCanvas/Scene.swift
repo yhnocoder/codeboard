@@ -687,17 +687,21 @@ struct Scene: Sendable {
       return (.note(note), size, nil)
     case .image(let img):
       var url: URL?
+      var resource: SourceAnchor?
       switch img.source {
       case .file(let f): url = images.appending(path: f)
       case .url(let s): url = remote[s]
-      // drawing a resource's block is not in yet: a picture not there
-      case .resource: url = nil
+      // a block of a resource entry: the provider's picture, as tall as the block's proportions make it
+      case .resource(let a): resource = a
       }
       let size = url.flatMap(DecodeCache.pixelSize)
-      let h = c.height ?? size.map { c.width * $0.height / max($0.width, 1) } ?? c.width * 0.6
+      let still = resource == nil ? nil : source?.picture
+      let shape = size ?? source?.size ?? still.map { CGSize(width: $0.width, height: $0.height) }
+      let h = c.height ?? shape.map { c.width * $0.height / max($0.width, 1) } ?? c.width * 0.6
       var pic = Drawing.Picture(
         id: c.id.rawValue, url: size == nil ? nil : url, fileSize: size ?? .zero, frame: (img.stillFrame ?? 1) - 1,
-        framed: img.framed, desc: Scene.desc(content.description, width: c.width, folder: folder, theme: t))
+        framed: img.framed, desc: Scene.desc(content.description, width: c.width, folder: folder, theme: t),
+        resource: resource, still: still)
       if let foot { Drawing.Foot.inImage(foot, &pic, width: c.width, t) }
       return (.image(pic), CGSize(width: c.width, height: h + pic.below), nil)
     case .board(let s):

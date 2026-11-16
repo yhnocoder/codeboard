@@ -353,6 +353,8 @@ public final class CanvasView: NSView {
   }
   /// A press on a card's source, which shows it when let go where it was pressed
   var sourcePress: SourceAnchor?
+  /// The pictures of resource blocks the provider gave, and those asked for
+  var sourcePictures = SourcePictures()
   /// The pages being read now, by card ("card/row" for a list's row), and their tasks
   package var webFetching: Set<String> = []
   package var webTasks: [String: Task<Void, Never>] = [:]
@@ -705,6 +707,7 @@ public final class CanvasView: NSView {
     }
     shown = (board, vault)
     install(scene, overviews: overviews, shadow: shadow, theme: theme, keepCamera: keepCamera)
+    askSourcePictures()
     if keepCamera { showCrumbs() } else { boardArrived() }
     // its pictures at web addresses: read now, or already kept from before (then drawn at once)
     let kept = remotePictures.count
@@ -1471,6 +1474,10 @@ public final class CanvasView: NSView {
         if job.note { ruleBreaks.noteRequests += 1 }
       }
       let item = scene.items[job.item]
+      // a resource block's picture drawn sharper than the one held: a wider one asked for
+      if case .image(let p) = item.drawing, let a = p.resource {
+        askSourcePicture(a, pixels: Int((item.rect.width * job.scale).rounded(.up)))
+      }
       let theme = self.theme
       let images = self.images
       let id = nextTask
