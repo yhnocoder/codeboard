@@ -7,7 +7,8 @@ let package = Package(
   // the code and Markdown components (CodeCore, CodeUI, TreeSitterCore, TreeSitterHighlight, MarkdownCore, MarkdownUI)
   // and the test guard: a package of their own, knowing nothing of CodeBoard; tree-sitter and its grammars come with it
   dependencies: [
-    .package(url: "https://github.com/yhnocoder/better-swift-markdown", branch: "main")
+    .package(url: "https://github.com/yhnocoder/better-swift-markdown", branch: "main"),
+    .package(url: "https://github.com/yhnocoder/shiyi", from: "0.1.0"),
   ],
   targets: [
     .target(name: "CodeBoardModel", dependencies: [.product(name: "CodeCore", package: "better-swift-markdown")]),
