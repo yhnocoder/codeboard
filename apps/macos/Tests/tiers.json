@@ -427,11 +427,13 @@
             "CodeBoardShell/BoardPanes.swift",
             "CodeBoardShell/BoardDocuments.swift",
             "CodeBoardShell/WindowSet.swift",
+            "CodeBoardShell/ScreenPlaces.swift",
             "CodeBoardModel/SharedCards.swift"
           ],
           "tests": [
             "BoardPanesTests",
             "WindowSetTests",
+            "ScreenPlacesTests",
             "MissingCardTests",
             "FullWindowDeleteEverywhereTests",
             "aQuestionBeforeDeletingTakesAPressToGoAhead"
