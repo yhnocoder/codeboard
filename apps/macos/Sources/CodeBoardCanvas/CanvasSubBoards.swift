@@ -23,6 +23,26 @@ extension CanvasView {
     }
   }
 
+  /// Whether board `b` shows this board through its sub-board cards, all the way down (core wouldCycle)
+  func holdsThisBoard(_ b: BoardID) -> Bool {
+    guard let (here, vault) = shown, let tree = try? vault.tree() else { return false }
+    // the boards each board shows as sub-boards, read once
+    let byID = Dictionary(tree.allBoards.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+    var seen: Set<BoardID> = []
+    func holds(_ b: BoardID) -> Bool {
+      guard seen.insert(b).inserted, let vb = byID[b],
+        let file = try? vault.board(at: vb.path)
+      else { return false }
+      return file.cards.contains { c in
+        guard case .own(let k) = c.content, case .board(let s) = k.body, case .board(let t) = s.target else {
+          return false
+        }
+        return t == here.id || holds(t)
+      }
+    }
+    return holds(b)
+  }
+
   /// The way down to board `b` through sub-board cards, this board's first, nine deep at most (core subboard.ts
   /// cardPath): each card and the board it shows
   func subPath(to b: BoardID) -> [SubHop]? {
@@ -60,11 +80,20 @@ extension CanvasView {
     return nil
   }
 
-  /// Enters the board a sub-board card shows, in this tab (CanvasCrumbs.swift); whether it is one
-  @discardableResult func openSubBoard(_ id: CardID) -> Bool {
+  /// Enters the board a sub-board card shows, in this tab (CanvasCrumbs.swift), brought to the card of its map under
+  /// `p` when there is one (interact.ts data-sub); whether it is one
+  @discardableResult func openSubBoard(_ id: CardID, at p: CGPoint? = nil) -> Bool {
     guard case .board? = scene?.parts[id]?.content.body else { return false }
-    if !isGone(id), let b = subBoardTarget(id) { enterSubBoard(id, b) }
+    if !isGone(id), let b = subBoardTarget(id) { enterSubBoard(id, b, reveal: p.flatMap { mapCard(at: $0, of: id) }) }
     return true
+  }
+
+  /// The card of a sub-board card's map drawn under `p`, the topmost
+  private func mapCard(at p: CGPoint, of id: CardID) -> CardID? {
+    guard case .board(let d)? = scene?.parts[id]?.drawing, let map = d.map, let r = scene?.placed[id]?.rect else {
+      return nil
+    }
+    return map.cards.last { Drawing.block($0.id, in: map, r)?.contains(p) == true }?.id
   }
 
   /// A sub-board card whose board or subfolder is not there now
@@ -104,7 +133,9 @@ extension CanvasView {
       scene?.placed[id].map { Rect(x: $0.rect.minX, y: $0.rect.minY, width: $0.rect.width, height: $0.rect.height) }
     }
     var copy = doc.board
-    guard let made = copy.extract(ids, rects: rects, child: child, frame: frame) else { return }
+    guard let made = copy.extract(ids, rects: rects, child: child, frame: frame, auto: here.isFolderBoard) else {
+      return
+    }
     // named as main names it: the Section selected, else the first card's title up to its first space or bracket
     let resolver = RefResolver(doc.board, package: vault.url(of: here.path), vault: vault)
     let sec = doc.selection.compactMap(\.section).compactMap { doc.board.section($0)?.title }.first { !$0.isEmpty }
@@ -113,7 +144,7 @@ extension CanvasView {
     let title = vault.freeName(in: folder, Vault.packageName(for: sec ?? word ?? "New Board"), package: true)
     guard let at = try? vault.newBoard(in: folder, title: title, board: made) else { return }
     doc.edit("Turn into Board", selection: [.card(frame)]) {
-      _ = $0.extract(ids, rects: rects, child: child, frame: frame)
+      _ = $0.extract(ids, rects: rects, child: child, frame: frame, auto: here.isFolderBoard)
     }
     nameInPlace(frame, at)
   }

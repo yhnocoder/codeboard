@@ -150,10 +150,10 @@ extension Board {
 
   /// The cards `ids` (as drawn: `rects`) taken out into a new board `child`: they go with the arrows between them, the
   /// sidenotes and stickers on them, and the Sections whose cards all go (positions moved to start at 80, 80); here a
-  /// sub-board card `frame` takes their place, the arrows that crossed now ending on it (extractBoard, cardsToFrame).
-  /// Nil when none of them is here
+  /// sub-board card `frame` takes their place, the arrows that crossed now ending on it (extractBoard, cardsToFrame);
+  /// `auto` on a folder board, whose folder the new board is in. Nil when none of them is here
   public mutating func extract(
-    _ ids: Set<CardID>, rects: (CardID) -> Rect?, child: BoardID, frame: CardID
+    _ ids: Set<CardID>, rects: (CardID) -> Rect?, child: BoardID, frame: CardID, auto: Bool = false
   ) -> Board? {
     let top = cards.filter { ids.contains($0.id) }.map(\.id)
     let boxes = top.compactMap(rects)
@@ -216,7 +216,7 @@ extension Board {
     cards.insert(
       Card(
         id: frame, x: box.x.rounded(), y: box.y.rounded(), width: fw, height: fh, section: home,
-        content: .own(CardContent(body: .board(SubBoard(board: child))))),
+        content: .own(CardContent(body: .board(SubBoard(board: child, auto: auto))))),
       at: at)
     drop(cards: want, sections: secs)
     selfCheck()
