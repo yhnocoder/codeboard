@@ -119,6 +119,34 @@ import Testing
     #expect(t.isHidden && t.bar.isHidden)
   }
 
+  /// A key the pages do not take comes back up the responder chain to the tab's view, which once gave it to the pages
+  /// again, without end
+  @Test func keysThePagesDoNotTakeGoOnUpTheChainOnce() throws {
+    let v = try PDFVault()
+    defer { v.remove() }
+    let w = try PDFWindow(v)
+    defer { w.close() }
+    let t = try w.tab(try #require(w.pane.openPDF(.file(v.file))))
+    // letters, digits, shifted keys, arrows, space, return
+    let keys: [(String, UInt16, NSEvent.ModifierFlags)] = [
+      ("n", 45, []), ("N", 45, .shift), ("1", 18, []), ("!", 18, .shift), ("a", 0, []), (" ", 49, []),
+      ("\r", 36, []), ("\u{F700}", 126, []), ("\u{F701}", 125, []), ("\u{F702}", 123, []), ("\u{F703}", 124, []),
+    ]
+    let inner = t.pdf.documentView ?? t.pdf
+    for first in [t, t.pdf, inner] as [NSView] {
+      w.window.makeFirstResponder(first)
+      for (text, code, flags) in keys {
+        let key = try #require(
+          NSEvent.keyEvent(
+            with: .keyDown, location: .zero, modifierFlags: flags, timestamp: 0, windowNumber: w.window.windowNumber,
+            context: nil, characters: text, charactersIgnoringModifiers: text.lowercased(), isARepeat: false,
+            keyCode: code))
+        (w.window.firstResponder ?? first).keyDown(with: key)
+      }
+    }
+    #expect(w.collected.isEmpty, "none of them collects, and each came back")
+  }
+
   @Test func copyPutsTheSelectedTextOnThePasteboard() throws {
     let v = try PDFVault()
     defer { v.remove() }
