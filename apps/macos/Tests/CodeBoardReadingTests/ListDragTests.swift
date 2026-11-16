@@ -48,6 +48,23 @@ import Testing
     }
   }
 
+  /// Rows selected together drag together, as the table drags them: each row's writer its own item
+  @Test func twoRowsSelectedAreTwoItems() async throws {
+    let v = try ListVault()
+    defer { v.remove() }
+    let (_, list) = try await v.openList()
+    let rows = try ["Tidal mills", "Harbour log"].map { t in try #require(list.shown.firstIndex { $0.title == t }) }
+    list.table.selectRowIndexes(IndexSet(rows), byExtendingSelection: false)
+    let pb = NSPasteboard(name: NSPasteboard.Name("list-out-\(UUID().uuidString)"))
+    defer { pb.releaseGlobally() }
+    pb.clearContents()
+    pb.writeObjects(list.table.selectedRowIndexes.compactMap { list.tableView(list.table, pasteboardWriterForRow: $0) })
+    let items = try #require(pb.pasteboardItems)
+    #expect(items.count == 2)
+    #expect(items.contains { $0.data(forType: .collected) != nil })
+    #expect(items.contains { $0.string(forType: .URL) == "http://127.0.0.1:9/harbour" })
+  }
+
   @Test func titlesAndAuthorsShowLiterallyAndNoAuthorsMeansOneLine() {
     var row = ListRow(
       .entry(Entry(id: EntryID(rawValue: "e"), title: "a*b*_c_ [[x]] $y$ ==z== <i> `q` \\ & #1", added: 1), path: "p"),

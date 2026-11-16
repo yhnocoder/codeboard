@@ -152,10 +152,7 @@ extension ReadingPane {
   }
 
   private static func key(_ p: WebReading.Page) -> String? {
-    if p.key == nil, case .online(let url?) = p, var parts = URLComponents(url: url, resolvingAgainstBaseURL: false) {
-      parts.fragment = nil
-      return parts.string.map { "web:" + $0 }
-    }
+    if p.key == nil, case .online(let url?) = p { return WebReading.key(for: url) }
     return p.key
   }
 }

@@ -23,6 +23,20 @@ import Testing
     #expect(pane.views[tab.id] is WebPageView)
   }
 
+  /// An address already open is gone to, its tab selected; New Web Tab is always a new blank tab
+  @Test func anAddressOpenTwiceIsOneTabAndBlankTabsAreEach() {
+    let s = Shell()
+    s.open(vault, restoring: nil)
+    let address = URL(string: "http://127.0.0.1:9/a")!
+    s.openWeb(address)
+    s.openWeb(nil)
+    s.openWeb(address)
+    #expect(s.reading.tabs.count == 2 && s.reading.selected == s.reading.tabs[0].id)
+    #expect(s.reading.tabs[0].key == WebReading.key(for: address))
+    s.openWeb(nil)
+    #expect(s.reading.tabs.count == 3 && s.reading.tabs.filter { $0.payload.isEmpty }.count == 2)
+  }
+
   @Test func webTabsOpenWhatTheyShowedAgainAfterARelaunch() async throws {
     let s = Shell()
     s.open(vault, restoring: nil)

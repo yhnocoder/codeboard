@@ -28,10 +28,10 @@ import PDFKit
   }
 
   public func sourceLabel(_ a: SourceAnchor) -> SourceLabel? {
+    if case .web? = pane.entries[a.entry]?.entry.origin { return WebReading.sourceLabel(a, in: pane) }
     guard let found = pane.entries[a.entry] else { return nil }
     // the entry as a whole: its title alone
     guard let place = a.place else {
-      if case .web = found.entry.origin { return SourceLabel(title: found.entry.title, number: nil, icon: .site) }
       return SourceLabel(title: Paper.shortTitle(found.entry.title), number: nil, icon: .paper)
     }
     guard found.entry.versions.contains(where: { $0.id == place.version }) else { return nil }
@@ -81,6 +81,7 @@ import PDFKit
       let key = pane.openKey(a.entry)
       return ((key.flatMap { k in elsewhere { $0.key == k }?.pane }) ?? pane).openEntry(a.entry)
     }
+    if WebReading.reveal(a, in: pane) { return }
     let t = PDFTarget.entry(a.entry, version: place.version)
     guard let tab = (elsewhere { $0.key == t.key }?.pane ?? pane).openPDF(t) else { return }
     PDFTabView.reveal(place, in: tab)
