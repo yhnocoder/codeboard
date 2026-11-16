@@ -1,5 +1,6 @@
 import AppKit
 import CodeBoardDiagnostics
+import WebKit
 
 /// A line of input.jsonl. `t` is seconds from the start of the recording, as in the video. Points are the recorded
 /// window's, from its top left, as in the video's picture
@@ -142,7 +143,10 @@ struct InputRecord: Codable, Equatable, Sendable {
       r.detail = "stage \(e.stage)"
     case .keyDown, .keyUp:
       r.key = Int(e.keyCode)
-      r.chars = e.charactersIgnoringModifiers
+      // what is typed into a password field or a web page (a sign-in in the reading pane) stays out of the report
+      let hidden = Self.isPrivate((e.window ?? NSApp.keyWindow)?.firstResponder)
+      r.chars = hidden ? nil : e.charactersIgnoringModifiers
+      if hidden { r.detail = "characters left out" }
       r.mods = Self.mods(e.modifierFlags)
       if e.isARepeat { r.detail = "repeat" }
       if e.type == .keyDown {
@@ -159,7 +163,9 @@ struct InputRecord: Codable, Equatable, Sendable {
 
   /// After a key went to the app: what the input method is composing now, when that changed
   private func readMarked() {
-    guard let client = NSApp.keyWindow?.firstResponder as? NSTextInputClient else { return }
+    guard let responder = NSApp.keyWindow?.firstResponder, !Self.isPrivate(responder),
+      let client = responder as? NSTextInputClient
+    else { return }
     let now: String?
     if client.hasMarkedText() {
       let range = client.markedRange()
@@ -179,6 +185,18 @@ struct InputRecord: Codable, Equatable, Sendable {
     let screen = e.window.map { $0.convertPoint(toScreen: e.locationInWindow) } ?? NSEvent.mouseLocation
     r.x = (screen.x - window.frame.minX).rounded()
     r.y = (window.frame.maxY - screen.y).rounded()
+  }
+
+  /// A password field (or its field editor), or anything in a web page
+  static func isPrivate(_ r: NSResponder?) -> Bool {
+    if r is NSSecureTextField { return true }
+    if let t = r as? NSTextView, t.isFieldEditor, t.delegate is NSSecureTextField { return true }
+    var v = r as? NSView
+    while let view = v {
+      if view is WKWebView { return true }
+      v = view.superview
+    }
+    return false
   }
 
   /// The view a press lands on and the two around it, innermost first

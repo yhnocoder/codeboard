@@ -27,8 +27,9 @@ struct ReportSources: Sendable {
   /// with their kind and key
   var reading: [[String: String]]
   var home = NSHomeDirectory()
-  /// Where clones of a card's repository are looked for when the card does not say where it was read
-  var codeRoots: [URL] = ReportSources.defaultCodeRoots
+  /// Where clones of a card's repository are looked for when the card does not say where it was read: none unless
+  /// given (the person's own app gives `defaultCodeRoots`; a driver's run and tests never look in a home folder)
+  var codeRoots: [URL] = []
 
   static var defaultCodeRoots: [URL] {
     let home = URL(filePath: NSHomeDirectory(), directoryHint: .isDirectory)
@@ -101,7 +102,7 @@ enum ReportContents {
     }
     if let d = try? JSONEncoder.report.encode(listing) { out.files.append(ReportFile("boards/index.json", d)) }
     guard let vault = s.vault else { return }
-    for id in shared.sorted(by: { $0.rawValue < $1.rawValue }) {
+    for id in shared.sorted(by: { $0.rawValue < $1.rawValue }) where safePath(id.rawValue + ".json") != nil {
       let url = vault.sharedFolderURL.appending(path: "\(id.rawValue).json")
       if FileManager.default.fileExists(atPath: url.path) {
         out.files.append(ReportFile("boards/shared/\(id.rawValue).json", copying: url))
@@ -152,7 +153,7 @@ enum ReportContents {
     for r in s.reading {
       if let e = r["entry"] {
         wanted.append((EntryID(rawValue: e), r["version"].map { VersionID(rawValue: $0) }))
-      } else if let f = r["file"] {
+      } else if let f = r["file"], safePath(f) != nil {
         let url = vault.url(of: f)
         if FileManager.default.fileExists(atPath: url.path) {
           out.files.append(ReportFile("resources/files/\(f)", copying: url))
@@ -188,7 +189,7 @@ enum ReportContents {
         case .file(let file), .translation(let file): names = [file]
         case .page: names = []
         }
-        for n in names where done.insert("\(id.rawValue)/\(n)").inserted {
+        for n in names where safePath(n) != nil && done.insert("\(id.rawValue)/\(n)").inserted {
           let url = folder.appending(path: n)
           if FileManager.default.fileExists(atPath: url.path) {
             out.files.append(ReportFile("\(base)/\(n)", copying: url))
@@ -246,11 +247,18 @@ enum ReportContents {
         }
       }
     }
-    let finder = RepoFinder(roots: s.codeRoots)
+    // the code folders are listed only when a card's checkout does not say where its clone is
+    var finder: RepoFinder?
+    func find(_ remote: String?, _ checkout: String?) -> URL? {
+      if let root = RepoFinder.at(checkout: checkout) { return root }
+      guard remote != nil, !s.codeRoots.isEmpty else { return nil }
+      if finder == nil { finder = RepoFinder(roots: s.codeRoots) }
+      return finder?.find(remote: remote, checkout: nil)
+    }
     var unresolved: [String] = []
     for key in repos.keys.sorted() {
       let r = repos[key]!
-      guard let root = finder.find(remote: r.remote, checkout: r.checkout) else {
+      guard let root = find(r.remote, r.checkout) else {
         // a card from before remotes were kept names only where VS Code read it
         let named = r.remote ?? r.checkout.flatMap { $0.isEmpty ? nil : $0 }
         unresolved.append(named ?? "the repository of " + r.paths.keys.sorted().joined(separator: ", "))
@@ -262,10 +270,14 @@ enum ReportContents {
         name: root.lastPathComponent, remote: r.remote ?? Git.run(root, ["remote", "get-url", "origin"]),
         root: tildified(root.path, home: s.home), head: Git.run(root, ["rev-parse", "HEAD"]),
         branch: Git.run(root, ["rev-parse", "--abbrev-ref", "HEAD"]), files: [])
-      if let diff = Git.data(root, ["diff", "HEAD", "--no-color", "--no-ext-diff"]), !diff.isEmpty {
+      let paths = r.paths.keys.sorted().filter { safePath($0) != nil }
+      for bad in r.paths.keys.sorted() where safePath(bad) == nil {
+        unresolved.append("\(bad) (outside its repository)")
+      }
+      if let diff = Git.data(root, ["diff", "HEAD", "--no-color", "--no-ext-diff", "--"] + paths), !diff.isEmpty {
         out.files.append(ReportFile("\(base)/uncommitted.diff", diff))
       }
-      for path in r.paths.keys.sorted() {
+      for path in paths {
         let commits = r.paths[path]!.sorted()
         let now = try? Data(contentsOf: root.appending(path: path))
         if now != nil { out.files.append(ReportFile("\(base)/current/\(path)", copying: root.appending(path: path))) }
@@ -346,14 +358,25 @@ struct RepoFinder {
     return s
   }
 
+  /// The clone a card names by its absolute checkout, when it is there
+  static func at(checkout: String?) -> URL? {
+    guard let c = checkout, c.hasPrefix("/"), FileManager.default.fileExists(atPath: c + "/.git") else { return nil }
+    return URL(filePath: c, directoryHint: .isDirectory)
+  }
+
   func find(remote: String?, checkout: String?) -> URL? {
-    if let c = checkout, c.hasPrefix("/"), FileManager.default.fileExists(atPath: c + "/.git") {
-      return URL(filePath: c, directoryHint: .isDirectory)
-    }
+    if let root = Self.at(checkout: checkout) { return root }
     guard let remote else { return nil }
     let want = Self.normalized(remote)
     return remotes.first { Self.normalized($0.remote) == want }?.root
   }
+}
+
+/// A relative path that stays inside the folder it is joined to: no `..`, not absolute, not empty
+func safePath(_ p: String) -> String? {
+  let parts = p.split(separator: "/", omittingEmptySubsequences: false)
+  guard !p.isEmpty, !p.hasPrefix("/"), !parts.contains(where: { $0 == ".." || $0.isEmpty }) else { return nil }
+  return p
 }
 
 enum Git {

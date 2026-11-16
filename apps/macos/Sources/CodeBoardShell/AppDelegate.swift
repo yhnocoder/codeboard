@@ -116,7 +116,7 @@ import CodeBoardResources
         path: "CodeBoard")
     let source = BugRecorder.Source(
       vault: { [weak shell] in shell?.vault },
-      frontBoard: { [weak shell] _ in shell?.current?.board },
+      frontBoard: { [weak self] w in w === self?.window ? self?.shell.current?.board : nil },
       board: { [weak self] id in
         guard let self, let at = shell.board(id), let vault = shell.vault,
           let board = panes?.documents[id]?.board ?? (try? vault.board(at: at.path))
@@ -140,6 +140,14 @@ import CodeBoardResources
 
   /// Every board is written first; when one cannot be, quitting would lose its changes, so it asks
   func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+    // a bug report being recorded or put together is finished first, then quitting goes on as below
+    if let r = bugRecorder, r.isBusy {
+      Task {
+        await r.finishForQuit()
+        NSApp.reply(toApplicationShouldTerminate: self.applicationShouldTerminate(sender) == .terminateNow)
+      }
+      return .terminateLater
+    }
     // a card being written in: what was typed goes to its board first
     if let panes, panes.isEditing {
       Task {

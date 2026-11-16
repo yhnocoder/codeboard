@@ -1178,6 +1178,16 @@ for (const file of scenarios) {
               const ok = v === undefined ? undefined : judge(got, op, String(v));
               return results[d.side].push({ n, cmd, ok, got: (isSubj ? `${shown(got)} vs ${shown(other)}` : shown(got)) + before });
             }
+            // until <subject> <op> <value>: what the app does in its own time (a report written off the main thread),
+            // waited for instead of a fixed wait; it fails after 30 s
+            if (verb === "until") {
+              for (const end = Date.now() + 30000; ; ) {
+                const got = await subject(d, arg);
+                if (judge(got, op, want)) return;
+                if (Date.now() > end) throw new Error(`until ${arg} ${op} ${want}: still ${shown(got)} after 30 s`);
+                await sleep(200);
+              }
+            }
             if (crop) {
               await d.send(`shot ${arg}`);
               return cut(d, arg, crop);

@@ -75,6 +75,78 @@ import Testing
     #expect(ReportLog.kept(subsystem: "com.apple.launchservices", level: .fault))
   }
 
+  /// Clones are looked for in the home folder only when the person's own app asks
+  @Test func noFolderIsListedUnlessCodeRootsAreGiven() {
+    let s = ReportSources(vault: nil, boards: [], titles: [:], entries: EntryIndex(), resources: [], reading: [])
+    #expect(s.codeRoots.isEmpty)
+  }
+
+  /// A key typed into a password field keeps its code and modifiers, not its character
+  @MainActor @Test func whatIsTypedIntoAPasswordFieldIsLeftOut() throws {
+    let w = NSWindow(
+      contentRect: NSRect(x: 0, y: 0, width: 200, height: 100), styleMask: [.titled], backing: .buffered, defer: false)
+    let secure = NSSecureTextField(frame: NSRect(x: 0, y: 0, width: 100, height: 22))
+    let plain = NSTextField(frame: NSRect(x: 0, y: 40, width: 100, height: 22))
+    w.contentView?.addSubview(secure)
+    w.contentView?.addSubview(plain)
+    let log = InputLog(window: w, t0: 0)
+    func type(into field: NSTextField) throws {
+      w.makeFirstResponder(field)
+      log.take(
+        try #require(
+          NSEvent.keyEvent(
+            with: .keyDown, location: .zero, modifierFlags: [], timestamp: 1, windowNumber: w.windowNumber,
+            context: nil, characters: "p", charactersIgnoringModifiers: "p", isARepeat: false, keyCode: 35)))
+    }
+    try type(into: secure)
+    try type(into: plain)
+    #expect(log.records.map(\.chars) == [nil, "p"])
+    #expect(log.records.map(\.key) == [35, 35])
+  }
+
+  /// The window closing, or the app quitting, ends a recording and its report is still written
+  @MainActor @Test func aReportIsWrittenWhenTheWindowClosesOrTheAppQuits() async throws {
+    let dir = FileManager.default.temporaryDirectory.appending(path: "bug-report-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let personal = BugRecorder.personal
+    BugRecorder.personal = false
+    defer { BugRecorder.personal = personal }
+    let source = BugRecorder.Source(
+      vault: { nil }, frontBoard: { _ in nil }, board: { _ in nil }, titles: { [:] }, entries: { EntryIndex() },
+      resources: { [] }, readingFront: { nil }, look: { ("warm-ink", false) })
+    let recorder = BugRecorder(folder: dir, source: source, reveal: { _ in })
+    func window() -> NSWindow {
+      let w = NSWindow(
+        contentRect: NSRect(x: 0, y: 0, width: 300, height: 200), styleMask: [.titled], backing: .buffered,
+        defer: false)
+      w.isReleasedWhenClosed = false
+      return w
+    }
+    func readme() throws -> String {
+      let zip = try #require(try recorder.lastReport?.get())
+      let out = dir.appending(path: "x-\(UUID().uuidString)")
+      let p = Process()
+      p.executableURL = URL(filePath: "/usr/bin/ditto")
+      p.arguments = ["-x", "-k", zip.path, out.path]
+      try p.run()
+      p.waitUntilExit()
+      let folder = try #require(try FileManager.default.contentsOfDirectory(atPath: out.path).first)
+      return try String(contentsOf: out.appending(path: "\(folder)/README.md"), encoding: .utf8)
+    }
+    let w = window()
+    recorder.start(window: w)
+    #expect(recorder.isRecording)
+    w.close()
+    #expect(!recorder.isRecording)
+    await recorder.finishWriting()
+    #expect(try readme().contains("the window closed"))
+
+    recorder.start(window: window())
+    await recorder.finishForQuit()
+    #expect(!recorder.isBusy)
+    #expect(try readme().contains("the app quit"))
+  }
+
   @Test func framesMissedAreCountedAgainstTheScreensRate() {
     #expect(Frames.dropped(between: 1 / 120, interval: 1 / 120) == 0)
     #expect(Frames.dropped(between: 3 / 120, interval: 1 / 120) == 2)
@@ -152,6 +224,8 @@ import Testing
     try git("commit", "-q", "-m", "one")
     let commit = try #require(Git.run(repo, ["rev-parse", "HEAD"]))
     try "def step():\n    return 2\n".write(to: repo.appending(path: "src/step.py"), atomically: true, encoding: .utf8)
+    // changed too, but on no card: not in the report
+    try "secret\n".write(to: repo.appending(path: "src/other.py"), atomically: true, encoding: .utf8)
 
     let vault = tmp.appending(path: "vault", directoryHint: .isDirectory)
     let images = vault.appending(path: "Engine.board/images")
@@ -164,6 +238,10 @@ import Testing
       source: .git(
         repository: "https://github.com/someone/engine", commit: commit, path: "src/step.py", uncommitted: false,
         checkout: nil), language: "python", firstLine: 1, lines: ["def step():", "    return 1"])
+    var escaping = seg
+    escaping.source = .git(
+      repository: "https://github.com/someone/engine", commit: commit, path: "../../outside.txt", uncommitted: false,
+      checkout: nil)
     func card(_ id: String, _ body: CardContent.Body) -> Card {
       Card(id: CardID(rawValue: id), x: 0, y: 0, width: 200, content: .own(CardContent(body: body)))
     }
@@ -173,6 +251,7 @@ import Testing
         card("c1", .code(CodeCard(segments: [seg]))),
         card("c2", .image(ImageCard(source: .file("shot.png")))),
         card("c3", .board(SubBoard(board: BoardID(rawValue: "b2")))),
+        card("c4", .code(CodeCard(segments: [escaping]))),
       ])
     let sources = ReportSources(
       vault: Vault(root: vault),
@@ -194,9 +273,11 @@ import Testing
     }
     #expect(text("code/engine/at-\(short)/src/step.py").contains("return 1"))
     #expect(text("code/engine/uncommitted.diff").contains("+    return 2"))
+    #expect(!text("code/engine/uncommitted.diff").contains("secret"))
+    #expect(!paths.contains { $0.contains("..") })
     #expect(text("boards/index.json").contains("\"title\" : \"Scheduler\""))
     // the board did not change: no second copy of it
     #expect(text("boards/index.json").contains("\"unchanged\" : true"))
-    #expect(out.notes.isEmpty)
+    #expect(out.notes == ["Code not found on this Mac: ../../outside.txt (outside its repository)"])
   }
 }

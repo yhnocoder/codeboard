@@ -40,8 +40,8 @@ struct ReportMeta: Codable, Sendable {
   var stoppedBy: String
 
   @MainActor static func make(
-    window: NSWindow, theme: String, dark: Bool, started: Date, ended: Date, seconds: Double, video: String?,
-    stoppedBy: String
+    window: String, screen: String?, theme: String, dark: Bool, started: Date, ended: Date, seconds: Double,
+    video: String?, stoppedBy: String
   ) -> ReportMeta {
     let info = Bundle.main.infoDictionary
     let os = ProcessInfo.processInfo.operatingSystemVersion
@@ -57,10 +57,11 @@ struct ReportMeta: Codable, Sendable {
       displays: NSScreen.screens.map {
         Display(
           name: $0.localizedName, points: "\(Int($0.frame.width))x\(Int($0.frame.height))",
-          scale: Double($0.backingScaleFactor), refresh: $0.maximumFramesPerSecond, recorded: $0 == window.screen)
+          scale: Double($0.backingScaleFactor), refresh: $0.maximumFramesPerSecond, recorded: $0.localizedName == screen
+        )
       }, theme: theme, appearance: dark ? "dark" : "light", inputSource: inputSource(),
       started: iso.string(from: started), ended: iso.string(from: ended), seconds: (seconds * 1000).rounded() / 1000,
-      window: InputLog.describe(window), video: video, stoppedBy: stoppedBy)
+      window: window, video: video, stoppedBy: stoppedBy)
   }
 
   static func sysctl(_ name: String) -> String? {
@@ -126,6 +127,9 @@ enum Timeline {
 
   static func readme(_ s: Summary, input: [InputRecord], app: [AppRecord]) -> String {
     var out = "# CodeBoard bug report\n\n"
+    out +=
+      "> This report holds the content of the boards shown, the code files their cards name, and the keys typed while "
+      + "recording (not those typed into password fields or web pages). Read it before passing it on.\n\n"
     let m = s.meta
     out +=
       "\(m.app) \(m.version)\(m.commit.map { " (\($0.prefix(12)))" } ?? "") · macOS \(m.macOS) · \(m.model) · \(m.chip)\n\n"

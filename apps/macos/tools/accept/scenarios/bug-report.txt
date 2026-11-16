@@ -14,5 +14,4 @@ key cmd+z
 menu
 key esc
 menubar CodeBoard/Stop Recording Bug Report
-wait 4000
-expect opened has CodeBoard-bug-
+until opened has CodeBoard-bug-

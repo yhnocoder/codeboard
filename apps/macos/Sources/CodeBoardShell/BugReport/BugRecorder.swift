@@ -39,11 +39,18 @@ import CodeBoardResources
   private(set) var lastReport: Result<URL, any Error>?
   /// Reports still being put together
   private var writing: [Task<Void, Never>] = []
+  /// Recording, or a report still being put together: quitting waits for it (`finishForQuit`)
+  var isBusy: Bool { run != nil || !writing.isEmpty }
 
   private struct Run {
     var t0: Double
     var started: Date
     weak var window: NSWindow?
+    /// What the report says of the window, taken at the start: it may close before the report is written
+    var windowName: String
+    var screenName: String?
+    /// Windows kept out of the video (the dot, the app's other windows, those opened while recording)
+    var excluded: Set<Int> = []
     var dot: RecordingDot
     var input: InputLog
     var frames: FrameLog
@@ -98,7 +105,9 @@ import CodeBoardResources
     try? FileManager.default.createDirectory(at: temp, withIntermediateDirectories: true)
     let refresh = window.screen?.maximumFramesPerSecond ?? 60
     var r = Run(
-      t0: t0, started: Date(), window: window, dot: RecordingDot(over: window), input: InputLog(window: window, t0: t0),
+      t0: t0, started: Date(), window: window, windowName: InputLog.describe(window),
+      screenName: window.screen?.localizedName, dot: RecordingDot(over: window),
+      input: InputLog(window: window, t0: t0),
       frames: FrameLog(view: view, refresh: refresh, t0: t0), metrics: Metrics(t0: t0), temp: temp)
     r.input.start()
     r.frames.start()
@@ -107,10 +116,8 @@ import CodeBoardResources
     r.observers = watchPanels(window)
     // the dot and the app's other main windows are not in the video; the window's sheets, menus and popovers are
     let excluded =
-      [r.dot.window.windowNumber]
-      + NSApp.windows.filter {
-        $0 !== window && $0.isVisible && $0.styleMask.contains(.titled) && $0.sheetParent == nil && $0.parent == nil
-      }.map(\.windowNumber)
+      [r.dot.window.windowNumber] + NSApp.windows.filter { Self.isOther($0, than: window) }.map(\.windowNumber)
+    r.excluded = Set(excluded)
     let (number, frame, url) = (window.windowNumber, window.frame, temp.appending(path: "video.mp4"))
     r.video = Task {
       do {
@@ -128,6 +135,11 @@ import CodeBoardResources
     if let b = source.frontBoard(window) { shown(b, at: t0) }
     Diag.event("recording.started", ["window": InputLog.describe(window)])
     onChange?()
+  }
+
+  /// A window of the app of its own (Settings, another board window), not the recorded one's sheet, menu or popover
+  static func isOther(_ w: NSWindow, than window: NSWindow) -> Bool {
+    w !== window && w.isVisible && w.styleMask.contains(.titled) && w.sheetParent == nil && w.parent == nil
   }
 
   /// A board came on screen: kept as it is now, the first time
@@ -201,6 +213,27 @@ import CodeBoardResources
           }
         }
       })
+    out.append(
+      nc.addObserver(forName: NSWindow.willCloseNotification, object: window, queue: .main) { [weak self] _ in
+        MainActor.assumeIsolated { self?.stop(by: "the window closed") }
+      })
+    // a window of its own opened while recording (Settings, another board window) is left out of the video too
+    for name in [NSWindow.didBecomeKeyNotification, NSWindow.didBecomeMainNotification] {
+      out.append(
+        nc.addObserver(forName: name, object: nil, queue: .main) { [weak self, weak window] n in
+          let id = (n.object as? NSWindow).map(ObjectIdentifier.init)
+          MainActor.assumeIsolated {
+            guard let self, let window, var r = self.run,
+              let w = NSApp.windows.first(where: { ObjectIdentifier($0) == id }), Self.isOther(w, than: window),
+              !r.excluded.contains(w.windowNumber), let video = r.video
+            else { return }
+            r.excluded.insert(w.windowNumber)
+            self.run = r
+            let numbers = r.excluded
+            Task { if case .success(let v) = await video.value { await v.exclude(numbers) } }
+          }
+        })
+    }
     for name in [NSWindow.didMoveNotification, NSWindow.didResizeNotification] {
       out.append(
         nc.addObserver(forName: name, object: window, queue: .main) { [weak self, weak window] _ in
@@ -255,19 +288,16 @@ import CodeBoardResources
     let look = source.look()
     let sources = ReportSources(
       vault: source.vault(), boards: r.boards, titles: source.titles(), entries: source.entries(),
-      resources: source.resources(), reading: r.reading)
-    let window = r.window
-    let meta0: (NSWindow) -> ReportMeta = { w in
-      ReportMeta.make(
-        window: w, theme: look.theme, dark: look.dark, started: r.started, ended: ended, seconds: t1 - r.t0, video: nil,
-        stoppedBy: why)
-    }
-    guard let window else { return }
-    var meta = meta0(window)
+      resources: source.resources(), reading: r.reading,
+      codeRoots: Self.personal ? ReportSources.defaultCodeRoots : [])
+    var meta = ReportMeta.make(
+      window: r.windowName, screen: r.screenName, theme: look.theme, dark: look.dark, started: r.started, ended: ended,
+      seconds: t1 - r.t0, video: nil, stoppedBy: why)
     let input = r.input.records
     let frames = r.frames.frames
     let (video, temp, folder, started) = (r.video, r.temp, folder, r.started)
     onChange?()
+    var current: Task<Void, Never>?
     let task = Task { [weak self] in
       var notes: [String] = []
       var files: [ReportFile] = []
@@ -295,9 +325,17 @@ import CodeBoardResources
       try? FileManager.default.removeItem(at: temp)
       guard let self else { return }
       lastReport = result
+      writing.removeAll { $0 == current }
       if case .success(let zip) = result { reveal(zip) } else { NSSound.beep() }
     }
+    current = task
     writing.append(task)
+  }
+
+  /// Quitting: what is being recorded is stopped and written, and every report still being put together is waited for
+  func finishForQuit() async {
+    stop(by: "the app quit")
+    await finishWriting()
   }
 
   /// Waits for the reports still being written (tests, quitting)

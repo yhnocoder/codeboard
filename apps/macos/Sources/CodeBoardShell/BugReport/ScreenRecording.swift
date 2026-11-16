@@ -119,6 +119,15 @@ final class ScreenRecording: NSObject, SCStreamOutput, SCStreamDelegate, @unchec
     CGRect(x: window.minX - display.minX, y: window.minY - display.minY, width: window.width, height: window.height)
   }
 
+  /// These windows of the app are left out from now on (one opened while recording)
+  func exclude(_ numbers: Set<Int>) async {
+    guard let content = try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true),
+      let app = content.applications.first(where: { $0.processID == getpid() })
+    else { return }
+    let others = content.windows.filter { numbers.contains(Int($0.windowID)) }
+    try? await stream.updateContentFilter(SCContentFilter(display: display, including: [app], exceptingWindows: others))
+  }
+
   /// The window moved or changed size: the crop follows (the video keeps its size; a resized window is fitted in it)
   func follow(frame: CGRect, screenHeight: CGFloat) {
     // AppKit's y-up screen frame into the y-down global space

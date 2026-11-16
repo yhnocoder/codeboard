@@ -32,7 +32,9 @@ import Foundation
   public private(set) var board: Board
   /// The selection on the canvas, kept with the board so undo restores it
   public var selection: Set<Item> = [] {
-    didSet { if selection != oldValue { Diag.event("selection", ["items": Self.describe(selection)]) } }
+    didSet {
+      if Diag.isRecording, selection != oldValue { Diag.event("selection", ["items": Self.describe(selection)]) }
+    }
   }
 
   /// What is selected, for a bug report: the ids in order
@@ -50,7 +52,9 @@ import Foundation
   public private(set) var history = History()
   /// Why the file on disk cannot be read now; saving waits while it is set
   public private(set) var problem: String? {
-    didSet { if let problem, problem != oldValue { Diag.event("error", ["where": "save", "what": problem]) } }
+    didSet {
+      if Diag.isRecording, let problem, problem != oldValue { Diag.event("error", ["where": "save", "what": problem]) }
+    }
   }
 
   /// How long after the last change it is written
