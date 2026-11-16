@@ -173,6 +173,60 @@ func samplePaper(source: String? = paperTeX) throws -> Paper {
     #expect(Tex.macros("\\newcommand\\x[1][a]{#1}") == "\\newcommand\\x[1][a]{#1}")
   }
 
+  @Test func aSupplementsCountersSubequationsAndAlgorithmsAreNumberedAsPrinted() throws {
+    let tex = #"""
+      \documentclass[journal]{IEEEtran}
+      \begin{document}
+      \section{Model}
+      \begin{subequations}\label{p}
+      \begin{align}
+      \min_{\substack{a\\b}} & x \\
+      \text{s.t.} & \begin{bmatrix} 1 & 0\\ 0 & 1\end{bmatrix} \succeq 0, \\
+      & y \le 1
+      \end{align}
+      \end{subequations}
+      \begin{equation}
+      z = 1
+      \end{equation}
+      \begin{algorithm}
+      \caption{Search.}
+      \end{algorithm}
+      \setcounter{section}{0}
+      \renewcommand{\thesection}{S\arabic{section}}
+      \setcounter{equation}{0}\renewcommand{\theequation}{S\arabic{equation}}
+      \setcounter{figure}{0}
+      \renewcommand{\thefigure}{S\arabic{figure}}
+      \section{Proofs}
+      \begin{equation}
+      w = 2
+      \end{equation}
+      \begin{figure}
+      \caption{More.}
+      \end{figure}
+      \appendices
+      \section{Data}
+      \end{document}
+      """#
+    func b(_ id: String, _ kind: String, _ lines: ClosedRange<Int>, parent: String? = nil) -> BlockList.Block {
+      BlockList.Block(
+        id: id, kind: kind, parent: parent, firstLine: lines.lowerBound, lastLine: lines.upperBound, rects: [])
+    }
+    // the counters are set between the blocks, in lines no block has
+    let p = Paper(
+      list: BlockList(blocks: [
+        b("H1", "heading", 3...3), b("M1", "math", 4...10), b("M2", "math", 11...13), b("A1", "algorithm", 14...16),
+        b("C1", "caption", 15...15, parent: "A1"), b("H2", "heading", 22...22), b("M3", "math", 23...25),
+        b("F1", "figure", 26...28), b("C2", "caption", 27...27, parent: "F1"), b("H3", "heading", 30...30),
+      ]), source: tex)
+    #expect(
+      p.labels == [
+        "H1": "§ I", "M1": "式 (1a)–(1c)", "M2": "式 (2)", "A1": "算法 1", "C1": "算法 1", "H2": "§ S1", "M3": "式 (S1)",
+        "F1": "图 S1", "C2": "图 S1", "H3": "附录 A",
+      ])
+    let f = try #require(p.formula(p.block("M1")!))
+    #expect(f.hasPrefix("\\begin{aligned}\n\\min") && f.hasSuffix("\\end{aligned}") && !f.contains("subequations"))
+  }
+
   @Test func aPointsBlockIsFoundAmongItsPagesOnly() {
     // 30 pages of 12 blocks each, a rect a block
     let blocks = (1...30).flatMap { page in

@@ -109,7 +109,7 @@ public struct Paper: Sendable {
     }
     self.onPage = onPage
     mathPreamble = source.flatMap(Tex.macros)
-    labels = Numbering.labels(list.blocks, text: { Self.text($0, lines: lines) }, source: source)
+    labels = Numbering.labels(list.blocks, lines: lines, source: source)
   }
 
   /// The version's block list and TeX file read from the entry's folder `folder`; nil for a version without a list
@@ -389,8 +389,8 @@ public enum Tex {
   }
 
   /// A display formula's LaTeX for KaTeX: what is inside its environment (`\[…\]`, `$$…$$`, equation, multline);
-  /// the rows of align, eqnarray and flalign in `aligned`, of gather in `gathered`; `\label`, `\nonumber` and `\notag`
-  /// gone
+  /// the rows of align, eqnarray and flalign in `aligned`, of gather in `gathered`; subequations' environment inside
+  /// it as that one; `\label`, `\nonumber` and `\notag` gone
   public static func formula(_ tex: String) -> String {
     var s = uncommented(tex)
     s = s.replacing(/\\label\{[^{}]*\}/, with: "").replacing(/\\(nonumber|notag)\b/, with: "")
@@ -402,6 +402,7 @@ public enum Tex {
       switch m.1 {
       case "align", "eqnarray", "flalign", "alignat": return "\\begin{aligned}\n\(body)\n\\end{aligned}"
       case "gather": return "\\begin{gathered}\n\(body)\n\\end{gathered}"
+      case "subequations": return formula(body)
       default: return body
       }
     }
@@ -475,32 +476,66 @@ public enum Tex {
 }
 
 /// The paper's own numbers for its blocks, as LaTeX would print them, counted from the TeX: sections by `\section`,
-/// `\subsection`, `\subsubsection` (starred ones not; after `\appendix` lettered), in IEEEtran's style (`§ II-A`) when
-/// `\documentclass` is IEEEtran, else arabic (`§ 2.1`); a text block takes the section it is in; equations by their
-/// numbered environments in order (equation, align, gather, multline, eqnarray, flalign, alignat, a row for each
-/// `\\` of the many-row ones, less those with `\nonumber` or `\notag`; `\tag{x}` as written), an unnumbered one the
-/// section's; figures and tables with a caption by their order (IEEEtran's tables in roman numerals); the abstract
-/// `摘要`. Not followed: `\numberwithin`, `\setcounter`, subfigures, explicit numbers written into headings. Without the
-/// TeX only figures and tables are numbered (by their captions in the list)
+/// `\subsection`, `\subsubsection` (starred ones not; after `\appendix` or IEEEtran's `\appendices` lettered), in
+/// IEEEtran's style (`§ II-A`) when `\documentclass` is IEEEtran, else arabic (`§ 2.1`); a text block takes the section
+/// it is in; equations by their numbered environments in order (equation, align, gather, multline, eqnarray, flalign,
+/// alignat, a row for each `\\` of the many-row ones, less those with `\nonumber` or `\notag`; `\tag{x}` as written;
+/// a subequations one number, its rows lettered: `式 (3a)–(3c)`), an unnumbered one the section's; figures, tables and
+/// algorithms with a caption by their order (IEEEtran's tables in roman numerals); the abstract `摘要`. The TeX between
+/// and in the blocks, in order, may set a counter (`\setcounter{equation}{0}`) or how it is shown, a prefix and a style
+/// (`\renewcommand{\theequation}{S\arabic{equation}}`: `式 (S1)`), as a supplement does. Not followed:
+/// `\numberwithin`, subfigures, explicit numbers written into headings. Without the TeX only figures and tables are
+/// numbered (by their captions in the list)
 enum Numbering {
-  static func labels(_ blocks: [BlockList.Block], text: (BlockList.Block) -> String?, source: String?) -> [String:
-    String]
-  {
+  static func labels(_ blocks: [BlockList.Block], lines: [String]?, source: String?) -> [String: String] {
     let ieee = source?.contains(/\\documentclass(\[[^\]]*\])?\{IEEEtran\}/) ?? false
     let captioned = Set(blocks.filter { $0.kind == "caption" }.compactMap(\.parent))
     var out: [String: String] = [:]
     var sec = [0, 0, 0]
     var appendix = false
     var section: String?
-    var equations = 0
-    var figures = 0
-    var tables = 0
-    for b in blocks {
-      let t = text(b)
-      if let t, t.contains("\\appendix") {
-        appendix = true
-        sec = [0, 0, 0]
+    var counts: [String: Int] = [:]
+    /// How `\renewcommand{\the<counter>}` shows a counter: a prefix and a style (arabic, roman, Roman, alph, Alph)
+    var shown: [String: (prefix: String, style: String)] = [:]
+    func number(_ counter: String, _ n: Int, plain: (Int) -> String = String.init) -> String {
+      guard let f = shown[counter] else { return plain(n) }
+      switch f.style {
+      case "roman": return f.prefix + roman(n).lowercased()
+      case "Roman": return f.prefix + roman(n)
+      case "alph": return f.prefix + letter(n).lowercased()
+      case "Alph": return f.prefix + letter(n)
+      default: return f.prefix + String(n)
       }
+    }
+    var read = 0
+    for b in blocks {
+      // the TeX up to the block's end not read yet: what changes the counters
+      if let lines, b.lastLine > read, b.lastLine <= lines.count {
+        for line in uncommented(lines[read..<b.lastLine].joined(separator: "\n")).split(separator: "\n") {
+          if line.contains("\\appendix") || line.contains("\\appendices") {
+            appendix = true
+            sec = [0, 0, 0]
+            shown["section"] = nil
+          }
+          guard line.contains("\\setcounter") || line.contains("\\renewcommand") else { continue }
+          for m in line.matches(of: /\\setcounter\{([a-z]+)\}\{(\d+)\}/) {
+            let n = Int(m.2) ?? 0
+            if let level = ["section", "subsection", "subsubsection"].firstIndex(of: String(m.1)) {
+              sec[level] = n
+              for l in (level + 1)..<3 { sec[l] = 0 }
+            } else {
+              counts[String(m.1)] = n
+            }
+          }
+          for m in line.matches(
+            of: /\\renewcommand\*?\{?\\the([a-z]+)\}?\{([^{}\\]*)\\(arabic|roman|Roman|alph|Alph)\{([a-z]+)\}\}/)
+          where m.1 == m.4 {
+            shown[String(m.1)] = (String(m.2), String(m.3))
+          }
+        }
+        read = b.lastLine
+      }
+      let t = Paper.text(b, lines: lines)
       switch b.kind {
       case "heading":
         guard let t, let m = t.firstMatch(of: /\\(section|subsection|subsubsection)(\*)?/) else { break }
@@ -511,55 +546,64 @@ enum Numbering {
         let level = ["section", "subsection", "subsubsection"].firstIndex(of: String(m.1)) ?? 0
         sec[level] += 1
         for l in (level + 1)..<3 { sec[l] = 0 }
-        section = sectionLabel(Array(sec.prefix(level + 1)), appendix: appendix, ieee: ieee)
+        let top = shown["section"] == nil ? nil : number("section", sec[0])
+        section = sectionLabel(Array(sec.prefix(level + 1)), appendix: appendix, ieee: ieee, top: top)
         out[b.id] = section
       case "abstract": out[b.id] = "摘要"
       case "math":
         guard let t else { break }
         let n = equationNumbers(t)
+        let done = counts["equation", default: 0]
         if let tag = n.tag {
           out[b.id] = "式 (\(tag))"
+        } else if n.count > 0, n.sub {
+          counts["equation"] = done + 1
+          let e = number("equation", done + 1)
+          out[b.id] = n.count == 1 ? "式 (\(e)a)" : "式 (\(e)a)–(\(e)\(letter(n.count).lowercased()))"
         } else if n.count > 0 {
-          let first = equations + 1
-          equations += n.count
-          out[b.id] = n.count == 1 ? "式 (\(first))" : "式 (\(first))–(\(equations))"
+          counts["equation"] = done + n.count
+          let (a, z) = (number("equation", done + 1), number("equation", done + n.count))
+          out[b.id] = n.count == 1 ? "式 (\(a))" : "式 (\(a))–(\(z))"
         } else {
           out[b.id] = section
         }
-      case "figure", "table":
-        if captioned.contains(b.id) || t?.contains("\\caption") == true {
-          if b.kind == "figure" {
-            figures += 1
-            out[b.id] = "图 \(figures)"
-          } else {
-            tables += 1
-            out[b.id] = "表 \(ieee ? roman(tables) : String(tables))"
-          }
-        } else {
+      case "figure", "table", "algorithm":
+        guard captioned.contains(b.id) || t?.contains("\\caption") == true else {
           out[b.id] = section
+          break
+        }
+        let n = counts[b.kind, default: 0] + 1
+        counts[b.kind] = n
+        switch b.kind {
+        case "figure": out[b.id] = "图 \(number("figure", n))"
+        case "table": out[b.id] = "表 \(number("table", n, plain: ieee ? roman : String.init))"
+        default: out[b.id] = "算法 \(n)"
         }
       case "metadata": break
       default: out[b.id] = section
       }
     }
-    // a caption is its figure's or table's
+    // a caption is its figure's, table's or algorithm's
     for b in blocks where b.kind == "caption" { out[b.id] = b.parent.flatMap { out[$0] } }
     return out
   }
 
-  static func sectionLabel(_ n: [Int], appendix: Bool, ieee: Bool) -> String {
-    if appendix {
-      let letter = String(UnicodeScalar(UInt8(64 + min(26, max(1, n[0])))))
-      return "附录 " + ([letter] + n.dropFirst().map(String.init)).joined(separator: ".")
+  /// `top`: the section's number as `\thesection` was made to show it
+  static func sectionLabel(_ n: [Int], appendix: Bool, ieee: Bool, top: String? = nil) -> String {
+    if appendix, top == nil {
+      return "附录 " + ([letter(n[0])] + n.dropFirst().map(String.init)).joined(separator: ".")
     }
     if ieee {
-      var s = roman(n[0])
-      if n.count > 1 { s += "-" + String(UnicodeScalar(UInt8(64 + min(26, max(1, n[1]))))) }
+      var s = top ?? roman(n[0])
+      if n.count > 1 { s += "-" + letter(n[1]) }
       if n.count > 2 { s += String(n[2]) }
       return "§ " + s
     }
-    return "§ " + n.map(String.init).joined(separator: ".")
+    return "§ " + ([top ?? String(n[0])] + n.dropFirst().map(String.init)).joined(separator: ".")
   }
+
+  /// 1 → A, 26 → Z
+  static func letter(_ n: Int) -> String { String(UnicodeScalar(UInt8(64 + min(26, max(1, n))))) }
 
   static func roman(_ n: Int) -> String {
     var n = n
@@ -577,22 +621,53 @@ enum Numbering {
   }
 
   /// How many numbers a display formula takes, or the tag it is given
-  static func equationNumbers(_ tex: String) -> (count: Int, tag: String?) {
-    if let m = tex.firstMatch(of: /\\tag\*?\{([^{}]*)\}/) { return (0, String(m.1)) }
-    guard let env = tex.firstMatch(of: /\\begin\{([a-zA-Z]+)(\*?)\}/), env.2.isEmpty else { return (0, nil) }
+  static func equationNumbers(_ tex: String) -> (count: Int, tag: String?, sub: Bool) {
+    if let m = tex.firstMatch(of: /\\tag\*?\{([^{}]*)\}/) { return (0, String(m.1), false) }
+    guard let env = tex.firstMatch(of: /\\begin\{([a-zA-Z]+)(\*?)\}/), env.2.isEmpty else { return (0, nil, false) }
     let none = /\\(nonumber|notag)\b/
     switch env.1 {
-    case "equation", "multline": return (tex.contains(none) ? 0 : 1, nil)
+    case "subequations":
+      // the rows of the environment inside, lettered
+      let inner = equationNumbers(String(tex[env.range.upperBound...]))
+      return (inner.count, inner.tag, true)
+    case "equation", "multline": return (tex.contains(none) ? 0 : 1, nil, false)
     case "align", "gather", "eqnarray", "flalign", "alignat":
-      var rows = tex.components(separatedBy: "\\\\")
+      var rows = Self.rows(tex)
       if let last = rows.last,
         last.replacing(/\\end\{[a-zA-Z]+\}/, with: "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
         rows.count > 1
       {
         rows.removeLast()
       }
-      return (rows.filter { !$0.contains(none) }.count, nil)
-    default: return (0, nil)
+      return (rows.filter { !$0.contains(none) }.count, nil, false)
+    default: return (0, nil, false)
     }
+  }
+
+  /// A many-row environment's rows: its text cut at each `\\\\` not inside braces or an environment inside it
+  /// (`\substack{a\\\\b}`, a matrix's rows are in one row)
+  static func rows(_ tex: String) -> [String] {
+    let u = Array(tex.utf16)
+    let (begin, end) = (Array("begin{".utf16), Array("end{".utf16))
+    var out: [String] = []
+    var depth = 0
+    var envs = 0
+    var from = 0
+    var i = 0
+    while i < u.count {
+      if u[i] == 92, i + 1 < u.count {
+        if u[(i + 1)...].starts(with: begin) { envs += 1 }
+        if u[(i + 1)...].starts(with: end) { envs -= 1 }
+        if u[i + 1] == 92, depth == 0, envs <= 1 {
+          out.append(String(decoding: u[from..<i], as: UTF16.self))
+          from = i + 2
+        }
+        i += 2
+        continue
+      }
+      if u[i] == 123 { depth += 1 } else if u[i] == 125 { depth = max(0, depth - 1) }
+      i += 1
+    }
+    return out + [String(decoding: u[from...], as: UTF16.self)]
   }
 }
