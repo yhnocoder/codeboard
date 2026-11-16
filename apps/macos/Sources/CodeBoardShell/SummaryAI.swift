@@ -4,22 +4,25 @@ import Security
 import Synchronization
 
 // The AI summary writer over an OpenAI-compatible chat endpoint (host deepseek.ts deepseekPost and summaries.ts
-// summarize), where its key is kept, and the AI settings in the app's defaults. The key is never logged nor written to
-// the defaults.
+// summarize), where its key and the embedding server's are kept, and the AI and Search settings in the app's defaults.
+// The keys are never logged nor written to the defaults.
 
-/// The key in the Keychain, as a generic password under the app's own bundle identifier, so a bare binary (swift run,
-/// tests) never reads the installed app's item
+/// A key in the Keychain, as a generic password under the app's own bundle identifier, so a bare binary (swift run,
+/// tests) never reads the installed app's item; `account` tells the keys apart (the summaries': deepseekApiKey)
 struct KeychainKeyStore: KeyStore {
   struct Failure: Error { let status: OSStatus }
   let service: String
-  static let account = "deepseekApiKey"
+  let account: String
 
-  init(service: String = Bundle.main.bundleIdentifier ?? "CodeBoard") { self.service = service }
+  init(service: String = Bundle.main.bundleIdentifier ?? "CodeBoard", account: String = "deepseekApiKey") {
+    self.service = service
+    self.account = account
+  }
 
   private var query: [String: Any] {
     [
       kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
-      kSecAttrAccount as String: Self.account,
+      kSecAttrAccount as String: account,
     ]
   }
 
@@ -167,5 +170,44 @@ struct AISettings {
   /// The writer these settings and `keys` describe
   func writer(keys: any KeyStore, session: URLSession = .shared) -> OpenAISummaryWriter {
     OpenAISummaryWriter(baseURL: baseURL, model: model, keys: keys, session: session)
+  }
+}
+
+/// Search › Related by Meaning's settings in the defaults (the VS Code settings search.embeddingUrl,
+/// search.embeddingModel, search.rerank and search.rerankModel). Its key is only in the KeyStore, under `keyAccount`.
+struct SearchSettings {
+  static let embeddingURLKey = "search.embeddingUrl"
+  static let embeddingModelKey = "search.embeddingModel"
+  static let rerankKey = "search.rerank"
+  static let rerankModelKey = "search.rerankModel"
+  static let keyAccount = "embeddingApiKey"
+  let defaults: UserDefaults
+
+  /// Empty: Related by Meaning is off
+  var embeddingURL: String {
+    get { defaults.string(forKey: Self.embeddingURLKey) ?? "" }
+    nonmutating set { defaults.set(newValue, forKey: Self.embeddingURLKey) }
+  }
+  /// Empty: the first model whose name has "embed"
+  var embeddingModel: String {
+    get { defaults.string(forKey: Self.embeddingModelKey) ?? "" }
+    nonmutating set { defaults.set(newValue, forKey: Self.embeddingModelKey) }
+  }
+  var rerank: Bool {
+    get { defaults.object(forKey: Self.rerankKey) as? Bool ?? true }
+    nonmutating set { defaults.set(newValue, forKey: Self.rerankKey) }
+  }
+  /// Empty: the first model whose name has "rerank"
+  var rerankModel: String {
+    get { defaults.string(forKey: Self.rerankModelKey) ?? "" }
+    nonmutating set { defaults.set(newValue, forKey: Self.rerankModelKey) }
+  }
+
+  /// The embedding server these settings and `keys` describe; nil while no address is set (off)
+  func embedder(keys: any KeyStore) -> BoxEmbedder? {
+    let base = embeddingURL.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !base.isEmpty else { return nil }
+    let model = embeddingModel.trimmingCharacters(in: .whitespacesAndNewlines)
+    return BoxEmbedder(base: base, model: model.isEmpty ? nil : model, key: keys.key())
   }
 }

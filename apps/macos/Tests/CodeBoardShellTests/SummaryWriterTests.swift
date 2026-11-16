@@ -184,7 +184,9 @@ private func withDefaults(_ body: (UserDefaults, String) throws -> Void) rethrow
     _ = NSApplication.shared
     try withDefaults { d, name in
       let keys = MemoryKeyStore()
-      let w = SettingsWindow(settings: AISettings(defaults: d), keys: keys)
+      let w = SettingsWindow(
+        settings: AISettings(defaults: d), keys: keys, search: SearchSettings(defaults: d), searchKeys: MemoryKeyStore()
+      )
       w.window.setFrameOrigin(CGPoint(x: -30000, y: -30000))
       w.window.level = .underDesktop
       w.window.orderFrontRegardless()
@@ -240,7 +242,9 @@ private func withDefaults(_ body: (UserDefaults, String) throws -> Void) rethrow
     try Data("#!/bin/sh\n".utf8).write(to: exe)
     try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: exe.path)
     withDefaults { d, _ in
-      let w = SettingsWindow(settings: AISettings(defaults: d), keys: MemoryKeyStore())
+      let w = SettingsWindow(
+        settings: AISettings(defaults: d), keys: MemoryKeyStore(), search: SearchSettings(defaults: d),
+        searchKeys: MemoryKeyStore())
       w.window.setFrameOrigin(CGPoint(x: -30000, y: -30000))
       w.window.level = .underDesktop
       w.window.orderFrontRegardless()
@@ -264,7 +268,9 @@ private func withDefaults(_ body: (UserDefaults, String) throws -> Void) rethrow
     _ = NSApplication.shared
     withDefaults { d, _ in
       let keys = MemoryKeyStore("sk-1")
-      let w = SettingsWindow(settings: AISettings(defaults: d), keys: keys)
+      let w = SettingsWindow(
+        settings: AISettings(defaults: d), keys: keys, search: SearchSettings(defaults: d), searchKeys: MemoryKeyStore()
+      )
       w.window.setFrameOrigin(CGPoint(x: -30000, y: -30000))
       w.window.level = .underDesktop
       w.window.orderFrontRegardless()
@@ -289,7 +295,9 @@ private func withDefaults(_ body: (UserDefaults, String) throws -> Void) rethrow
       #expect(writer.endpoint?.absoluteString == "http://127.0.0.1:8080/v1/chat/completions" && writer.model == "qwen3")
 
       // a new window shows what was saved; cleared, DeepSeek's again
-      let again = SettingsWindow(settings: AISettings(defaults: d), keys: keys)
+      let again = SettingsWindow(
+        settings: AISettings(defaults: d), keys: keys, search: SearchSettings(defaults: d), searchKeys: MemoryKeyStore()
+      )
       #expect(again.baseURLField.stringValue == "http://127.0.0.1:8080/v1" && again.modelField.stringValue == "qwen3")
       again.baseURLField.stringValue = ""
       again.modelField.stringValue = ""
@@ -297,6 +305,45 @@ private func withDefaults(_ body: (UserDefaults, String) throws -> Void) rethrow
       #expect(
         AISettings(defaults: d).writer(keys: keys).endpoint?.absoluteString
           == "https://api.deepseek.com/chat/completions")
+    }
+  }
+
+  /// settings.ts search.embeddingUrl, search.embeddingModel, search.rerank (on by default) and search.rerankModel in
+  /// the defaults; the embedding key in its own store, never the AI key's, and handed to box only in memory
+  @MainActor @Test func theSettingsWindowStoresTheSearchSettingsAndTheEmbeddingKey() {
+    _ = NSApplication.shared
+    #expect(KeychainKeyStore().account == "deepseekApiKey", "the AI key's item is where it was")
+    #expect(KeychainKeyStore(account: SearchSettings.keyAccount).account == "embeddingApiKey")
+    withDefaults { d, _ in
+      let keys = MemoryKeyStore("sk-1")
+      let searchKeys = MemoryKeyStore()
+      let w = SettingsWindow(
+        settings: AISettings(defaults: d), keys: keys, search: SearchSettings(defaults: d), searchKeys: searchKeys)
+      w.window.setFrameOrigin(CGPoint(x: -30000, y: -30000))
+      w.window.level = .underDesktop
+      w.window.orderFrontRegardless()
+      defer { w.window.close() }
+      #expect(SearchSettings(defaults: d).embedder(keys: searchKeys) == nil, "no address: off")
+      #expect(w.embeddingURLField.stringValue == "" && w.rerankSwitch.state == .on)
+
+      w.embeddingURLField.stringValue = " http://127.0.0.1:11001/v1 "
+      w.embeddingURLField.sendAction(w.embeddingURLField.action, to: w.embeddingURLField.target)
+      w.embeddingModelField.stringValue = "embeddinggemma"
+      w.rerankModelField.stringValue = "hs-rerank-1"
+      w.rerankSwitch.state = .off
+      w.rerankSwitch.sendAction(w.rerankSwitch.action, to: w.rerankSwitch.target)
+      w.embeddingKeyField.stringValue = "ek-2"
+      w.embeddingKeyField.sendAction(w.embeddingKeyField.action, to: w.embeddingKeyField.target)
+      #expect(searchKeys.key() == "ek-2" && keys.key() == "sk-1")
+      #expect(w.embeddingKeyField.stringValue == SettingsWindow.saved && w.embeddingKeyStatus.stringValue == "已保存")
+      #expect(d.dictionaryRepresentation().values.contains { $0 as? String == "ek-2" } == false, "never in defaults")
+      w.window.close()
+      let s = SearchSettings(defaults: d)
+      #expect(s.embeddingURL == "http://127.0.0.1:11001/v1" && s.embeddingModel == "embeddinggemma")
+      #expect(s.rerank == false && s.rerankModel == "hs-rerank-1")
+      #expect(
+        s.embedder(keys: searchKeys)
+          == BoxEmbedder(base: "http://127.0.0.1:11001/v1", model: "embeddinggemma", key: "ek-2"))
     }
   }
 }
