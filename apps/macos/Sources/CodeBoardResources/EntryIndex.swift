@@ -25,6 +25,9 @@ public struct EntryIndex: Sendable {
 
   public subscript(_ id: EntryID) -> Found? { byID[id] }
 
+  /// The entry of the arXiv paper `id` (without a version), the first by its folder's path when there are several
+  public func arxiv(_ id: String) -> Found? { all.first { $0.entry.origin == .arxiv(id) } }
+
   /// Every entry, by its folder's path
   public var all: [Found] { byID.values.sorted { $0.path < $1.path } }
 
