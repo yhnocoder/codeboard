@@ -98,6 +98,8 @@ struct Scene: Sendable {
   var remote: [String: URL] = [:]
   /// What the source provider said of the cards' sources, by anchor (Scene.key)
   var sources: [String: Source] = [:]
+  /// What the call provider said of the code cards' segments (CanvasCalls.swift)
+  var calls: [SegmentID: [CallSpan]] = [:]
 
   /// A card's drawing and what it was made from: the next scene reuses it while these are the same
   struct Part: Sendable {
@@ -118,6 +120,8 @@ struct Scene: Sendable {
     var alwaysText: [String] = []
     /// What the source provider said of its source
     var source: Source?
+    /// A code card's calls, per segment
+    var calls: [[CallSpan]] = []
   }
 
   /// The tilt of a tilted card, as the board's (counter-clockwise)
@@ -244,8 +248,9 @@ struct Scene: Sendable {
     _ board: Board, package: URL, vault: Vault, theme t: Theme, highlighter: Highlighter,
     sizes: [CardID: NoteMetrics] = [:], inline: [SidenoteID: NoteMetrics] = [:],
     reusing previous: Scene? = nil, vaultSeen: Int = 0, fetching: Set<CardID> = [], remote: [String: URL] = [:],
-    sources: [String: Source] = [:]
+    sources: [String: Source] = [:], calls: [SegmentID: [CallSpan]] = [:]
   ) {
+    self.calls = calls
     self.vaultSeen = vaultSeen
     self.fetching = fetching
     self.remote = remote
@@ -308,6 +313,8 @@ struct Scene: Sendable {
       let mine = ends[c.id] ?? []
       let part: Part
       let source = Scene.anchor(content).flatMap { sources[Scene.key($0)] }
+      let callsOf: [[CallSpan]] =
+        if case .code(let code) = content.body { code.segments.map { calls[$0.id] ?? [] } } else { [] }
       // what is drawn from other boards: a sub-board's map, the titles and seals of [[refs]]
       let showsOthers = {
         switch content.body {
@@ -323,7 +330,8 @@ struct Scene: Sendable {
         p.alwaysText == alwaysText,
         !showsOthers || previous?.vaultSeen == vaultSeen,
         previous?.fetching.contains(c.id) == fetching.contains(c.id),
-        Scene.remoteAddresses(content).allSatisfy({ previous?.remote[$0] == remote[$0] }), p.source == source
+        Scene.remoteAddresses(content).allSatisfy({ previous?.remote[$0] == remote[$0] }), p.source == source,
+        p.calls == callsOf
       {
         part = p
         reused.insert(c.id)
@@ -334,13 +342,15 @@ struct Scene: Sendable {
             // whole points, as main lays a card out by its offsetWidth and offsetHeight (Card.tsx read)
             measured: sizes[c.id].map { CGSize(width: $0.size.width.rounded(), height: $0.size.height.rounded()) },
             theme: t, highlighter: highlighter,
-            refs: refs, fetching: fetching.contains(c.id), always: always, remote: remote, sources: sources)
+            refs: refs, fetching: fetching.contains(c.id), always: always, remote: remote, sources: sources,
+            calls: callsOf)
         else { continue }
         part = Part(
           content: content, width: c.width, height: c.height, tilted: c.tilted, locked: c.locked == true,
           measured: sizes[c.id],
           ends: mine,
-          drawing: drawing, size: size, code: code, always: always, alwaysText: alwaysText, source: source)
+          drawing: drawing, size: size, code: code, always: always, alwaysText: alwaysText, source: source,
+          calls: callsOf)
       }
       parts[c.id] = part
       let r = CGRect(origin: CGPoint(x: c.x, y: c.y), size: part.size)
@@ -620,7 +630,7 @@ struct Scene: Sendable {
   private static func card(
     _ c: Card, _ content: CardContent, board: Board, folder: URL, measured: CGSize?, theme t: Theme,
     highlighter: Highlighter, refs: RefResolver, fetching: Bool = false, always: [[CodeLayout.Always]] = [],
-    remote: [String: URL] = [:], sources: [String: Source] = [:]
+    remote: [String: URL] = [:], sources: [String: Source] = [:], calls: [[CallSpan]] = []
   ) -> (
     Drawing, CGSize, (layout: CodeLayout, top: CGFloat, segments: [SegmentID])?
   )? {
@@ -665,7 +675,7 @@ struct Scene: Sendable {
               id: m.id, text: md, frame: CGRect(x: layout.gutter + i.x, y: y, width: w, height: m.height),
               folder: folder, refs: refs.refs(in: md))
           }
-        }, locked: c.locked == true, desc: desc, top: top)
+        }, locked: c.locked == true, desc: desc, top: top, calls: calls)
       return (.code(d), CGSize(width: c.width, height: top + body), (layout, top, code.segments.map(\.id)))
     case .note(let n):
       let title = content.title ?? heading(n.text)

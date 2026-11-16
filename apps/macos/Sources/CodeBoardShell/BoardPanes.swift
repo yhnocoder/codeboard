@@ -21,6 +21,8 @@ import CodeBoardReading
   private var front: Tab.ID?
   /// A canvas changed the vault's files (a board made or renamed there)
   var onVaultChanged: (() -> Void)?
+  /// The calls on this window's code cards (ShellCalls.swift)
+  private var callMarks: ShellCallMarks?
   /// Where a click on this window's boards goes to a place on another board when another window shows that board
   /// (WindowSet): true when it went there, and this window's tab stays
   var arriveElsewhere: ((BoardID, Arrival) -> Bool)?
@@ -271,8 +273,10 @@ import CodeBoardReading
       return boards.count
     }
     pane.canvas.onVaultChanged = { [weak self] in self?.onVaultChanged?() }
-    if shell.reading.codeHost != nil {
+    if let code = shell.reading.codeHost as? ShellCode {
       pane.canvas.onOpenCode = { [weak self, weak pane] in self?.openCodeSource($0, at: $1, on: pane?.canvas) }
+      callMarks = callMarks ?? ShellCallMarks(code)
+      pane.canvas.callHost = callMarks
     }
     pane.canvas.onSetSeal = { [weak self] in self?.setSeal($0, $1, done: $2) }
     pane.canvas.shareOnBoard = { [weak self] in self?.boardDocuments.share($0, $1) }

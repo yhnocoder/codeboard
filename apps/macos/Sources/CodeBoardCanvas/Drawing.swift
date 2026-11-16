@@ -63,6 +63,8 @@ enum Drawing: Sendable {
     var desc: Desc?
     /// Where its code starts: under its header and description
     var top: CGFloat = 0
+    /// Per segment, the calls on its lines (CanvasCalls.swift)
+    var calls: [[CallSpan]] = []
   }
 
   /// An Always Show sidenote in a code card: its Markdown, drawn at `frame` (card points), its images in `folder`
@@ -517,6 +519,7 @@ enum Drawing: Sendable {
         break
       }
     }
+    callMarks(ctx, c, t)
     if l.dedent > 0 { dedentMark(ctx, levels: min(4, max(1, Int((CGFloat(l.dedent) / 4).rounded()))), l, r, t) }
     ctx.restoreGState()
   }

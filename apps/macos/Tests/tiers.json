@@ -95,6 +95,10 @@
         "CodeBoardCanvas/SVGPath.swift"
       ],
       "areas": {
+        "calls": {
+          "sources": ["CodeBoardCanvas/CanvasCalls.swift"],
+          "tests": ["CanvasCallsTests"]
+        },
         "arrows": {
           "sources": [
             "CodeBoardCanvas/ArrowRoute.swift",

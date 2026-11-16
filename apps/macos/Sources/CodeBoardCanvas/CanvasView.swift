@@ -362,6 +362,17 @@ public final class CanvasView: NSView {
       sourcesChanged()
     }
   }
+  /// What says which calls the code cards' lines have (the shell; CanvasCalls.swift)
+  public weak var callHost: CallHost? {
+    didSet {
+      let others = callHost?.onCallsChanged
+      callHost?.onCallsChanged = { [weak self] in
+        others?()
+        self?.callsChanged()
+      }
+      callsChanged()
+    }
+  }
   /// A press on a card's source, which shows it when let go where it was pressed
   var sourcePress: SourceAnchor?
   /// Where a code card's file name clicked opens its file, with the name's place in this view (the shell: its reading
@@ -658,6 +669,7 @@ public final class CanvasView: NSView {
     let display = self.display
     let open = document?.board
     let sources = open.map(sourceInfo) ?? [:]
+    let calls = open.map(callInfo) ?? [:]
     // where the camera will be once it is installed (install: arriving, else kept, else the board's top left at 100 %)
     let opensAt = keepCamera ? camera : arriving ?? keptCamera(of: board, in: vault)
     let hold = loadHold
@@ -675,7 +687,7 @@ public final class CanvasView: NSView {
       let highlighter = known ?? NativeNotes.highlighter
       let scene = Scene(
         b, package: package, vault: vault, theme: theme, highlighter: highlighter, sizes: sizes, inline: inline,
-        sources: sources)
+        sources: sources, calls: calls)
       let fit = Camera.fit(scene.bounds, in: size).zoom
       let limits = ZoomLimits(view: size, content: scene.bounds)
       let first =

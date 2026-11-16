@@ -1,4 +1,5 @@
 import CodeBoardAnalysis
+import CodeBoardCanvas
 import CodeBoardModel
 import CodeBoardReading
 import CodeBoardWorkspace
@@ -70,13 +71,16 @@ extension ShellCode {
   // is free to change
   /// Where a card's file is on this Mac, found as its file name opens it: a commit missing from a repository with a
   /// remote is fetched first, `say` telling that it is (and nil once it is done)
-  func fileOf(_ s: Segment, say: @escaping @MainActor (Missing?) -> Void = { _ in }) async -> FileOf {
+  /// `fetch` false: nothing is fetched (marks never fetch)
+  func fileOf(_ s: Segment, fetch: Bool = true, say: @escaping @MainActor (Missing?) -> Void = { _ in }) async
+    -> FileOf
+  {
     switch s.source {
     case .git(let repository, let commit, let path, _, let checkout)?:
       guard let repositories else { return .missing(Missing(message: "No repositories can be added on this Mac.")) }
       do {
         var m = try await repositories.locate(repository: repository, commit: commit, checkout: checkout, fetch: false)
-        if case .commitMissing(let r) = m, r.remote != nil {
+        if fetch, case .commitMissing(let r) = m, r.remote != nil {
           say(Missing(message: "Fetching \(commit.prefix(7)) from \(RepositoriesModel.name(r))…", busy: true))
           m = try await repositories.locate(repository: repository, commit: commit, checkout: checkout)
           say(nil)
@@ -132,5 +136,61 @@ extension ShellCode {
     let inFolder = abs.hasPrefix(r.root + "/")
     let info = await (inFolder ? r : repo(r.sources.rootOf(c.src, c.version) ?? r.root)).info.value
     return Self.segment(c, info: info, path: inFolder ? String(abs.dropFirst(r.root.count + 1)) : c.path)
+  }
+}
+
+extension ShellCode {
+  /// The calls on a segment's lines, by its file at its version (highlight.ts buildView's calls); none when the file or
+  /// the version is not on this Mac. Nothing is fetched
+  func calls(of s: Segment) async -> [CallSpan] {
+    guard case .file(let f) = await fileOf(s, fetch: false) else { return [] }
+    return await calls(of: s, in: f)
+  }
+
+  /// The same, the segment's file being `f`
+  func calls(of s: Segment, in f: CodeFile) async -> [CallSpan] {
+    let r = repo(f.repository)
+    let abs = r.root + "/" + f.path
+    let (first, last) = (s.firstLine, s.lastLine)
+    return await Task.detached(priority: .utility) {
+      guard let seg = await Self.codeSegment(s, at: abs, in: r.sources),
+        let full = (try? await r.sources.versionText(seg)) ?? nil, !full.isEmpty
+      else { return [CallSpan]() }
+      return r.sources.lookup.analysis.segAnalysis(seg.lang, full, start: first, end: last).calls
+        .filter { (first...last).contains($0.line) }
+        .map { CallSpan(line: $0.line, col: $0.col, end: $0.end, name: $0.name, recv: $0.recv, dispatch: $0.dispatch) }
+    }.value
+  }
+}
+
+/// The board's calls on its code cards' lines (CallHost), one per window: each segment's asked of the shell once, by
+/// its source and lines, and the board told when they come
+@MainActor final class ShellCallMarks: CallHost {
+  private weak var code: ShellCode?
+  var onCallsChanged: (() -> Void)?
+  private struct Key: Hashable {
+    var source: String
+    var first: Int
+    var lines: [String]
+  }
+  private var known: [Key: [CallSpan]] = [:]
+  private var asking: Set<Key> = []
+
+  init(_ code: ShellCode) { self.code = code }
+
+  func calls(_ s: Segment) -> [CallSpan]? {
+    let k = Key(source: String(describing: s.source), first: s.firstLine, lines: s.lines)
+    if let c = known[k] { return c }
+    guard let code, asking.insert(k).inserted else { return nil }
+    Task { [weak self] in
+      let c = await code.calls(of: s)
+      guard let self else { return }
+      asking.remove(k)
+      // ponytail: forgotten all at once past 4000 segments; an LRU if boards hold more code than that
+      if known.count > 4000 { known = [:] }
+      known[k] = c
+      if !c.isEmpty { onCallsChanged?() }
+    }
+    return nil
   }
 }

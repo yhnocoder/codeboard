@@ -1,3 +1,4 @@
+import CodeBoardCanvas
 import CodeBoardModel
 import CodeBoardWorkspace
 import Foundation
@@ -79,6 +80,10 @@ private let scheduler = """
     #expect(s.firstLine == 2 && s.lines == ["    def schedule(self, n):", "        return n"])
     #expect(s.language == "python" && s.id.rawValue.hasPrefix("s"))
     #expect(vars.map(\.a) == ["2"] && mark == CrossMark() && title == nil && !dispatching)
+    // the calls its lines show, by its file at its version
+    #expect(
+      await code.calls(of: step, in: f)
+        == [CallSpan(line: 3, col: col, end: col + 8, name: "schedule", recv: "self.scheduler")])
     // a name nothing defines: why, with the name to search by
     #expect(
       await code.expand(step, in: f, line: 3, col: 0, name: "nowhere")
@@ -95,6 +100,7 @@ private let scheduler = """
       return
     }
     #expect(m.message == "This card's code is from torch 2.5.0, an installed package, which is not opened here yet.")
+    #expect(await code.calls(of: s).isEmpty, "no marks where the source is not here")
   }
 
   /// What the card's file name says (ShellCodeCards' open), for the same card
