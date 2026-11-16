@@ -184,6 +184,10 @@ import Testing
       what == "label" ? .arrowLabel(ArrowID(rawValue: "a")) : .sectionTitle(SectionID(rawValue: "g"))
     let i = try #require(c.index(of: owner))
     let r = try #require(c.scene?.items[i].rect)
+    // in the middle of the view first: a board opens at 100 %, and on a small screen the window is cut to it, the
+    // Section's title then below its edge
+    c.place(zoom: 1, centre: CGPoint(x: r.midX, y: r.midY))
+    await w.frames(6)
     #expect(
       w.hit(CGPoint(x: r.midX, y: r.midY)).map { $0 === c } == true,
       "the canvas under it: \(String(describing: w.hit(CGPoint(x: r.midX, y: r.midY)))) at \(w.at(CGPoint(x: r.midX, y: r.midY)))"

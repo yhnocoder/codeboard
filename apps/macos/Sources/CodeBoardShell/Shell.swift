@@ -340,6 +340,12 @@ public struct ShellState: Codable, Equatable, Sendable {
 
   static func readingKey(_ id: ResourceID) -> String { "resource:" + id.rawValue }
 
+  /// Whether the reading pane is showing this resource's list now: what its row in the sidebar marks (the board's row
+  /// keeps the selection, the board being what the board side shows)
+  public func readingShows(_ id: ResourceID) -> Bool {
+    reading.shown && reading.tabs.first { $0.id == reading.selected }?.key == Self.readingKey(id)
+  }
+
   /// A PDF in the reading pane (an entry's version, or a file that is an entry alone): opened, or gone to when it is
   /// open; nil when it is not in the vault
   @discardableResult public func openPDF(_ t: PDFTarget) -> ReadingTab.ID? { reading.openPDF(t) }

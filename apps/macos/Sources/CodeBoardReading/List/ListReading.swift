@@ -57,7 +57,7 @@ struct ListRow: Equatable {
       }.max { $0.added < $1.added }
       if let pdf {
         self.init(title: e.title, kind: "PDF", opens: .pdf(.entry(e.id, version: pdf.id)))
-      } else if case .page(let hash, _)? = page?.content, let address {
+      } else if case .page(let hash, _, _)? = page?.content, let address {
         self.init(title: e.title, kind: "Saved page", opens: .web(.saved(hash: hash, address: address, title: e.title)))
       } else if let address {
         self.init(title: e.title, kind: "Web page", opens: .web(.online(address)))

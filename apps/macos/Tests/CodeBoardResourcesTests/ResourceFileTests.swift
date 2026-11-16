@@ -33,6 +33,9 @@ private func everything() -> Entry {
       Version(
         id: VersionID(rawValue: "v5"), label: "v3 中文", added: 1_700_000_260_000, language: "zh",
         of: VersionID(rawValue: "v3"), content: .translation(file: "v3.zh.json")),
+      Version(
+        id: VersionID(rawValue: "v6"), added: 1_700_000_270_000,
+        content: .page(hash: "2c26b46b68ffc68f", bytes: 9_001, blocks: "v6.blocks.json")),
     ],
     highlights: colors.enumerated().map { i, c in
       Highlight(id: "h\(i)", place: i.isMultiple(of: 2) ? page : block, color: c, at: 1_700_000_300_000 + Double(i))
@@ -260,6 +263,11 @@ private func at(_ json: inout [String: Any], _ list: String, _ i: Int, _ change:
     ("version v5: a translation is of a saved page", { j in at(&j, "versions", 4) { $0["of"] = "v1" } }),
     ("version v5: a translation is of a saved page", { j in at(&j, "versions", 4) { $0["of"] = nil } }),
     ("version v5: a translation without its language", { j in at(&j, "versions", 4) { $0["language"] = nil } }),
+    (
+      "versions[2].content.page: ../blocks.json is not a file name",
+      { j in at(&j, "versions", 2) { $0["content"] = ["page": ["hash": "9f", "bytes": 1, "blocks": "../blocks.json"]] }
+      }
+    ),
     (
       "versions[4].content.translation: a/b.json is not a file name",
       { j in at(&j, "versions", 4) { $0["content"] = ["translation": ["file": "a/b.json"]] } }
