@@ -137,8 +137,16 @@ final class PDFTabView: NSView, NSDraggingSource, ReadingLookFollower {
 
   override var acceptsFirstResponder: Bool { true }
 
+  /// A key given to the pages comes back here when they do not take it (this view is above them in the responder
+  /// chain): it goes on up then, never to the pages again
+  private var keyAtPages = false
+
   override func keyDown(with event: NSEvent) {
-    if !collectKey(event) { pdf.keyDown(with: event) }
+    if collectKey(event) { return }
+    guard !keyAtPages, window?.firstResponder === self else { return super.keyDown(with: event) }
+    keyAtPages = true
+    defer { keyAtPages = false }
+    pdf.keyDown(with: event)
   }
 
   /// ⌥↵ with a selection or a region: Add to Board

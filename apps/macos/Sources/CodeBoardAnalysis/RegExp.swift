@@ -4,7 +4,7 @@ import Foundation
 // (NSRegularExpression) with JavaScript's meaning of `\w`, `\d`, `\s`, `\b`, `.`, `^` and `$` (ICU's are Unicode-aware
 // and see more line terminators). Match offsets are UTF-16 code units, as NSRange's and JavaScript's are.
 
-func escapeRegExp(_ s: String) -> String {
+package func escapeRegExp(_ s: String) -> String {
   var out = ""
   for c in s.unicodeScalars {
     if ".*+?^${}()|[]\\".unicodeScalars.contains(c) { out.append("\\") }
@@ -13,23 +13,23 @@ func escapeRegExp(_ s: String) -> String {
   return out
 }
 
-struct JSMatch {
+package struct JSMatch {
   /// Start and end of the whole match, in UTF-16 code units
-  let index: Int
-  let end: Int
+  package let index: Int
+  package let end: Int
   /// Group 0 is the whole match; nil is a group that took no part (undefined)
   let groups: [String?]
 
-  subscript(i: Int) -> String? { i < groups.count ? groups[i] : nil }
+  package subscript(i: Int) -> String? { i < groups.count ? groups[i] : nil }
   var text: String { groups[0] ?? "" }
 }
 
 /// A JavaScript regular expression (flags `g` aside: each call says whether it wants one match or all)
-struct JSRegex: @unchecked Sendable {
+package struct JSRegex: @unchecked Sendable {
   // NSRegularExpression is immutable and documented as safe to use from several threads; it is not marked Sendable
   private let re: NSRegularExpression
 
-  init(_ pattern: String, _ flags: String = "") {
+  package init(_ pattern: String, _ flags: String = "") {
     let icu = JSRegex.icu(pattern, multiline: flags.contains("m"), dotAll: flags.contains("s"))
     do {
       re = try NSRegularExpression(pattern: icu)
@@ -38,10 +38,10 @@ struct JSRegex: @unchecked Sendable {
     }
   }
 
-  func test(_ s: String) -> Bool { test(JSText(s)) }
+  package func test(_ s: String) -> Bool { test(JSText(s)) }
   func test(_ t: JSText, from: Int = 0) -> Bool { first(t, from: from) != nil }
 
-  func exec(_ s: String) -> JSMatch? { first(JSText(s)) }
+  package func exec(_ s: String) -> JSMatch? { first(JSText(s)) }
 
   /// The first match in `t.slice(from)`, indices still counted from the start of `t`
   func first(_ t: JSText, from: Int = 0) -> JSMatch? {
@@ -70,12 +70,12 @@ struct JSRegex: @unchecked Sendable {
   }
 
   /// `replace` with a replacement string: `$1`…`$9` and `$&` as in JavaScript
-  func replace(_ s: String, global: Bool = false, with template: String) -> String {
+  package func replace(_ s: String, global: Bool = false, with template: String) -> String {
     replace(s, global: global) { m in JSRegex.expand(template, m) }
   }
 
   /// `split` with JavaScript's handling of empty matches and of capture groups (each is put between the pieces)
-  func split(_ s: String) -> [String?] {
+  package func split(_ s: String) -> [String?] {
     let t = JSText(s)
     if t.count == 0 { return first(t) == nil ? [s] : [] }
     var out: [String?] = []

@@ -90,7 +90,10 @@ import CodeBoardModel
       guard let self, let state = shell.state, let data = try? JSONEncoder().encode(state) else { return }
       UserDefaults.standard.set(data, forKey: Self.stateKey)
     }
+    shell.importPages()
   }
+
+  func applicationDidBecomeActive(_ notification: Notification) { shell.importPages() }
 
   /// Every board is written first; when one cannot be, quitting would lose its changes, so it asks
   func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {

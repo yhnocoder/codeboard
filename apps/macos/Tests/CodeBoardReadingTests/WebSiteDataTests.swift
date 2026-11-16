@@ -9,7 +9,6 @@ import WebKit
 /// are two sites to WebKit), each test with a store of its own that is never written to disk
 @MainActor @Suite(.serialized) struct WebSiteDataTests {
   let server: LoopbackServer
-  let data = FileManager.default.temporaryDirectory.appending(path: "web-sites-\(UUID().uuidString)")
 
   init() async throws {
     _ = NSApplication.shared
@@ -29,15 +28,10 @@ import WebKit
 
   func url(_ host: String, _ path: String) -> URL { URL(string: "http://\(host):\(server.port)\(path)")! }
 
-  /// A tab's view in a window never ordered in
-  func tab(_ url: URL, store: WKWebsiteDataStore) -> (WebPageView, NSWindow) {
-    let view = WebPageView(url: url, context: WebReading.Context(dataDirectory: data, websiteData: store))
-    let window = NSWindow(
-      contentRect: CGRect(x: -30000, y: -30000, width: 600, height: 500), styleMask: [.titled], backing: .buffered,
-      defer: false)
-    window.isReleasedWhenClosed = false
-    window.contentView = view
-    return (view, window)
+  /// A tab's view in a pane of its own, its sites' data in `store`
+  func tab(_ url: URL, store: WKWebsiteDataStore) throws -> (WebPageView, WebTabs) {
+    let tabs = try WebTabs(websiteData: store, keeps: false)
+    return (tabs.open(["url": url.absoluteString]), tabs)
   }
 
   func signedIn(_ v: WebPageView, at host: String) async throws {
@@ -56,14 +50,11 @@ import WebKit
   /// its tabs and their pages as they were; clearing everything signs out every tab of the store, and no other store
   @Test func sitesAreListedAndClearedOneOrAllAndTheirTabsAreSignedOut() async throws {
     let store = WKWebsiteDataStore.nonPersistent()
-    let (a, wa) = tab(url("127.0.0.1", "/signin"), store: store)
-    let (b, wb) = tab(url("localhost", "/signin"), store: store)
+    let (a, ta) = try tab(url("127.0.0.1", "/signin"), store: store)
+    let (b, tb) = try tab(url("localhost", "/signin"), store: store)
     let other = WKWebsiteDataStore.nonPersistent()
-    let (c, wc) = tab(url("127.0.0.1", "/signin"), store: other)
-    defer {
-      for w in [wa, wb, wc] { w.close() }
-      try? FileManager.default.removeItem(at: data)
-    }
+    let (c, tc) = try tab(url("127.0.0.1", "/signin"), store: other)
+    defer { for t in [ta, tb, tc] { t.close() } }
     try await signedIn(a, at: "127.0.0.1")
     try await signedIn(b, at: "localhost")
     try await signedIn(c, at: "127.0.0.1")
@@ -110,8 +101,8 @@ import WebKit
 
   /// Pages are asked for as the Safari of this macOS would ask, and see the same in the page
   @Test func pagesSeeSafariOnThisMac() async throws {
-    let (v, w) = tab(url("127.0.0.1", "/ua"), store: .nonPersistent())
-    defer { w.close() }
+    let (v, tabs) = try tab(url("127.0.0.1", "/ua"), store: .nonPersistent())
+    defer { tabs.close() }
     try await until("the page") { v.web.title?.isEmpty == false && !v.web.isLoading }
     let sent = try #require(v.web.title)
     let os = ProcessInfo.processInfo.operatingSystemVersion

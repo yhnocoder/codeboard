@@ -95,7 +95,7 @@ actor RigTurns {
 
   init(
     _ board: Board = sample(), zoom: CGFloat?, pasteboard: NSPasteboard? = nil, root given: URL? = nil,
-    alongside: Rig? = nil, pictures: (@Sendable (URL) async -> Data?)? = nil
+    alongside: Rig? = nil, pictures: (@Sendable (URL) async -> Data?)? = nil, sources: SourceProvider? = nil
   ) async throws {
     let mine = alongside == nil
     turn = mine
@@ -131,6 +131,7 @@ actor RigTurns {
     // never the network, never the person's caches
     canvas.fetchPicture = pictures ?? { _ in nil }
     canvas.pictureCache = root.appending(path: "pictures")
+    canvas.sources = sources
     window = BoardWindow(
       contentRect: CGRect(x: -30000, y: -30000, width: 1000, height: 700), styleMask: [.titled], backing: .buffered,
       defer: false)

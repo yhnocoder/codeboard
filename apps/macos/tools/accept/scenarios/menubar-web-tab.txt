@@ -1,0 +1,7 @@
+# 菜单栏里没有快捷键的项：File ▸ New Web Tab（menubar 照菜单的做法执行它，不弹出菜单），阅读区多了一个网页标签页并显示出来
+# only: mac
+expect readtabs lacks web:
+menubar File/New Web Tab
+wait 500
+expect readtabs has * web: New Tab
+expect readtabs has pane shown

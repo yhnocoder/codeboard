@@ -9,6 +9,7 @@
 // It prints one line per scenario and side (expectations passed, failed, not checkable) and exits 1 when one failed.
 import { execFileSync, spawn } from "node:child_process";
 import * as fs from "node:fs";
+import * as http from "node:http";
 import * as os from "node:os";
 import * as path from "node:path";
 import { build } from "esbuild";
@@ -33,6 +34,25 @@ function declared(key, flag, fallback) {
 }
 const storage = path.resolve(opt("--storage") ?? path.join(here, declared("storage", "--storage", "storage") ?? "storage"));
 const theme = declared("theme", "--theme", undefined);
+// "# site: <folder>" (relative to this folder: site/web): a made-up site the scenario visits instead of a real one,
+// served from that folder on this Mac's loopback address only (127.0.0.1, a free port) for the run; $SITE in the
+// scenario's lines is its address (http://127.0.0.1:<port>)
+const siteDir = declared("site", "--site", undefined);
+const site = siteDir ? await serve(path.resolve(here, siteDir)) : undefined;
+async function serve(dir) {
+  const types = { ".html": "text/html; charset=utf-8", ".css": "text/css", ".js": "text/javascript", ".json": "application/json", ".png": "image/png", ".jpg": "image/jpeg", ".svg": "image/svg+xml", ".txt": "text/plain; charset=utf-8" };
+  const server = http.createServer((req, res) => {
+    const rel = decodeURIComponent(new URL(req.url, "http://x").pathname);
+    let file = path.join(dir, rel.endsWith("/") ? `${rel}index.html` : rel);
+    if (!file.startsWith(dir + path.sep) || !fs.existsSync(file) || !fs.statSync(file).isFile()) file = undefined;
+    res.writeHead(file ? 200 : 404, { "content-type": (file && types[path.extname(file)]) ?? "text/plain; charset=utf-8" });
+    res.end(file ? fs.readFileSync(file) : "not found");
+  });
+  await new Promise((ok) => server.listen(0, "127.0.0.1", ok));
+  // (the run ends with its scenarios; the site does not keep it going)
+  server.unref();
+  return `http://127.0.0.1:${server.address().port}`;
+}
 // "# only: mac": a scenario of what only the Mac app has (its sidebar, several boards)
 const only = declared("only", "--only", undefined);
 // the look under test and the pixels per point of recordings and shots, the same on both sides
@@ -100,6 +120,11 @@ if (!attach && sides.includes("mac")) {
   // where make-app.sh puts them (and make-demo.sh the demo's): the app finds them in its own bundle, as a person's does
   fs.cpSync(path.join(mac, ".build-markdown"), path.join(app, "Contents/Resources/Assets"), { recursive: true });
   if (!demo) fs.cpSync(path.join(mac, "web/dist"), path.join(app, "Contents/Resources/NotePage"), { recursive: true });
+  // the saving service and its page scripts, as make-app.sh carries them, when tools/shiyi/fetch.mjs has fetched them
+  const shiyi = path.join(mac, ".build-shiyi");
+  if (fs.existsSync(path.join(shiyi, "shiyi"))) fs.copyFileSync(path.join(shiyi, "shiyi"), path.join(app, "Contents/Resources/shiyi"));
+  if (fs.existsSync(path.join(shiyi, "scripts")))
+    fs.cpSync(path.join(shiyi, "scripts"), path.join(app, "Contents/Resources/ShiyiScripts"), { recursive: true });
 }
 if (!attach && sides.includes("web")) {
   await build({
@@ -369,6 +394,12 @@ class Driver {
     if (this.id) {
       execFileSync("sh", ["-c", `defaults delete ${this.id} >/dev/null 2>&1 || true`]);
       const lib = path.join(os.homedir(), "Library");
+      // the saving service the app started on its own data folder (ShellPages.swift): the pid listening on its socket
+      const sock = path.join(lib, "Application Support", this.id, "Shiyi/shiyi.sock");
+      try {
+        const pids = fs.existsSync(sock) ? execFileSync("lsof", ["-t", sock]).toString().split("\n").filter(Boolean) : [];
+        for (const pid of pids.map(Number)) if (pid !== process.pid) process.kill(pid, "SIGKILL");
+      } catch {}
       for (const d of ["Preferences/" + this.id + ".plist", "Application Support/" + this.id, "Caches/" + this.id, "WebKit/" + this.id, "HTTPStorages/" + this.id, "HTTPStorages/" + this.id + ".binarycookies", "Saved Application State/" + this.id + ".savedState"])
         fs.rmSync(path.join(lib, d), { recursive: true, force: true });
     }
@@ -675,6 +706,11 @@ async function subject(d, subj) {
   }
   // opened: what the app asked to open outside itself so far, one per line (none); the drivers open nothing
   if (subj === "opened") return d.send("opened");
+  // entry:<resource>: that resource's entries, one title per line (none); readtabs: the reading pane's tabs ("<kind>:
+  // <title>", * on the one shown) and "pane shown|hidden"; webviews: each web view's address, title, whether it is
+  // shown and what its page says of its visibility (Mac only)
+  if (subj.startsWith("entry:")) return d.send(`entries ${subj.slice(6)}`);
+  if (subj === "readtabs" || subj === "webviews") return d.send(subj);
   if (subj === "focus") {
     const r = await d.send("focused");
     return r || "none";
@@ -1017,7 +1053,7 @@ for (const file of scenarios) {
     d.card = d.cards[0];
   }
   const recs = new Set(), shots = new Set();
-  let lines = fs.readFileSync(file, "utf8").split("\n").map((l, i) => ({ n: i + 1, text: l.trim() }));
+  let lines = fs.readFileSync(file, "utf8").split("\n").map((l, i) => ({ n: i + 1, text: site ? l.trim().replaceAll("$SITE", site) : l.trim() }));
   if (ci) {
     // nothing timed; a shot before the first step, one halfway and one after the last
     // (the comments stay: `# known` is read from them)
@@ -1130,6 +1166,12 @@ for (const file of scenarios) {
             // clip image <file> / drop <file> <point>: the file from the tools folder (storage/assets/…) or absolute
             const file = (f) => path.resolve(here, f);
             if (verb === "clip" && arg === "image") return void (await d.send(`clip image ${file(cmd.split(" ").slice(2).join(" "))}`));
+            // menubar Menu/Item: a line that did not choose it (no such item, disabled) fails
+            if (verb === "menubar") {
+              const r = await d.send(cmd);
+              if (!r.startsWith("chose ")) throw new Error(r);
+              return;
+            }
             if (verb === "drop") {
               const r = await d.send(`drop ${file(arg)} ${await resolve(d, cmd.split(" ").slice(2).join(" "))}`);
               return fs.appendFileSync(path.join(out, `results-${d.side}.txt`), `${cmd}\n${r}\n\n`);

@@ -1,5 +1,7 @@
 // Rust's symbols and calls, as packages/analysis/src/index.ts reads them
 
+import TreeSitterCore
+
 /// `s.replace(/<.*$/, "")`: from the first `<` with no line end after it
 private func withoutGenerics(_ s: String) -> String {
   let u = s.units

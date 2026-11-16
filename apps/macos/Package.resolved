@@ -1,5 +1,5 @@
 {
-  "originHash" : "19abd8c62ba665db4ee44d32dc117f3909aac8bcbf79eb30009d28b816e7650c",
+  "originHash" : "92f2924f9d84dfe6f2cfc02560084a243a9d5f6484c4738fdc0ca44f09184563",
   "pins" : [
     {
       "identity" : "better-swift-markdown",
@@ -7,7 +7,16 @@
       "location" : "https://github.com/yhnocoder/better-swift-markdown",
       "state" : {
         "branch" : "main",
-        "revision" : "7a0e299fcea76295403a55ee0cc32aae06b3ae97"
+        "revision" : "c3fb30457914477418e6db1f14154e97a71648bd"
+      }
+    },
+    {
+      "identity" : "shiyi",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/yhnocoder/shiyi",
+      "state" : {
+        "revision" : "51d37cb721cf15d3533dec344b211db4bb2fa683",
+        "version" : "0.1.0"
       }
     },
     {

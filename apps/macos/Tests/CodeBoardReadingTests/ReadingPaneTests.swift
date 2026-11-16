@@ -63,6 +63,39 @@ import Testing
     #expect(q.tabs.isEmpty && q.selected == nil && q.side == .left)
   }
 
+  /// A view opening another tab hands its view what it is to be made with; a tab made any other way is handed nothing
+  @Test func aTabOpenedFromAnotherIsHandedWhatItWasOpenedWith() throws {
+    let p = ReadingPane()
+    let v = ReadingPaneView(pane: p)
+    var made: [ReadingContext] = []
+    ReadingKinds.register("test-hand") { c in
+      made.append(c)
+      return NSView()
+    }
+    p.open("First", kind: "test-hand")
+    v.sync()
+    let token = NSObject()
+    try #require(made.first).open("Second", kind: "test-hand", handing: token)
+    try #require(made.first).open("Third", kind: "test-hand")
+    p.open("Fourth", kind: "test-hand")
+    v.sync()
+    #expect(made.count == 4 && made[1].handed as? NSObject === token)
+    #expect(made[0].handed == nil && made[2].handed == nil && made[3].handed == nil)
+    let saved = try JSONDecoder().decode(ReadingPane.State.self, from: JSONEncoder().encode(p.state))
+    #expect(saved == p.state && p.tabs.map(\.payload).allSatisfy(\.isEmpty), "nothing of it is saved")
+  }
+
+  /// A view clears its tab's key with an empty one; none leaves it as it is
+  @Test func anEmptyKeyClearsATabsKey() {
+    let p = ReadingPane()
+    let a = p.open("Saved", key: "web:1")
+    p.update(a, title: "Saved again")
+    #expect(p.tabs[0].key == "web:1")
+    p.update(a, key: "")
+    #expect(p.tabs[0].key == nil && p.tabs[0].title == "Saved again")
+    #expect(p.open("Saved", key: "web:1") != a, "the key no longer goes to it")
+  }
+
   /// Each open tab has its view, the current one on screen, kept while the tab is open; an empty tab's is a blank page
   /// (the panel's paper shows through it) and with no tab nothing is left but the pane
   @Test func eachTabHasItsViewWhileItIsOpenAndAnEmptyPaneHasNone() throws {

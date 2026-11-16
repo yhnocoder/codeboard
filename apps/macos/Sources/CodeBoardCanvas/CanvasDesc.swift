@@ -43,7 +43,7 @@ extension CanvasView {
     guard let i = index(of: .card(id)), let s = scene else { return nil }
     switch s.items[i].drawing {
     case .code(let c) where c.framed: return theme.headerHeight
-    case .image(let p): return s.items[i].rect.height - (p.desc?.height ?? 0)
+    case .image(let p): return s.items[i].rect.height - p.below
     default: return nil
     }
   }
@@ -93,7 +93,7 @@ extension CanvasView {
     let shownH: CGFloat =
       switch scene!.items[i].drawing {
       case .code(let c): c.desc?.height ?? 0
-      case .image(let p): p.desc?.height ?? 0
+      case .image(let p): p.below
       default: 0
       }
     let h = max(shownH, d.padding[0] + d.editor.frame.height / z + d.padding[2] + 1)

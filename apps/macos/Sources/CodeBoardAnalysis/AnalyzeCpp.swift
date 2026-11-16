@@ -1,5 +1,7 @@
 // C's, C++'s and CUDA's symbols and calls, as packages/analysis/src/index.ts reads them
 
+import TreeSitterCore
+
 private let cppSkip: Set<String> = [
   "sizeof", "static_cast", "reinterpret_cast", "const_cast", "dynamic_cast", "printf", "assert",
 ]
