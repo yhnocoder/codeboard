@@ -200,20 +200,34 @@ final class CodePath: NSControl {
   override func mouseExited(with event: NSEvent) { hovered = false }
 }
 
-/// A list opening upward from the bar, on its glass: the file finder's files, the best nearest the bar, or the
-/// outline's classes and functions in order. Its rows are the web address's suggestions; the arrow keys move through
-/// them, a click chooses one. Taller than the room, it scrolls
+/// A list on the bar's glass: opening upward from the bar, the file finder's files, the best nearest the bar, or the
+/// outline's classes and functions in order; at a ⌘-click, the definitions to choose from. Its rows are the web
+/// address's suggestions; the arrow keys move through them, a click chooses one. Taller than the room, it scrolls. An
+/// outline row ends in how many cards of the board show its lines and a button that adds it whole
 final class CodeList: WebGlass {
   struct Item: Equatable {
     var title: String
     var detail: String
     var indent: CGFloat = 0
     var strong = false
+    /// Cards of the board in front showing its lines; 0: none said
+    var count = 0
+    /// It ends in an add button
+    var adds = false
   }
 
   var onChoose: ((Int) -> Void)?
+  /// A row's add button pressed
+  var onAdd: ((Int) -> Void)?
+  /// Whether the add buttons do anything (a board is in front)
+  var addsEnabled = true {
+    didSet { for b in adders { paint(b) } }
+  }
   private(set) var items: [Item] = []
   private(set) var rows: [WebSuggestionRow] = []
+  /// Over each row's end, by row: nil where the row has none
+  private(set) var adders: [BarButton?] = []
+  private(set) var counts: [NSTextField?] = []
   private(set) var selected: Int?
   /// The first item nearest the bar
   private(set) var bottomUp = false
@@ -238,7 +252,9 @@ final class CodeList: WebGlass {
     self.items = items
     self.bottomUp = bottomUp
     selected = nil
-    for r in rows { r.removeFromSuperview() }
+    for v in rows as [NSView] + adders.compactMap({ $0 }) + counts.compactMap({ $0?.superview }) {
+      v.removeFromSuperview()
+    }
     rows = items.enumerated().map { i, item in
       let r = WebSuggestionRow(title: item.title, detail: item.detail)
       if item.strong { r.titleLabel.font = .systemFont(ofSize: 12, weight: .semibold) }
@@ -250,6 +266,35 @@ final class CodeList: WebGlass {
       stack.addSubview(r)
       return r
     }
+    // over the rows, which take every press in them
+    counts = items.enumerated().map { i, item in
+      guard item.count > 0 else { return nil }
+      let l = NSTextField(labelWithString: "\(item.count)")
+      l.font = .monospacedDigitSystemFont(ofSize: 10.5, weight: .medium)
+      l.alignment = .center
+      l.toolTip = item.count == 1 ? "On 1 card of this board" : "On \(item.count) cards of this board"
+      l.setAccessibilityIdentifier("\(id)count\(i)")
+      // the pill apart from the label, so that the digits sit in its middle, not the label's line
+      let pill = NSView()
+      pill.wantsLayer = true
+      pill.addSubview(l)
+      stack.addSubview(pill)
+      return l
+    }
+    adders = items.enumerated().map { i, item in
+      guard item.adds else { return nil }
+      let b = BarButton(radius: 6)
+      b.image = NSImage(systemSymbolName: "plus", accessibilityDescription: "Add to Board")
+      b.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 11, weight: .semibold)
+      b.setAccessibilityIdentifier("\(id)add\(i)")
+      b.setAccessibilityLabel("Add \(item.title) to the Board")
+      b.setAccessibilityHelp(item.strong ? "Add the whole class to the Board" : "Add the whole function to the Board")
+      b.tag = i
+      b.target = self
+      b.action = #selector(added(_:))
+      stack.addSubview(b)
+      return b
+    }
     restyle()
     isHidden = items.isEmpty
     needsLayout = true
@@ -258,6 +303,25 @@ final class CodeList: WebGlass {
   override func restyle() {
     super.restyle()
     for r in rows { r.restyle(look) }
+    for l in counts.compactMap({ $0 }) {
+      l.textColor = NSColor(cgColor: look.ink.copy(alpha: 0.6) ?? look.ink)
+      l.superview?.layer?.backgroundColor = look.ink.copy(alpha: 0.07)
+    }
+    for b in adders.compactMap({ $0 }) { paint(b) }
+  }
+
+  private func paint(_ b: BarButton?) {
+    guard let b else { return }
+    b.ink(look)
+    b.alphaValue = addsEnabled ? 1 : 0.35
+    b.toolTip = addsEnabled ? b.accessibilityHelp() : Self.noBoard
+  }
+
+  /// Why an add does nothing
+  static let noBoard = "Open a board beside the pane to add code to it"
+
+  @objc private func added(_ sender: NSButton) {
+    if addsEnabled { onAdd?(sender.tag) }
   }
 
   /// `step` rows further from the bar (nearer when negative), within the list
@@ -285,6 +349,22 @@ final class CodeList: WebGlass {
     for (i, r) in rows.enumerated() {
       let at = bottomUp ? rows.count - 1 - i : i
       r.frame = CGRect(x: 0, y: CGFloat(at) * h, width: w, height: h)
+      // the add button at the row's end, 4 in; the count before it
+      var right = w - 4
+      if let b = adders[i] {
+        b.frame = CGRect(x: right - 22, y: r.frame.minY + (h - 22) / 2, width: 22, height: 22)
+        right -= 22 + 4
+      }
+      if let l = counts[i], let pill = l.superview, let font = l.font {
+        // the digits' middle (half the cap height over the baseline) in the pill's middle
+        let ph: CGFloat = 16
+        let size = l.intrinsicContentSize
+        let pw = max(ph + 2, size.width.rounded(.up) + 8)
+        pill.frame = CGRect(x: right - pw, y: (r.frame.minY + (h - ph) / 2).rounded(), width: pw, height: ph)
+        pill.layer?.cornerRadius = ph / 2
+        let baseline = (ph - font.capHeight) / 2
+        l.frame = CGRect(x: 0, y: baseline + l.firstBaselineOffsetFromTop - size.height, width: pw, height: size.height)
+      }
     }
   }
 

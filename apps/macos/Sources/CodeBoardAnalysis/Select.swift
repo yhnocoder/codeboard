@@ -142,6 +142,10 @@ public func planSelection(_ sels: [Sel], _ a: FileAnalysis) -> Plan? {
   return .segments([rangeOf((start, end), a)])
 }
 
+/// One selection as its lines alone (a snippet), as planSelection reads them: whole lines, blank ones at the ends left
+/// out, with the function it is drawn in or marked as the module's top; nil when it holds only blank lines
+public func selectionRange(_ sel: Sel, _ a: FileAnalysis) -> SegmentRange? { normalize(sel, a).map { rangeOf($0, a) } }
+
 public func symbolAtCursor(_ a: FileAnalysis, line: Int) -> Sym? {
   symbolAt(a.symbols, line: line, kind: .def) ?? symbolAt(a.symbols, line: line, kind: .class)
 }

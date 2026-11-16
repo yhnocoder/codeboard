@@ -1,13 +1,15 @@
 // ⌘K and ⌘F of the Mac app (page.html?palette, a web view of its own over the board): the web board's search palette
 // (ui/Palette.tsx, ui/PalettePreview.tsx), the same markup and classes, built here without Solid, for what the app
 // searches: cards and sidenotes, on all boards or this board (Tab switches). Typing asks native for the words' matches
-// (BoardSearch) and, a little later, for Related by Meaning (asked again while indexing; the reranker's order, when it
-// answers, slides the rows into place); ↑ ↓ move, Return goes to the card, Esc or a click outside closes. Not here: Add
-// Function, functions, files and entry points, pictures, ⌥↵, marks and feedback.
+// (BoardSearch), for the Resources group (entries by title, authors or text, the words marked in their rows; ⌘F: the
+// entries this board's cards take from) and, a little later, for Related by Meaning (asked again while indexing; the
+// reranker's order, when it answers, slides the rows into place); ↑ ↓ move, Return goes to the card or opens the entry
+// at the place found, ⌥↵ puts an entry's passage on the board, Esc or a click outside closes. Not here: Add Function,
+// functions, files and entry points, pictures, marks and feedback.
 import type { Markdown } from "@yhnocoder/markdown";
 import { scrollIntoBox } from "@yhnocoder/markdown/ui";
 
-type Item = {
+type CardItem = {
   kind: "card" | "sidenote";
   label: string;
   detail: string;
@@ -23,16 +25,33 @@ type Item = {
   /** Related by Meaning: no closer than unrelated queries come, shown as a "maybe" */
   faint?: boolean;
 };
+/** A Resources row (SearchPanel.Resource): an entry at the place its text matched; open and collect are JSON native
+ *  takes back */
+type ResourceItem = {
+  kind: "resource";
+  entry: string;
+  label: string;
+  context: string;
+  detail: string;
+  open: string;
+  collect?: string;
+  preview: { md: string; where: string; hit?: undefined };
+  images: string;
+  faint?: undefined;
+};
+type Item = CardItem | ResourceItem;
 type Group = Item["kind"] | "meaning";
 type More = { kind: "more"; group: Group; n: number };
 type Row = Item | More;
 type PaletteData = { look: string; dark: boolean; here: boolean };
 /** Native's answer to pmeaning (protocol.ts MeaningResult); ranked: the reranker's order of the rows shown */
-type Meaning = { items: Item[]; left?: number; error?: string; off?: boolean; ranked?: boolean };
+type Meaning = { items: CardItem[]; left?: number; error?: string; off?: boolean; ranked?: boolean };
 
 type Posted =
   | { type: "psearch"; n: number; q: string; here: boolean }
   | { type: "pmeaning"; n: number; q: string; here: boolean }
+  | { type: "presources"; n: number; q: string; here: boolean }
+  | { type: "prpick"; open: string; collect?: string }
   | { type: "ppick"; board: string; card: string; sidenote?: string; shelf?: string }
   | { type: "pclose" };
 const post = (m: Posted) => window.webkit?.messageHandlers.note.postMessage(m);
@@ -51,6 +70,7 @@ const RERANK_SLIDE = 260;
 const GROUPS: [Group, string][] = [
   ["card", "Cards on Boards"],
   ["sidenote", "Sidenotes"],
+  ["resource", "Resources"],
   ["meaning", "Related by Meaning"],
 ];
 const HIGHLIGHT = "palette-hit";
@@ -84,9 +104,14 @@ type Open = {
   where: HTMLDivElement;
   body: HTMLDivElement;
   tab: HTMLSpanElement;
+  /** The footer's Return and ⌥↵ */
+  go: HTMLSpanElement;
+  add: HTMLSpanElement;
   q: string;
   here: boolean;
-  res: Item[];
+  res: CardItem[];
+  /** The Resources group's answer and what it is for */
+  resources: { items: ResourceItem[]; q: string; here: boolean };
   /** The query the results are for */
   shown: string;
   busy: boolean;
@@ -107,13 +132,17 @@ const trimmed = () => o?.q.trim() ?? "";
 /** Related by Meaning as shown: none for an earlier query or the other scope */
 const meaning = (): Meaning =>
   o && o.meaning.q === trimmed() && o.meaning.here === o.here ? o.meaning : { items: [] };
-const keyOf = (it: Item) => (it.kind === "sidenote" ? `s:${it.sidenote}` : `c:${it.card}`);
+/** The Resources group as shown: none for an earlier query or the other scope */
+const resources = (): ResourceItem[] =>
+  o && o.resources.q === trimmed() && o.resources.here === o.here ? o.resources.items : [];
+const keyOf = (it: Item) =>
+  it.kind === "resource" ? `r:${it.entry}` : it.kind === "sidenote" ? `s:${it.sidenote}` : `c:${it.card}`;
 
 function groupOf(k: Group): Row[] {
   if (!o) return [];
   // Related by Meaning is never cut short
   if (k === "meaning") return meaning().items;
-  const all = o.res.filter((r) => r.kind === k);
+  const all: Item[] = k === "resource" ? resources() : o.res.filter((r) => r.kind === k);
   const open = o.opened.q === trimmed() && o.opened.kinds.has(k);
   if (open || all.length <= GROUP_SHOWN + 1) return all;
   return [...all.slice(0, GROUP_SHOWN), { kind: "more", group: k, n: all.length - GROUP_SHOWN }];
@@ -153,6 +182,17 @@ function row(it: Row, idx: number): HTMLButtonElement {
   }
   b.dataset.k = keyOf(it);
   const kind = el("span", "kind");
+  if (it.kind === "resource") {
+    kind.textContent = "¶";
+    // two lines: the title, then the sentence that matched under it
+    b.style.flexWrap = "wrap";
+    b.style.rowGap = "1px";
+    const ctx = el("span", "lb pctx", it.context);
+    Object.assign(ctx.style, { flexBasis: "100%", paddingLeft: "22px", font: "11px var(--sys)", color: "var(--ink-3)" });
+    b.append(kind, el("span", "lb md-inline", it.label), el("small", "", it.detail), ctx);
+    b.addEventListener("click", (e) => run(it, e.altKey));
+    return b;
+  }
   if (it.shelf) kind.innerHTML = svg(SHELF, 13);
   else kind.textContent = it.kind === "card" ? "▣" : "◦";
   const lb = el("span", "lb md-inline");
@@ -161,7 +201,7 @@ function row(it: Row, idx: number): HTMLButtonElement {
   if (it.faint) b.append(el("span", "maybe", "maybe"));
   b.classList.toggle("faint", !!it.faint);
   b.append(el("small", "", it.detail), el("span", "pmk"));
-  b.addEventListener("click", () => run(it));
+  b.addEventListener("click", () => run(it, false));
   return b;
 }
 
@@ -171,6 +211,7 @@ function drawList() {
   const kids: Node[] = [];
   let idx = 0;
   const m = meaning();
+  const rs = resources();
   for (const [k, title] of GROUPS) {
     const rows = groupOf(k);
     if (k === "meaning") {
@@ -180,7 +221,7 @@ function drawList() {
     } else if (rows.length) kids.push(el("div", "pgh", k === "card" && s.here ? "Cards on This Board" : title));
     for (const r of rows) kids.push(row(r, idx++));
   }
-  if (!s.res.length && !m.items.length && !m.error && !s.busy) {
+  if (!s.res.length && !rs.length && !m.items.length && !m.error && !s.busy) {
     const q = trimmed();
     kids.push(
       el(
@@ -206,13 +247,30 @@ function drawList() {
       );
   }
   s.list.replaceChildren(...kids);
+  // the words in the Resources rows marked as the preview marks them
+  listMarks = [...s.list.querySelectorAll<HTMLElement>(".cand[data-k^='r:'] .lb")].flatMap((e) =>
+    hitRanges(e, undefined, s.resources.q),
+  );
+  paint();
+  drawFoot();
   const on = s.list.querySelector(".cand.on");
   if (on) scrollIntoBox(on, "nearest");
 }
 
+/** The footer for the row highlighted: Return goes to a card or opens an entry; ⌥↵ only for an entry's passage */
+function drawFoot() {
+  if (!o) return;
+  const r = ordered()[o.i];
+  const res = r?.kind === "resource" ? r : undefined;
+  o.go.textContent = res ? " Open" : " Go to Card";
+  o.add.hidden = !res?.collect;
+}
+
 function drawScope() {
   if (!o) return;
-  o.input.placeholder = o.here ? "Search Cards and Sidenotes on This Board" : "Search Cards and Sidenotes";
+  o.input.placeholder = o.here
+    ? "Search Cards, Sidenotes and Resources on This Board"
+    : "Search Cards, Sidenotes and Resources";
   o.scope.forEach((b, k) => {
     const on = (k === 1) === o!.here;
     b.classList.toggle("on", on);
@@ -227,6 +285,7 @@ function setI(i: number) {
   for (const [k, b] of [...o.list.querySelectorAll(".cand")].entries()) b.classList.toggle("on", k === i);
   const on = o.list.querySelector(".cand.on");
   if (on) scrollIntoBox(on, "nearest");
+  drawFoot();
   schedulePreview();
 }
 
@@ -257,7 +316,11 @@ function slide(list: HTMLElement, was: Map<string, number>) {
   }
 }
 
-function run(it: Item) {
+function run(it: Item, alt: boolean) {
+  if (it.kind === "resource") {
+    if (alt && !it.collect) return;
+    return post({ type: "prpick", open: it.open, collect: alt ? it.collect : undefined });
+  }
   post({ type: "ppick", board: it.board, card: it.card, sidenote: it.sidenote, shelf: it.shelf });
 }
 
@@ -274,6 +337,7 @@ function ask() {
       if (!q) return answer(n, []);
       s.busy = true;
       post({ type: "psearch", n, q, here: s.here });
+      post({ type: "presources", n, q, here: s.here });
     },
     q ? 90 : 0,
   );
@@ -320,7 +384,15 @@ function meaningAnswer(n: number, m: Meaning) {
   if (m.left) askMeaning(true);
 }
 
-function answer(n: number, items: Item[]) {
+/** Native's answer to presources n: the Resources rows, the highlight left where it is */
+function resourcesAnswer(n: number, items: ResourceItem[]) {
+  if (!o || n !== o.asked) return;
+  o.resources = { items, q: trimmed(), here: o.here };
+  drawList();
+  schedulePreview();
+}
+
+function answer(n: number, items: CardItem[]) {
   if (!o || n !== o.asked) return;
   o.busy = false;
   o.res = items;
@@ -414,12 +486,22 @@ function hitRanges(e: HTMLElement, hit: string | undefined, q: string): Range[] 
   return out;
 }
 
-function mark(ranges: Range[]) {
+/** The words marked in the Resources rows, and the preview's marks */
+let listMarks: Range[] = [];
+let previewMarks: Range[] = [];
+
+function paint() {
   const reg = (CSS as { highlights?: Map<string, unknown> }).highlights;
   const H = (globalThis as { Highlight?: new (...r: Range[]) => unknown }).Highlight;
   if (!reg || !H) return;
+  const ranges = [...listMarks, ...previewMarks];
   if (ranges.length) reg.set(HIGHLIGHT, new H(...ranges));
   else reg.delete(HIGHLIGHT);
+}
+
+function mark(ranges: Range[]) {
+  previewMarks = ranges;
+  paint();
 }
 
 function schedulePreview() {
@@ -472,7 +554,7 @@ function onKey(e: KeyboardEvent) {
     e.preventDefault();
     const it = ordered()[o.i];
     if (it?.kind === "more") expand(it.group);
-    else if (it) run(it);
+    else if (it) run(it, e.altKey);
   }
 }
 
@@ -518,11 +600,15 @@ export const palette = {
     const where = el("div", "ppempty");
     const body = el("div", "md ppmd");
     const tab = el("span");
+    const go = el("span", "", " Go to Card");
     const kbd = (k: string) => el("kbd", "", k);
+    const add = el("span", "", kbd("⌥↵"), " Add to Board");
+    add.hidden = true;
     const foot = el(
       "div",
       "pfoot",
-      el("span", "", kbd("↵"), " Go to Card"),
+      el("span", "", kbd("↵"), go),
+      add,
       el("span", "", kbd("Tab"), tab),
       el("span", "", kbd("Esc"), " Close"),
     );
@@ -543,9 +629,12 @@ export const palette = {
       where,
       body,
       tab,
+      go,
+      add,
       q: "",
       here: d.here,
       res: [],
+      resources: { items: [], q: "", here: d.here },
       shown: "",
       busy: false,
       i: 0,
@@ -568,6 +657,8 @@ export const palette = {
   },
   /** Native's answer to psearch n */
   results: answer,
+  /** Native's answer to presources n */
+  resources: resourcesAnswer,
   /** Native's answer to pmeaning n (twice when the reranker answers too) */
   meaning: meaningAnswer,
   clear() {
@@ -577,6 +668,7 @@ export const palette = {
     clearTimeout(o.previewWait);
     o.root.remove();
     o = undefined;
+    listMarks = [];
     mark([]);
   },
   /** Types into the field (tests) */
@@ -584,9 +676,9 @@ export const palette = {
     o?.input.focus();
     document.execCommand("insertText", false, text);
   },
-  /** Presses a key in the field (tests): ArrowDown, Enter, Tab, Escape */
-  press(key: string) {
-    o?.input.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }));
+  /** Presses a key in the field (tests): ArrowDown, Enter, Tab, Escape; alt: with ⌥ */
+  press(key: string, alt = false) {
+    o?.input.dispatchEvent(new KeyboardEvent("keydown", { key, altKey: alt, bubbles: true, cancelable: true }));
   },
   /** What is shown (tests): the groups' titles, each row's label and detail, the row highlighted, the preview */
   state() {
@@ -599,6 +691,7 @@ export const palette = {
       rows: [...o.list.querySelectorAll(".cand")].map((r) => ({
         label: r.querySelector(".lb")?.textContent ?? "",
         detail: r.querySelector("small")?.textContent ?? "",
+        context: r.querySelector(".pctx")?.textContent ?? "",
         maybe: r.classList.contains("faint") && r.querySelector(".maybe")?.textContent === "maybe",
       })),
       on: o.i,
@@ -612,6 +705,8 @@ export const palette = {
         .map((r) => r.toString())
         .join("|"),
       where: o.where.textContent,
+      /** The footer's Return and, when it is there, ⌥↵ */
+      foot: [o.go.textContent, o.add.hidden ? null : o.add.textContent].filter(Boolean).join(" | "),
       focused: document.activeElement === o.input,
     };
   },

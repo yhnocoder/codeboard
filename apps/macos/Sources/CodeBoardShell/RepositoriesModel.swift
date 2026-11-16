@@ -23,6 +23,9 @@ import os
   }
 
   @ObservationIgnored private let store: Repositories?
+  /// The repositories' git, its answers kept (code tabs' cards and definitions share it); nil when the list could not
+  /// be read
+  var git: GitCache? { store?.git }
   private(set) var list: [Repository] = []
   private(set) var clones: [Clone] = []
   /// Why the block cannot work (no git, the list unreadable), said once in the block

@@ -110,6 +110,8 @@ public struct ReadingTab: Codable, Equatable, Identifiable, Sendable {
   /// The commit a repository's files are read at, short (its HEAD), by the repository's folder; nil when it is none
   /// or unknown. The shell gives the repositories' own
   @ObservationIgnored public var commitOf: @Sendable (String) async -> String? = { _ in nil }
+  /// What code tabs ask of the shell: code cards' segments, the board in front, definitions (Code/CodeCards.swift)
+  @ObservationIgnored public var codeHost: (any CodeHost)?
 
   public init() {}
 
