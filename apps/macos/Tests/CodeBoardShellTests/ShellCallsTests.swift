@@ -191,37 +191,79 @@ private let scheduler = """
 
   private let schedule = CallSpan(line: 3, col: 30, end: 38, name: "schedule", recv: "self.scheduler")
 
-  @Test func aSegmentWhoseFileWasNotHereGetsItsCallsOnceItsRepositoryIsAddedOrTheAppComesToTheFront() async throws {
+  /// Marks over a repository made here with engine.py, its folder added or not, told counted, no pauses
+  private func followed(added: Bool) async throws -> (
+    data: String, root: String, head: String, marks: ShellCallMarks, told: Counter, repositories: RepositoriesModel,
+    code: ShellCode
+  ) {
     let (data, r, head) = try engineRepository()
-    defer { try? FileManager.default.removeItem(atPath: data) }
     let repositories = RepositoriesModel(
       folder: URL(filePath: data + "/data"), runner: ProcessGitRunner(), defaults: nil)
+    if added { await repositories.addFolder(r) }
     let code = ShellCode(git: GitCache(), board: { nil })
     code.repositories = repositories
     let marks = ShellCallMarks(code)
-    var told = 0
-    marks.onCallsChanged = { told += 1 }
-    // read in a folder not added yet: none, and not asked again at every refresh
-    let s = step("s1", .git(repository: nil, commit: head, path: "engine.py", uncommitted: false, checkout: r))
-    #expect(await settled(marks, s) == nil && !marks.isAsking && told == 0)
-    await repositories.addFolder(r)
+    marks.pause = { _ in }
+    let told = Counter()
+    marks.onCallsChanged = { told.n += 1 }
+    // the marks hold the shell's code weakly, as a window's do: the test keeps it
+    return (data, r, head, marks, told, repositories, code)
+  }
+
+  @Test func aSegmentReadInAFolderNotAddedGetsItsCallsOnceTheFolderIsAdded() async throws {
+    let t = try await followed(added: false)
+    defer { try? FileManager.default.removeItem(atPath: t.data) }
+    let s = step("s1", .git(repository: nil, commit: t.head, path: "engine.py", uncommitted: false, checkout: t.root))
+    // none, and not asked again at every refresh
+    #expect(await settled(t.marks, s) == nil && !t.marks.isAsking && t.told.n == 0)
+    #expect(t.marks.calls(s) == nil && !t.marks.isAsking)
+    await t.repositories.addFolder(t.root)
     // the list read at the start may come first: told at each change, asked again once told
     await until("its calls once the repository came") {
-      _ = marks.calls(s)
-      return marks.calls(s) == [schedule]
+      _ = t.marks.calls(s)
+      return t.marks.calls(s) == [schedule]
     }
-    #expect(told >= 2)
-    // uncommitted, its lines not in the file as it is: none; the file put right elsewhere, the app brought to the front
+    #expect(t.told.n >= 2)
+  }
+
+  @Test func anUncommittedSegmentGetsItsCallsAgainWhenItsFileChangesOnDisk() async throws {
+    let t = try await followed(added: true)
+    defer { try? FileManager.default.removeItem(atPath: t.data) }
+    let committed = step(
+      "s1", .git(repository: nil, commit: t.head, path: "engine.py", uncommitted: false, checkout: t.root))
+    #expect(await settled(t.marks, committed) == [schedule])
+    await until("watched") { t.marks.listening.contains(t.root) }
+    // its lines not in the file as it is: none
     try engine.replacingOccurrences(of: "schedule(2)", with: "plan(2)")
-      .write(toFile: r + "/engine.py", atomically: true, encoding: .utf8)
-    let u = step("s2", .git(repository: nil, commit: head, path: "engine.py", uncommitted: true, checkout: r))
-    #expect(await settled(marks, u) == nil)
-    try engine.write(toFile: r + "/engine.py", atomically: true, encoding: .utf8)
-    told = 0
-    NotificationCenter.default.post(name: NSApplication.didBecomeActiveNotification, object: nil)
-    #expect(told == 1)
-    #expect(await settled(marks, u) == [schedule] && told == 2)
-    #expect(marks.calls(s) == [schedule], "a commit's calls are kept")
+      .write(toFile: t.root + "/engine.py", atomically: true, encoding: .utf8)
+    let u = step("s2", .git(repository: nil, commit: t.head, path: "engine.py", uncommitted: true, checkout: t.root))
+    #expect(await settled(t.marks, u) == nil)
+    // the file put right elsewhere: heard, the board told, asked again
+    let before = t.told.n
+    try engine.write(toFile: t.root + "/engine.py", atomically: true, encoding: .utf8)
+    await until("told the file changed") { t.told.n > before }
+    #expect(await settled(t.marks, u) == [schedule])
+    #expect(t.marks.calls(committed) == [schedule] && !t.marks.isAsking, "a commit's calls are kept")
+  }
+
+  @Test func aSegmentWhoseCommitIsNotHereGetsItsCallsOnceTheRepositorysRefsMove() async throws {
+    let t = try await followed(added: true)
+    defer { try? FileManager.default.removeItem(atPath: t.data) }
+    // a commit made in another clone, so not in this one
+    let other = t.data + "/other"
+    try git(t.data, "clone", "-q", t.root, other)
+    try "x = 1\n".write(toFile: other + "/more.py", atomically: true, encoding: .utf8)
+    try git(other, "add", "-A")
+    try git(other, "commit", "-qm", "more")
+    let later = try git(other, "rev-parse", "HEAD")
+    let s = step("s1", .git(repository: nil, commit: later, path: "engine.py", uncommitted: false, checkout: t.root))
+    #expect(await settled(t.marks, s) == nil)
+    await until("watched") { t.marks.listening.contains(t.root) }
+    // fetched into a branch: the refs move
+    let before = t.told.n
+    try git(t.root, "fetch", "-q", other, "main:refs/heads/fetched")
+    await until("told the refs moved") { t.told.n > before }
+    #expect(await settled(t.marks, s) == [schedule])
   }
 
   @Test func aBoardOfManyCodeCardsIsToldOnceAndItsRefreshAsksInLittleTime() async throws {
@@ -335,4 +377,9 @@ extension ShellCallsTests {
     while !host.asked.contains(seg.id) && ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(5)) }
     #expect(host.asked.contains(seg.id))
   }
+}
+
+/// A count a test's closures add to
+@MainActor final class Counter {
+  var n = 0
 }

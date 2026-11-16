@@ -1,4 +1,3 @@
-import AppKit
 import CodeBoardAnalysis
 import CodeBoardCanvas
 import CodeBoardModel
@@ -166,9 +165,10 @@ extension ShellCode {
 }
 
 /// The board's calls on its code cards' lines (CallHost), one per window: each segment's asked of the shell once,
-/// those asked in one turn together, and the board told once when they have all come. What a segment whose file is
-/// not here got is forgotten when the repositories change or the app comes to the front (a commit fetched, a file
-/// edited elsewhere meanwhile), as is what a segment of a file that can change (uncommitted, in no repository) got
+/// those asked in one turn together, and the board told once when they have all come. Each repository added is
+/// followed on disk (RepoWatcher, after the host's pauses): what a segment whose file was not here got is forgotten
+/// when one is added or a repository's HEAD or refs move (a commit fetched), and what a segment of a file that can
+/// change (uncommitted, in no repository) got when that file changes
 @MainActor final class ShellCallMarks: CallHost {
   private weak var code: ShellCode?
   var onCallsChanged: (() -> Void)?
@@ -183,17 +183,21 @@ extension ShellCode {
   private var batch: [Key: Segment] = [:]
   private var asking: Set<Key> = []
   private var watching = false
-  private var active: NSObjectProtocol?
+  /// By repository folder: what stops its watcher (a no-op while it is being started)
+  private var listeners: [String: () -> Void] = [:]
+  /// The folders whose watcher has started
+  private(set) var listening: Set<String> = []
+  private var filesDue: Set<String> = []
+  private var headsDue = false
+  private var filesWait: Task<Void, Never>?
+  private var headsWait: Task<Void, Never>?
+  /// How long to wait (the tests' wait nothing)
+  var pause: @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) }
 
-  init(_ code: ShellCode) {
-    self.code = code
-    active = NotificationCenter.default.addObserver(
-      forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
-    ) { [weak self] _ in MainActor.assumeIsolated { self?.forget(changing: true) } }
-  }
+  init(_ code: ShellCode) { self.code = code }
 
   isolated deinit {
-    if let active { NotificationCenter.default.removeObserver(active) }
+    for stop in listeners.values { stop() }
   }
 
   /// Whether answers asked for have not all come
@@ -281,33 +285,78 @@ extension ShellCode {
     if got.contains(where: { !($0.2?.isEmpty ?? true) }) { onCallsChanged?() }
   }
 
-  /// What segments whose file is not here got, and with `changing` what those of files that can change got: asked
-  /// again when the board next asks, which it is told to
-  func forget(changing: Bool) {
+  /// What segments whose file is not here got; with `files` (absolute paths), instead what segments of those that can
+  /// change (uncommitted, in no repository) got: asked again when the board next asks, which it is told to
+  func forget(files: Set<String>? = nil) {
     let before = known.count
     known = known.filter { k, e in
-      guard e.calls != nil else { return false }
-      guard changing else { return true }
+      guard let files else { return e.calls != nil }
       switch k.source {
-      case .git(_, _, _, let uncommitted, _): return !uncommitted
-      case .file: return false
-      case .package: return true
+      case .git(_, _, let path, true, _), .file(let path, _):
+        return !files.contains { $0 == path || $0.hasSuffix("/" + path) }
+      case .git, .package: return true
       }
     }
     if known.count != before { onCallsChanged?() }
   }
 
-  /// A repository added or gone: what was not here may be now
+  /// The repositories added, each followed on disk; one added or gone: what was not here may be now
   private func watchRepositories(_ code: ShellCode) {
     guard let r = code.repositories else { return }
     watching = true
-    withObservationTracking {
-      _ = r.list
+    let folders = withObservationTracking {
+      Set(r.list.map(\.path))
     } onChange: { [weak self] in
       Task { @MainActor [weak self] in
         guard let self, let code = self.code else { return }
-        self.forget(changing: false)
+        self.forget()
         self.watchRepositories(code)
+      }
+    }
+    for (f, stop) in listeners where !folders.contains(f) {
+      stop()
+      listeners[f] = nil
+      listening.remove(f)
+    }
+    for f in folders where listeners[f] == nil {
+      listeners[f] = {}
+      Task { await listen(f) }
+    }
+  }
+
+  private func listen(_ folder: String) async {
+    guard let code else { return }
+    let r = code.repo(folder)
+    let root = await r.info.value?.root ?? r.root
+    let at = await RepoWatcher.place(root, git: code.git)
+    guard listeners[folder] != nil else { return }
+    listeners[folder] = RepoWatcher.listen(at.paths) { [weak self] paths in
+      self?.heard(RepoWatcher.sort(paths, root: root, gitDir: at.gitDir))
+    }
+    listening.insert(folder)
+  }
+
+  /// What a repository's watcher heard, taken together after the host's pauses (VersionPause)
+  private func heard(_ h: RepoWatcher.Heard) {
+    if !h.files.isEmpty {
+      filesDue.formUnion(h.files)
+      filesWait?.cancel()
+      filesWait = Task { [weak self, pause] in
+        await pause(VersionPause.recheck)
+        guard !Task.isCancelled, let self else { return }
+        let files = filesDue
+        filesDue = []
+        forget(files: files)
+      }
+    }
+    if h.head {
+      headsDue = true
+      headsWait?.cancel()
+      headsWait = Task { [weak self, pause] in
+        await pause(VersionPause.git)
+        guard !Task.isCancelled, let self, headsDue else { return }
+        headsDue = false
+        forget()
       }
     }
   }
