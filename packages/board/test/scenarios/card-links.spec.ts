@@ -367,9 +367,17 @@ test("cardLinkPaste", async () => {
   await dragOver(pg, "line");
   await paste(pg, "https://example.com/x");
   const web = await lastLine();
-  // on nothing: a reference to the card, at the end of the Note (End alone goes only to the end of the line as drawn, and the
-  // links make it wrap where the fonts say)
+  // on nothing: a reference to the card, at the end of the Note. The browser moves the caret for Control+End and the editor
+  // takes it up from the selectionchange event that follows, so the paste waits until the editor has it
   await pg.keyboard.press("Control+End");
+  await until(h, "the editor has the caret at the end of the Note", () =>
+    pg.locator(".md-pm").evaluate((e) => {
+      const s = (
+        e as unknown as { editor: { state: { selection: { from: number }; doc: { content: { size: number } } } } }
+      ).editor.state;
+      return s.selection.from === s.doc.content.size - 1;
+    }),
+  );
   await paste(pg, ".codeboard/b1.json#k1");
   const bare = await lastLine();
   await pg.keyboard.press("Escape");
