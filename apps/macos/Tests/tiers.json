@@ -580,7 +580,7 @@
         },
         "reading: list": {
           "sources": ["CodeBoardReading/List"],
-          "tests": ["ListReadingTests", "ListAddingTests", "ListDragTests", "ListDeleteTests"]
+          "tests": ["ListReadingTests", "ListAddingTests", "ListDragTests", "ListDeleteTests", "ListFieldsTests"]
         },
         "reading: shared": {
           "sources": ["CodeBoardReading/Shared", "CodeBoardModel/Collected.swift"],
