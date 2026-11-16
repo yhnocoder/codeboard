@@ -251,10 +251,16 @@ final class PDFTabView: NSView, NSDraggingSource, ReadingLookFollower {
     lines.map { ($0.0, convert(pdf.convert($0.1, from: $0.0), from: pdf)) }
   }
 
+  /// Where what floats over the pages may go: the tab, down to a little above the versions bar when it shows
+  var floatArea: CGRect {
+    guard !versions.isHidden else { return bounds }
+    return CGRect(x: bounds.minX, y: bounds.minY, width: bounds.width, height: max(0, versions.frame.minY - 6))
+  }
+
   /// A bar over lines in this view, in reading order (the selection bar's rule)
   func show(_ b: SelectionBar, over lines: [(PDFPage, CGRect)]) {
     guard let first = lines.first else { return unpin(b) }
-    pin(b, at: SelectionBar.origin(size: b.size, lines: lines.map(\.1), visible: bounds), on: first.0)
+    pin(b, at: SelectionBar.origin(size: b.size, lines: lines.map(\.1), visible: floatArea), on: first.0)
   }
 
   // MARK: The selection

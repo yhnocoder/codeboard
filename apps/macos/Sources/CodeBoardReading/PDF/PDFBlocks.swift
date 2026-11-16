@@ -247,7 +247,7 @@ extension PDFTabView {
     refPreview.layer?.backgroundColor = look.paper
     refPreview.layer?.borderColor = look.ring
     let line = inView([link])
-    let origin = AnnotationPop.origin(size: refPreview.frame.size, lines: line.map(\.1), visible: bounds)
+    let origin = AnnotationPop.origin(size: refPreview.frame.size, lines: line.map(\.1), visible: floatArea)
     pin(refPreview, at: origin, on: link.0)
   }
 

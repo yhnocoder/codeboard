@@ -214,6 +214,43 @@ import Testing
     }
   }
 
+  /// The side is chosen once with room for one more note: low on the page, where the empty popup would fit below but
+  /// not with a note added, it goes above, and stays there as it grows, growing upwards
+  @Test func theAnnotationPopupKeepsItsSideAndGrowsAwayFromTheHighlight() {
+    let visible = CGRect(x: 0, y: 0, width: 400, height: 600)
+    let lines = [CGRect(x: 60, y: 440, width: 200, height: 16)]
+    let empty = CGSize(width: 200, height: 120)
+    // 440 + 16 + 6 + 120 = 582 fits; with a note of 24 more it does not
+    #expect(AnnotationPop.origin(size: empty, lines: lines, visible: visible).y == 462)
+    #expect(!AnnotationPop.below(height: empty.height + 24, lines: lines, visible: visible))
+    #expect(AnnotationPop.origin(size: empty, lines: lines, visible: visible, below: false).y == CGFloat(440 - 6 - 120))
+    let grown = CGSize(width: 200, height: 200)
+    #expect(AnnotationPop.origin(size: grown, lines: lines, visible: visible, below: false).y == CGFloat(440 - 6 - 200))
+    // high on the page it goes below, and stays below as it grows
+    let high = [CGRect(x: 60, y: 40, width: 200, height: 16)]
+    #expect(AnnotationPop.below(height: empty.height + 24, lines: high, visible: visible))
+    #expect(AnnotationPop.origin(size: grown, lines: high, visible: visible, below: true).y == 62)
+    // no room either side: the side with more room
+    #expect(AnnotationPop.below(height: 400, lines: [CGRect(x: 60, y: 250, width: 200, height: 16)], visible: visible))
+    #expect(!AnnotationPop.below(height: 400, lines: [CGRect(x: 60, y: 350, width: 200, height: 16)], visible: visible))
+  }
+
+  /// What floats over the pages stays above the versions bar: the popup, the bars, a link's preview
+  @Test func theAnnotationPopupAndTheBarsStayAboveTheVersionsBar() throws {
+    let p = try PaperVault()
+    defer { p.v.remove() }
+    let w = try PDFWindow(p.v)
+    defer { w.close() }
+    let t = try w.tab(try #require(w.pane.openPDF(.entry(p.entry.id, version: VersionID(rawValue: "v7")))))
+    #expect(!t.versions.isHidden && t.floatArea.maxY <= t.versions.frame.minY - 6)
+    let plain = try w.tab(try #require(w.pane.openPDF(.file(p.v.file))))
+    #expect(plain.floatArea == plain.bounds, "no bar: the whole tab")
+    // a passage just above the bar: the popup goes above it, clear of the bar
+    let lines = [CGRect(x: 40, y: t.versions.frame.minY - 30, width: 200, height: 16)]
+    let o = AnnotationPop.origin(size: CGSize(width: 300, height: 140), lines: lines, visible: t.floatArea)
+    #expect(o.y + 140 <= t.versions.frame.minY)
+  }
+
   // MARK: Regions
 
   /// A region framed from one point of the first page to another, in the PDF view's space (page points)

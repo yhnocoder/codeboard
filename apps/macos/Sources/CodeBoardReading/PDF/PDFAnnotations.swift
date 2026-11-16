@@ -96,8 +96,8 @@ extension PDFTabView {
     write(e, at: path)
   }
 
-  /// The popup for the shown highlight, below its last line (above its first when there is no room), with its
-  /// annotations
+  /// The popup for the shown highlight, below its last line (above its first when there is no room for it with one
+  /// more note), with its annotations
   func openPop() {
     guard let entry, !shownHighlight.isEmpty else { return }
     let ls = lines(of: shownHighlight)
@@ -117,7 +117,12 @@ extension PDFTabView {
       pop = p
     }
     guard let first = ls.min(by: { $0.1.minY < $1.1.minY }) else { return }
-    pin(p, at: AnnotationPop.origin(size: p.size, lines: ls.map(\.1), visible: bounds), on: first.0)
+    // the side is chosen once, with room for one more note, and kept: a note added grows it away from the highlight
+    let area = floatArea
+    if p.below == nil {
+      p.below = AnnotationPop.below(height: p.size.height + p.oneMoreNote, lines: ls.map(\.1), visible: area)
+    }
+    pin(p, at: AnnotationPop.origin(size: p.size, lines: ls.map(\.1), visible: area, below: p.below), on: first.0)
   }
 
   func closePop() {
