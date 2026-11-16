@@ -476,7 +476,9 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
   private func takeKept() async {
     guard case .saved(let hash, _, _) = page, let blocks, let vault = context.pane.vault,
       let found = context.pane.entries.all.lazy.compactMap({ f in
-        f.entry.versions.first { if case .page(hash, _, _) = $0.content { true } else { false } }.map { (f.path, $0.id) }
+        f.entry.versions.first { if case .page(hash, _, _) = $0.content { true } else { false } }.map {
+          (f.path, $0.id)
+        }
       }).first
     else { return showTranslation() }
     let (entry, version) = found

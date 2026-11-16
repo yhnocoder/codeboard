@@ -235,8 +235,9 @@ struct ShiyiWebTabTests {
     defer { window.close() }
     let websiteData = WKWebsiteDataStore.nonPersistent()
     // just before each tab is made: other suites' shells register theirs
-    func open(_ payload: [String: String]) -> WebPageView {
-      WebReading.register(saving: service.store, scripts: TestService.scripts, websiteData: websiteData)
+    func open(_ payload: [String: String], translate: WebReading.Translator? = nil) -> WebPageView {
+      WebReading.register(
+        saving: service.store, scripts: TestService.scripts, translate: translate, websiteData: websiteData)
       let id = pane.open("New Tab", kind: WebReading.kind, payload: payload)
       paneView.sync()
       window.layoutIfNeeded()
@@ -273,5 +274,17 @@ struct ShiyiWebTabTests {
     try await until("body view again") { try await js(v, navShown) as? Bool == false }
     #expect((try await js(v, text) as? String)?.contains("long enough to be read") == true)
     #expect(server.asked == asked, "the saved page reached the loopback: \(server.asked.dropFirst(asked.count))")
+
+    // the real page scripts' blocks, translated by a made-up translator and shown beside the original
+    pane.entries = EntryIndex(vault, try vault.tree())
+    let t = open(saved.payload) { texts, _, _ in texts.map { "译文：" + $0 } }
+    try await until("the page can be translated") { t.bar.translate.isEnabled }
+    t.bar.translate.selectedSegment = 1
+    NSApp.sendAction(t.bar.translate.action!, to: t.bar.translate.target, from: t.bar.translate)
+    try await until("the translation beside the original") {
+      let shown = try await js(t, text) as? String ?? ""
+      return shown.contains("译文：The article's text") && shown.contains("\nThe article's text")
+    }
+    #expect(server.asked == asked)
   }
 }
