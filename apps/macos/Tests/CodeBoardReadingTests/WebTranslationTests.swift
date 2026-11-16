@@ -201,7 +201,7 @@ import WebKit
     try vault.entry(at: entry).versions.filter { if case .translation = $0.content { true } else { false } }
   }
 
-  /// The first translations kept are listed in the entry as a Version of the page, which the pane knows at once;
+  /// The first translations kept are listed in the entry as a Version of the page, which the pane is told of;
   /// later ones add none; a file kept before it was listed gets its Version when the page is opened again
   @Test func theTranslationsAreAVersionOfThePageListedOnce() async throws {
     let v1 = VersionID(rawValue: "v1")
@@ -211,7 +211,8 @@ import WebKit
     try await until("listed") { try listed().count == 1 }
     let t = try listed()[0]
     #expect(t.of == v1 && t.language == "zh" && t.label == "v1 中文" && t.content == .translation(file: "v1.zh.json"))
-    #expect(tabs.pane.entries.all.first?.entry.versions.contains(t) == true, "the pane knows it")
+    // written off the main thread: the pane is told when the write comes back
+    try await until("the pane knows it") { tabs.pane.entries.all.first?.entry.versions.contains(t) == true }
     try await until("translated") { v.translating == nil && v.bar.translation == .ready }
     tabs.close()
 
