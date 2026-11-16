@@ -49,8 +49,9 @@ extension CanvasView {
     webFetching.insert(key)
     if item == nil { refresh() }
     let fetch = fetchPage
-    // the board it was read for, though another be shown by the time it arrives
-    weak let doc = document
+    // the board it was read for, though another be shown by the time it arrives: the document, as the canvas gives its
+    // seat up then
+    weak let doc = document?.document
     let task = Task { [weak self] in
       let page = await fetch(u)
       let meta = await Task.detached { CanvasView.store(page, in: folder) }.value

@@ -6,6 +6,8 @@ import SwiftUI
 struct StripTab: Identifiable, Equatable {
   let id: UUID
   let title: String
+  /// A preview, its title in italic
+  var italic = false
 }
 
 /// What a tab strip shows and acts on: the board's tabs (the shell) or the reading pane's
@@ -22,7 +24,7 @@ extension Shell: TabSource {
 }
 
 extension ReadingPane: TabSource {
-  var stripTabs: [StripTab] { tabs.map { StripTab(id: $0.id, title: $0.title) } }
+  var stripTabs: [StripTab] { tabs.map { StripTab(id: $0.id, title: $0.title, italic: $0.preview) } }
 }
 
 /// Where a strip's tabs measure their frames
@@ -43,7 +45,7 @@ struct TabStrip<Source: TabSource>: View {
         HStack(spacing: 2) {
           ForEach(source.stripTabs) { tab in
             TabItem(
-              title: tab.title, selected: tab.id == source.selected, close: { source.close(tab.id) }
+              title: tab.title, italic: tab.italic, selected: tab.id == source.selected, close: { source.close(tab.id) }
             )
             .id(tab.id)
             .offset(x: offset(of: tab.id))
@@ -113,6 +115,7 @@ struct TabStrip<Source: TabSource>: View {
 /// at the leading edge (where macOS tabs keep it), in padding wide enough to hold it, so nothing shifts or hides
 private struct TabItem: View {
   let title: String
+  let italic: Bool
   let selected: Bool
   let close: () -> Void
 
@@ -120,6 +123,7 @@ private struct TabItem: View {
     Hover { hovered in
       Text(title)
         .font(.system(size: 12, weight: selected ? .semibold : .regular))
+        .italic(italic)
         .foregroundStyle(selected ? ShellTheme.ink : ShellTheme.muted)
         .lineLimit(1)
         .truncationMode(.tail)

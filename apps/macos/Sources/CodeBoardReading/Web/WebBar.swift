@@ -46,6 +46,30 @@ class WebGlass: NSView {
     layer?.shadowPath = CGPath(roundedRect: bounds, cornerWidth: r, cornerHeight: r, transform: nil)
   }
 
+  /// Whether it was last slid in
+  private var slidIn = true
+
+  /// A bar coming or going: it fades and slides to `frame` (in place when the Mac reduces motion), and once out of
+  /// sight, unless it was slid in again meanwhile, it is hidden
+  func slide(shown: Bool, to frame: CGRect) {
+    slidIn = shown
+    isHidden = false
+    let move = !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+    NSAnimationContext.runAnimationGroup { ctx in
+      ctx.duration = 0.18
+      ctx.allowsImplicitAnimation = true
+      animator().alphaValue = shown ? 1 : 0
+      if move { animator().frame = frame }
+    } completionHandler: { [weak self] in
+      MainActor.assumeIsolated {
+        guard let self, !self.slidIn else { return }
+        self.isHidden = true
+        self.frame = frame
+      }
+    }
+    if !move, shown { self.frame = frame }
+  }
+
   /// The look's glass over the blur, its hairline and the float shadow; the controls on it in its appearance
   func restyle() {
     appearance = NSAppearance(named: look.dark ? .darkAqua : .aqua)
@@ -528,10 +552,15 @@ final class WebSuggestionRow: NSButton {
     didSet { paint() }
   }
 
-  init(_ entry: WebHistory.Entry) {
+  convenience init(_ entry: WebHistory.Entry) {
     let address = WebAddress.withPath(entry.url)
-    titleLabel = NSTextField(labelWithString: entry.title.isEmpty ? address : entry.title)
-    addressLabel = NSTextField(labelWithString: entry.title.isEmpty ? "" : address)
+    self.init(title: entry.title.isEmpty ? address : entry.title, detail: entry.title.isEmpty ? "" : address)
+  }
+
+  /// `detail` after the title, lighter (a page's address, a file's folder)
+  init(title text: String, detail: String) {
+    titleLabel = NSTextField(labelWithString: text)
+    addressLabel = NSTextField(labelWithString: detail)
     super.init(frame: .zero)
     title = ""
     setButtonType(.momentaryChange)

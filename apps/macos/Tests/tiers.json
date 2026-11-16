@@ -495,7 +495,8 @@
           "sources": [
             "CodeBoardShell/RepositoriesModel.swift",
             "CodeBoardShell/RepositoriesBlock.swift",
-            "CodeBoardWorkspace/Repositories.swift"
+            "CodeBoardWorkspace/Repositories.swift",
+            "CodeBoardReading/Code"
           ],
           "tests": ["RepositoriesBlockTests"]
         },
@@ -551,6 +552,10 @@
             "WebTranslatingTests",
             "WebTranslationTests"
           ]
+        },
+        "reading: code": {
+          "sources": ["CodeBoardReading/Code"],
+          "tests": ["CodeReadingTests"]
         },
         "reading: list": {
           "sources": ["CodeBoardReading/List"],
