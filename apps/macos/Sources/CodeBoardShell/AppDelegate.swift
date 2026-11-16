@@ -234,7 +234,10 @@ import CodeBoardResources
   @objc func showSettings(_ sender: Any?) {
     let ai = AISettings(defaults: .standard)
     let keys = KeychainKeyStore()
-    let s = settings ?? SettingsWindow(settings: ai, keys: keys)
+    let s =
+      settings
+      ?? SettingsWindow(
+        settings: ai, keys: keys, search: BoardPanes.searchSettings, searchKeys: BoardPanes.embeddingKeys)
     s.onSwitchChange = { [weak self] in self?.panes?.summarySwitch = $0 }
     s.onKeyChange = { [weak self] set in self?.panes?.summaryWriter = set ? ai.writer(keys: keys) : nil }
     settings = s
