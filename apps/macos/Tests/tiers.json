@@ -470,6 +470,32 @@
           "tests": ["FullWindowSheetTests"]
         }
       }
+    },
+    "CodeBoardReadingTests": {
+      "changed": "files",
+      "important": ["ReadingPaneTests/tabsOpenSwitchAndCloseAndTheSameKeyGoesToItsTab"],
+      "areas": {
+        "reading: frame": {
+          "sources": ["CodeBoardReading/Frame"],
+          "tests": ["ReadingPaneTests", "readingImportsNeitherTheShellNorTheCanvas"]
+        },
+        "reading: pdf": {
+          "sources": ["CodeBoardReading/PDF"],
+          "tests": ["ReadingPaneTests/tabsOpenSwitchAndCloseAndTheSameKeyGoesToItsTab"]
+        },
+        "reading: web": {
+          "sources": ["CodeBoardReading/Web"],
+          "tests": ["ReadingPaneTests/tabsOpenSwitchAndCloseAndTheSameKeyGoesToItsTab"]
+        },
+        "reading: list": {
+          "sources": ["CodeBoardReading/List"],
+          "tests": ["ReadingPaneTests/tabsOpenSwitchAndCloseAndTheSameKeyGoesToItsTab"]
+        },
+        "reading: shared": {
+          "sources": ["CodeBoardReading/Shared"],
+          "tests": ["ReadingPaneTests/tabsOpenSwitchAndCloseAndTheSameKeyGoesToItsTab"]
+        }
+      }
     }
   }
 }

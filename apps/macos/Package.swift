@@ -116,6 +116,9 @@ let package = Package(
         "CodeBoardShell", "CodeBoardCanvas", "CodeBoardNotes",
         .product(name: "TestGuard", package: "better-swift-markdown"),
       ]),
+    // the reading pane beside the board and what its tabs show (PDF/, Web/, List/, Shared/); AppKit only, below the shell
+    .target(name: "CodeBoardReading"),
+    .testTarget(name: "CodeBoardReadingTests", dependencies: ["CodeBoardReading"]),
     .testTarget(
       name: "MarkdownDemoKitTests",
       dependencies: [
