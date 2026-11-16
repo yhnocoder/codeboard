@@ -1,7 +1,14 @@
+import AppKit
+import CodeBoardModel
+import CodeBoardResources
 import Foundation
 import Network
+import WebKit
 
-// What the web tab's tests share: the loopback server their made-up pages come from, and waiting on a page.
+@testable import CodeBoardReading
+
+// What the web tab's tests share: the loopback server their made-up pages come from, waiting on a page, the saving
+// service in memory and a reading pane of web tabs.
 
 /// Waits for `ok`, looking again every few milliseconds; the time is only a bound
 @MainActor func until(_ what: String, _ ok: () async throws -> Bool) async throws {
@@ -88,5 +95,163 @@ final class LoopbackServer: Sendable {
       let answer = Data((lines.joined(separator: "\r\n") + "\r\n\r\n").utf8) + body
       c.send(content: answer, completion: .contentProcessed { _ in c.cancel() })
     }
+  }
+}
+
+/// The saving service of the web tabs under test, in memory: what they saved, and the saved pages it has
+actor TestStore: PageStore {
+  struct Page: Sendable {
+    var capture: PageCapture
+    var file: URL
+    var html: String
+  }
+
+  private(set) var links: [PageLink] = []
+  private(set) var pages: [Page] = []
+  private var ruleFiles: [String: [Data]] = [:]
+  private var files: [String: URL] = [:]
+
+  func saveLink(_ meta: PageLink) -> SavedItem {
+    links.append(meta)
+    return SavedItem(id: "link-\(links.count)", kind: .link, url: meta.url, title: meta.title, savedAt: 1_000)
+  }
+
+  /// Hashes `00…01`, `00…02`…
+  func savePage(_ meta: PageCapture, file: URL) throws -> SavedItem {
+    let html = try String(contentsOf: file, encoding: .utf8)
+    pages.append(Page(capture: meta, file: file, html: html))
+    return SavedItem(
+      id: "page-\(pages.count)", kind: .page, url: meta.url, title: meta.title, savedAt: 2_000,
+      pageHash: Self.hash(pages.count), bytes: Int64(html.utf8.count))
+  }
+
+  static func hash(_ n: Int) -> String { String(format: "%064x", n) }
+
+  func items(kind: SavedItem.Kind?, after: String?, limit: Int) -> SavedItems { SavedItems(items: []) }
+
+  func writePage(hash: String, to: URL) throws -> Int64 {
+    guard let f = files[hash] else { throw CocoaError(.fileNoSuchFile) }
+    let data = try Data(contentsOf: f)
+    try data.write(to: to)
+    return Int64(data.count)
+  }
+
+  func pin(id: String, pinned: Bool) {}
+  func rules(forHost host: String) -> [Data] { ruleFiles[host] ?? [] }
+
+  func set(rules: [String], forHost host: String) { ruleFiles[host] = rules.map { Data($0.utf8) } }
+  func set(file: URL, forHash hash: String) { files[hash] = file }
+}
+
+/// A reading pane whose web tabs keep their sites' data in a store in memory of the test's own, and their history in
+/// a folder of its own (none: `keeps` false), in a window never ordered in. Each tab is made as the pane makes it,
+/// with web tabs registered for it just before, since other tests register their own
+@MainActor final class WebTabs {
+  let pane = ReadingPane()
+  let paneView: ReadingPaneView
+  let window: NSWindow
+  let websiteData: WKWebsiteDataStore
+  let machine = FileManager.default.temporaryDirectory.appending(path: "web-machine-\(UUID().uuidString)")
+  private let store: (any PageStore)?
+  private let scripts: URL?
+
+  init(
+    vault: Vault? = nil, store: (any PageStore)? = nil, scripts: URL? = nil,
+    websiteData: WKWebsiteDataStore = .nonPersistent(), keeps: Bool = true
+  ) throws {
+    _ = NSApplication.shared
+    self.store = store
+    self.scripts = scripts
+    self.websiteData = websiteData
+    pane.vault = vault
+    if let vault { pane.entries = EntryIndex(vault, try vault.tree()) }
+    if keeps { pane.machineFolder = machine }
+    paneView = ReadingPaneView(pane: pane)
+    window = NSWindow(
+      contentRect: CGRect(x: -30000, y: -30000, width: 600, height: 500), styleMask: [.titled], backing: .buffered,
+      defer: false)
+    window.isReleasedWhenClosed = false
+    window.contentView = paneView
+  }
+
+  /// The web tabs' folder on this Mac
+  var data: URL { machine.appending(path: "Web") }
+
+  /// A new web tab showing what `payload` names, selected; its view
+  func open(_ payload: [String: String] = [:]) -> WebPageView {
+    WebReading.register(saving: store, scripts: scripts, websiteData: websiteData)
+    let id = pane.open("New Tab", kind: WebReading.kind, payload: payload)
+    paneView.sync()
+    window.layoutIfNeeded()
+    return paneView.views[id] as! WebPageView
+  }
+
+  /// The tab `view` is in
+  func tab(_ view: WebPageView) -> ReadingTab? { pane.tabs.first { paneView.views[$0.id] === view } }
+
+  func close() {
+    window.close()
+    try? FileManager.default.removeItem(at: machine)
+  }
+}
+
+/// Stand-ins for the saving service's page scripts, speaking their messages, written to a folder of their own
+enum StandInScripts {
+  /// Marks the page's world, so that a test sees it ran there
+  static let hooks = "window.hooked = true"
+
+  /// Metadata of its own; a saving that says its first stage, fetches one resource, writes two chunks and returns.
+  /// `?fail` fails at once, `?hold` waits for `cancel()`
+  static let capture = """
+    var shiyiCapture = {
+      stopped: false,
+      meta: async () => ({ url: location.href, title: document.title, description: "A made-up page",
+        site_name: "Loopback", favicon: location.origin + "/icon.png", cover: location.origin + "/cover.png" }),
+      async savePage(files) {
+        const post = m => webkit.messageHandlers.shiyi.postMessage(m)
+        await post({ type: "stage", stage: "prepare" })
+        if (location.search == "?fail") return { ok: false, code: "too-large", message: "over the limit" }
+        if (location.search == "?hold") await new Promise(k => this.release = k)
+        if (this.stopped) return { ok: false, code: "cancelled", message: "" }
+        const asset = await post({ type: "fetch", url: location.origin + "/asset", accept: "text/plain", timeout_ms: 5000 })
+        const parts = ["<!doctype html><title>" + document.title + "</title>",
+          "<p id=asset>" + atob(asset.base64) + " " + asset.status + "</p><p id=rules>" + JSON.stringify(files) + "</p>"]
+        for (const [seq, text] of parts.entries()) {
+          const r = await post({ type: "chunk", seq, text })
+          if (!r.ok) return { ok: false, code: "internal", message: r.error }
+        }
+        return { ok: true, meta: await this.meta(), bytes: parts.join("").length, chunks: parts.length }
+      },
+      cancel() { this.stopped = true; this.release?.() },
+    }
+    """
+
+  /// Marks the page as read and, in body mode, hides what the rule files' `body` selectors leave out, with an
+  /// attribute as the real one does
+  static let reader = """
+    document.documentElement.setAttribute("data-reader", "")
+    var shiyiReader = {
+      files: [], mode: "full",
+      apply({ files, url, mode }) { this.files = files; this.url = url; this.setMode(mode) },
+      setMode(mode) {
+        this.mode = mode
+        const keep = this.files.map(f => f.body).filter(Boolean).join(",")
+        for (const e of document.body.children) {
+          if (mode == "body" && keep && !e.matches(keep)) e.setAttribute("data-shiyi-hidden", "")
+          else e.removeAttribute("data-shiyi-hidden")
+        }
+      },
+      state() { return { mode: this.mode, url: this.url } },
+    }
+    """
+
+  /// A new folder holding them
+  static func folder() throws -> URL {
+    let f = FileManager.default.temporaryDirectory.appending(path: "web-scripts-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: f, withIntermediateDirectories: true)
+    try hooks.write(to: f.appending(path: "hooks.js"), atomically: true, encoding: .utf8)
+    try capture.write(to: f.appending(path: "capture.js"), atomically: true, encoding: .utf8)
+    try reader.write(to: f.appending(path: "reader.js"), atomically: true, encoding: .utf8)
+    return f
   }
 }

@@ -129,6 +129,19 @@ private func item(_ id: String, at savedAt: Int64, _ url: String = "https://exam
   #expect(e.title == "Saved whole" && e.added == 7 && e.origin == .web("https://example.com/a") && pages(e) == ["ab12"])
 }
 
+@Test func whatWasReadOfAPageTakesThePlaceOfWhatItsEntryHadAndWithoutItStays() throws {
+  let s = try Scratch()
+  defer { s.remove() }
+  let one = WebMeta(title: "A", description: "First", icon: .url("https://example.com/icon.png"))
+  let path = try s.vault.save(item("A", at: 1), in: s.resource, meta: one)
+  #expect(try s.vault.entry(at: path).meta == one)
+  try s.vault.save(item("A", at: 2, hash: "ab12"), in: s.resource)
+  #expect(try s.vault.entry(at: path).meta == one, "a saving with nothing read keeps it")
+  let two = WebMeta(title: "A", site: "Example", image: .url("https://example.com/cover.png"))
+  try s.vault.save(item("A", at: 3), in: s.resource, meta: two)
+  #expect(try s.vault.entry(at: path).meta == two)
+}
+
 @Test func aFirstRunTakesInEverythingOldestFirstOverSeveralPagesAndWritesTheWatermark() async throws {
   let s = try Scratch()
   defer { s.remove() }

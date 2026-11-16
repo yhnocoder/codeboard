@@ -35,6 +35,13 @@ import Testing
     #expect(WebAddress.shown(URL(string: "about:blank")) == "about:blank")
     #expect(WebAddress.shown(nil) == "")
   }
+
+  @Test func aSuggestionShowsTheAddressWithItsPath() {
+    #expect(WebAddress.withPath(URL(string: "https://www.example.com/a/b?c=1")!) == "example.com/a/b?c=1")
+    #expect(WebAddress.withPath(URL(string: "http://127.0.0.1:5000/")!) == "127.0.0.1:5000")
+    #expect(WebAddress.withPath(URL(string: "https://example.com")!) == "example.com")
+    #expect(WebAddress.withPath(URL(string: "https://example.com/docs/")!) == "example.com/docs/")
+  }
 }
 
 @Suite struct WebHistoryTests {

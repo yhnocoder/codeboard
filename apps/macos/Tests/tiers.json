@@ -481,6 +481,10 @@
           "sources": ["CodeBoardShell/ImportAlert.swift", "CodeBoardCanvas/CanvasDiagnostics.swift"],
           "tests": ["FullWindowSheetTests"]
         },
+        "web": {
+          "sources": ["CodeBoardShell/ShellWeb.swift", "CodeBoardReading/Web"],
+          "tests": ["ShellWebTests"]
+        },
         "reading pane": {
           "sources": [
             "CodeBoardShell/MainWindow.swift",
@@ -510,7 +514,15 @@
         },
         "reading: web": {
           "sources": ["CodeBoardReading/Web"],
-          "tests": ["WebBarVisibilityTests", "WebAddressTests", "WebHistoryTests", "WebPageTests", "WebSiteDataTests"]
+          "tests": [
+            "WebBarVisibilityTests",
+            "WebAddressTests",
+            "WebHistoryTests",
+            "WebPageTests",
+            "WebSiteDataTests",
+            "WebSavingTests",
+            "WebSavedPageTests"
+          ]
         },
         "reading: list": {
           "sources": ["CodeBoardReading/List"],
