@@ -22,7 +22,7 @@ extension Board {
   }
 
   /// Move to Shelf: these cards and Sections (with what is in them) go onto the Shelf as one new entry, with the arrows
-  /// touching those cards and the stickers on them. `heights`: what the canvas measured of cards with no height of
+  /// touching those cards and the stickers on them and on those arrows. `heights`: what the canvas measured of cards with no height of
   /// their own, kept so their place is known after a reload (Place.mh). False when none of them is on the canvas
   @discardableResult
   public mutating func shelve(
@@ -43,7 +43,9 @@ extension Board {
     let touches = { (a: Arrow) in ids.contains(a.from.card) || ids.contains(a.to.card) }
     e.arrows = arrows.filter(touches)
     arrows.removeAll(where: touches)
-    let goes = { (k: Sticker) in k.anchor.card.map(ids.contains) == true }
+    let goes = { (k: Sticker) in
+      k.anchor.card.map(ids.contains) == true || k.anchor.arrow.map { a in e.arrows.contains { $0.id == a } } == true
+    }
     e.stickers = stickers.filter(goes)
     stickers.removeAll(where: goes)
     shelf.append(e)
@@ -85,14 +87,23 @@ extension Board {
     }
     var held: [CardID: Int] = [:]
     for (i, x) in shelf.enumerated() { for c in x.cards { held[c.id] = i } }
+    // where each arrow went, so a sticker on it goes there too
+    var arrowHeld: [ArrowID: Int] = [:]
     for a in e.arrows {
       if let i = held[a.from.card] ?? held[a.to.card] {
         shelf[i].arrows.append(a)
+        arrowHeld[a.id] = i
       } else {
         arrows.append(a)
       }
     }
-    stickers += e.stickers
+    for k in e.stickers {
+      if let i = k.anchor.arrow.flatMap({ arrowHeld[$0] }) {
+        shelf[i].stickers.append(k)
+      } else {
+        stickers.append(k)
+      }
+    }
     selfCheck()
     return (e.cards.map(\.id), e.sections.map(\.id))
   }

@@ -102,11 +102,15 @@ public struct CardContent: Equatable, Sendable {
   public var title: String?
   /// Markdown, drawn under the card's body
   public var description: String?
+  /// Where in a resource entry it was taken from, shown at its foot; its content stays its own whatever becomes of the
+  /// entry. Never on an image card whose picture is a resource's (that names the place already)
+  public var source: SourceAnchor?
   public var body: Body
 
-  public init(title: String? = nil, description: String? = nil, body: Body) {
+  public init(title: String? = nil, description: String? = nil, source: SourceAnchor? = nil, body: Body) {
     self.title = title
     self.description = description
+    self.source = source
     self.body = body
   }
 }
@@ -325,11 +329,61 @@ public struct ImageCard: Codable, Equatable, Sendable {
   }
 }
 
-/// A later kind (an image in a resource item, referenced and not copied) is one more case
 public enum ImageSource: Equatable, Sendable {
   /// A file in the images folder next to the JSON that names it
   case file(String)
   case url(String)
+  /// A block of a resource entry (a figure, a table, a region of a PDF page), drawn from the entry's file: referenced,
+  /// not copied
+  case resource(SourceAnchor)
+}
+
+/// Where in a resource entry (FORMAT.md, Resources): a block of one of its versions, or characters of its text
+public struct Place: Equatable, Sendable {
+  public enum Block: Equatable, Sendable {
+    /// A block of the version's block list, or of a saved page, by the id that list or page gives it
+    case id(String)
+    /// A page of a plain PDF, from 1; `rect` a region of it
+    case page(Int, rect: Rect? = nil)
+  }
+
+  /// In PDF points from the page's bottom left
+  public struct Rect: Equatable, Sendable {
+    public var x: Double
+    public var y: Double
+    public var width: Double
+    public var height: Double
+
+    public init(x: Double, y: Double, width: Double, height: Double) {
+      self.x = x
+      self.y = y
+      self.width = width
+      self.height = height
+    }
+  }
+
+  public var version: VersionID
+  public var block: Block
+  /// Characters of the block's text in UTF-16 code units; nil: the whole block, or with a rect the region
+  public var range: Range<Int>?
+
+  public init(version: VersionID, block: Block, range: Range<Int>? = nil) {
+    self.version = version
+    self.block = block
+    self.range = range
+  }
+}
+
+/// A place in an entry named from outside it: a card's source, an image card's picture. The entry may be gone; the
+/// anchor stays
+public struct SourceAnchor: Equatable, Sendable {
+  public var entry: EntryID
+  public var place: Place
+
+  public init(entry: EntryID, place: Place) {
+    self.entry = entry
+    self.place = place
+  }
 }
 
 public struct Arrow: Codable, Equatable, Sendable {
@@ -572,15 +626,19 @@ public struct SubBoard: Equatable, Sendable {
   /// One of a folder board's own cards, one for each board and subfolder in its folder: kept in step with the folder,
   /// never deleted on the board
   public var auto: Bool
+  /// Its preview, when open, in two columns (which previews are open is a choice of the moment, never kept)
+  public var twoColumnPreview: Bool
 
-  public init(board: BoardID, auto: Bool = false) {
+  public init(board: BoardID, auto: Bool = false, twoColumnPreview: Bool = false) {
     target = .board(board)
     self.auto = auto
+    self.twoColumnPreview = twoColumnPreview
   }
 
-  public init(folder: String) {
+  public init(folder: String, twoColumnPreview: Bool = false) {
     target = .folder(folder)
     auto = true
+    self.twoColumnPreview = twoColumnPreview
   }
 
   /// The board it shows, when it shows a board
@@ -695,12 +753,18 @@ public struct Sticker: Equatable, Sendable {
     case card(CardID, x: Double, y: Double, size: Double?)
     /// In the line numbers of a code line, following the line through new versions
     case line(CardID, segment: SegmentID, line: Int)
+    /// Moves with an arrow: its top left this far from the point at `position` (0…1) along the arrow's curve
+    case arrow(ArrowID, position: Double, x: Double, y: Double, size: Double?)
 
     public var card: CardID? {
       switch self {
-      case .canvas: nil
+      case .canvas, .arrow: nil
       case .card(let id, _, _, _), .line(let id, _, _): id
       }
+    }
+
+    public var arrow: ArrowID? {
+      if case .arrow(let id, _, _, _, _) = self { id } else { nil }
     }
   }
 

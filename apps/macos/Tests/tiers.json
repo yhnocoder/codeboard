@@ -392,7 +392,8 @@
         "FullWindowEditTests/whatIsTypedInOutsideTheBoardsKeepsTheKeys",
         "WritingWhenClosingTests/closingTheTabWritesWhatIsBeingTyped",
         "FullWindowSheetTests/quittingWithUnsavedChangesAsksInASheet",
-        "ParityMenuKeysTests/orderKeysAreTheAppsOwnAndBracketsSwitchTabs"
+        "ParityMenuKeysTests/orderKeysAreTheAppsOwnAndBracketsSwitchTabs",
+        "FullWindowReadingTests/thePaneIsHiddenAtFirstAndItsSwitchShowsAndHidesIt"
       ],
       "broad": [
         "CodeBoardShell/AppDelegate.swift",
@@ -468,8 +469,42 @@
         "sheets": {
           "sources": ["CodeBoardShell/ImportAlert.swift", "CodeBoardCanvas/CanvasDiagnostics.swift"],
           "tests": ["FullWindowSheetTests"]
+        },
+        "reading pane": {
+          "sources": ["CodeBoardShell/MainWindow.swift", "CodeBoardShell/TabStrip.swift", "CodeBoardReading/Frame"],
+          "tests": ["FullWindowReadingTests", "ShellTests/theReadingPaneRoundTripsThroughRelaunch"]
         }
       }
+    },
+    "CodeBoardReadingTests": {
+      "changed": "files",
+      "important": ["ReadingPaneTests/tabsOpenSwitchAndCloseAndTheSameKeyGoesToItsTab"],
+      "areas": {
+        "reading: frame": {
+          "sources": ["CodeBoardReading/Frame"],
+          "tests": ["ReadingPaneTests", "readingImportsNeitherTheShellNorTheCanvas"]
+        },
+        "reading: pdf": {
+          "sources": ["CodeBoardReading/PDF"],
+          "tests": ["ReadingPaneTests/tabsOpenSwitchAndCloseAndTheSameKeyGoesToItsTab"]
+        },
+        "reading: web": {
+          "sources": ["CodeBoardReading/Web"],
+          "tests": ["ReadingPaneTests/tabsOpenSwitchAndCloseAndTheSameKeyGoesToItsTab"]
+        },
+        "reading: list": {
+          "sources": ["CodeBoardReading/List"],
+          "tests": ["ReadingPaneTests/tabsOpenSwitchAndCloseAndTheSameKeyGoesToItsTab"]
+        },
+        "reading: shared": {
+          "sources": ["CodeBoardReading/Shared"],
+          "tests": ["ReadingPaneTests/tabsOpenSwitchAndCloseAndTheSameKeyGoesToItsTab"]
+        }
+      }
+    },
+    "CodeBoardResourcesTests": {
+      "changed": "whole",
+      "important": "whole"
     }
   }
 }
