@@ -45,6 +45,39 @@ import Testing
     #expect(PDFPlaces.selection([Place(version: v, block: .page(3), range: 0..<4)], in: doc) == nil)
     #expect(PDFPlaces.selection([Place(version: v, block: .id("b1"))], in: doc) == nil)
   }
+
+  @Test func aParagraphIsTheRunOfLinesThatFollowOneAnotherDownOneColumn() {
+    // y-up, 12 high, 14 apart: an indented first line, two full lines, a short last one; a blank line; another
+    // paragraph; then the top of the next column
+    func line(_ y: CGFloat, _ x: CGFloat = 20, _ right: CGFloat = 140) -> CGRect {
+      CGRect(x: x, y: y, width: right - x, height: 12)
+    }
+    let lines = [
+      line(300, 32), line(286), line(272), line(258, 20, 80),
+      line(230, 32), line(216), line(202),
+      line(300, 160, 280), line(286, 160, 280),
+    ]
+    #expect(PDFPlaces.block(around: 1, in: lines) == 0...3)
+    #expect(PDFPlaces.block(around: 3, in: lines) == 0...3)
+    #expect(PDFPlaces.block(around: 4, in: lines) == 4...6, "the blank line and the indent end the first")
+    #expect(PDFPlaces.block(around: 6, in: lines) == 4...6, "the next column is not the paragraph's")
+    #expect(PDFPlaces.block(around: 8, in: lines) == 7...8)
+    // a ragged right edge stays one paragraph
+    #expect(PDFPlaces.block(around: 0, in: [line(300, 20, 130), line(286, 20, 140), line(272, 20, 120)]) == 0...2)
+    #expect(PDFPlaces.block(around: 5, in: lines.prefix(2).map { $0 }) == 5...5)
+  }
+
+  @Test func aLineSelectedGrowsToItsParagraphOnThePage() throws {
+    let doc = try #require(
+      PDFDocument(
+        data: makePDF(["The river runs north past the mill.\nBirds rest on the far bank.\n\nEvening light."])))
+    let page = try #require(doc.page(at: 0))
+    let text = try #require(page.string) as NSString
+    let line = try #require(page.selection(for: text.range(of: "Birds rest on the far bank.")))
+    let p = try #require(PDFPlaces.paragraph(of: line, on: page))
+    #expect(p.string?.contains("The river runs north") == true && p.string?.contains("far bank.") == true)
+    #expect(p.string?.contains("Evening") == false)
+  }
 }
 
 // A PDF tab: PDFKit's view and selection, the bar over a selection, Copy, Add to Board, Highlight, what is written
@@ -86,6 +119,34 @@ import Testing
     #expect(t.isHidden && t.bar.isHidden)
   }
 
+  /// A key the pages do not take comes back up the responder chain to the tab's view, which once gave it to the pages
+  /// again, without end
+  @Test func keysThePagesDoNotTakeGoOnUpTheChainOnce() throws {
+    let v = try PDFVault()
+    defer { v.remove() }
+    let w = try PDFWindow(v)
+    defer { w.close() }
+    let t = try w.tab(try #require(w.pane.openPDF(.file(v.file))))
+    // letters, digits, shifted keys, arrows, space, return
+    let keys: [(String, UInt16, NSEvent.ModifierFlags)] = [
+      ("n", 45, []), ("N", 45, .shift), ("1", 18, []), ("!", 18, .shift), ("a", 0, []), (" ", 49, []),
+      ("\r", 36, []), ("\u{F700}", 126, []), ("\u{F701}", 125, []), ("\u{F702}", 123, []), ("\u{F703}", 124, []),
+    ]
+    let inner = t.pdf.documentView ?? t.pdf
+    for first in [t, t.pdf, inner] as [NSView] {
+      w.window.makeFirstResponder(first)
+      for (text, code, flags) in keys {
+        let key = try #require(
+          NSEvent.keyEvent(
+            with: .keyDown, location: .zero, modifierFlags: flags, timestamp: 0, windowNumber: w.window.windowNumber,
+            context: nil, characters: text, charactersIgnoringModifiers: text.lowercased(), isARepeat: false,
+            keyCode: code))
+        (w.window.firstResponder ?? first).keyDown(with: key)
+      }
+    }
+    #expect(w.collected.isEmpty, "none of them collects, and each came back")
+  }
+
   @Test func copyPutsTheSelectedTextOnThePasteboard() throws {
     let v = try PDFVault()
     defer { v.remove() }
@@ -99,7 +160,8 @@ import Testing
     #expect(w.pasteboard.string(forType: .string) == "Evening light")
   }
 
-  @Test func addToBoardAndOptionReturnHandTheSameCollectedPassage() throws {
+  /// A file alone is made an entry by the first passage taken from it, so the passage has its source
+  @Test func addToBoardAndOptionReturnHandTheSameCollectedPassageWithItsSource() throws {
     let v = try PDFVault()
     defer { v.remove() }
     let w = try PDFWindow(v)
@@ -116,8 +178,20 @@ import Testing
     t.keyDown(with: key)
     #expect(w.collected.count == 3)
     #expect(w.collected.allSatisfy { $0 == w.collected[0] })
+    guard case .entry(let entry, _)? = try v.vault.items(in: v.resource.path).first else {
+      Issue.record("the file made an entry")
+      return
+    }
+    let place = Place(
+      version: entry.versions[0].id, block: .page(2),
+      range: (page.string! as NSString).range(of: "boat").location..<(page.string! as NSString).range(of: "boat")
+        .location + 4)
     #expect(
-      w.collected.first == Collected(body: .note(markdown: "boat"), source: nil, title: "Field notes", label: "p. 2"))
+      w.collected.first
+        == Collected(
+          body: .note(markdown: "boat"), source: SourceAnchor(entry: entry.id, place: place), title: "Field notes",
+          label: "p. 2"))
+    #expect(entry.highlights.isEmpty && entry.sidenotes.isEmpty)
   }
 
   /// A file alone is made an entry by its first highlight: a folder, the file moved into it under a plain name,
@@ -201,7 +275,6 @@ import Testing
     let t = try w.tab(try #require(w.pane.openPDF(.file(v.file))))
     try w.select(t, "past the mill")
     t.copySelection()
-    t.collect()
     #expect(t.selectedText == "past the mill")
     #expect(v.files() == before)
   }
@@ -217,6 +290,50 @@ import Testing
     #expect(t.pdf.isHidden && t.pdf.document == nil)
     w.pane.follow { ReadingKinds.follow($0, in: w.pane) }
     #expect(w.pane.tabs.isEmpty)
+  }
+
+  @Test func theBarOfASelectionAcrossColumnsGoesOverWhereItStartsInReadingOrder() throws {
+    let v = try PDFVault(
+      data: makeColumnsPDF(
+        "Alpha one\nAlpha two\nAlpha three\nAlpha four\nAlpha five", "Beta one\nBeta two\nBeta three"))
+    defer { v.remove() }
+    let w = try PDFWindow(v)
+    defer { w.close() }
+    let t = try w.tab(try #require(w.pane.openPDF(.file(v.file))))
+    let page = try #require(t.pdf.document?.page(at: 0))
+    let text = try #require(page.string) as NSString
+    let from = text.range(of: "Alpha four").location
+    let to = text.range(of: "Beta two")
+    let s = try #require(
+      t.pdf.document?.selection(
+        from: page, atCharacterIndex: from, to: page, atCharacterIndex: to.location + to.length - 1))
+    t.pdf.setCurrentSelection(s, animate: false)
+    t.released()
+    func inView(_ r: CGRect) -> CGRect { t.convert(t.pdf.convert(r, from: page), from: t.pdf) }
+    let lines = s.selectionsByLine().map { inView($0.bounds(for: page)) }
+    let first = try #require(lines.first)
+    #expect(s.selectionsByLine().first?.string?.hasPrefix("Alpha four") == true)
+    #expect(lines.contains { $0.minY < first.minY - 20 }, "a line of the right column is higher")
+    #expect(!t.bar.isHidden)
+    #expect(
+      abs(t.bar.frame.maxY - (first.minY - 6)) < 0.5 && abs(t.bar.frame.minX - first.minX) < 0.5, "\(t.bar.frame)")
+  }
+
+  @Test func aTripleClickedLineBecomesItsParagraph() throws {
+    let v = try PDFVault(pages: [
+      "The river runs north past the mill.\nBirds rest on the far bank.\n\nEvening light."
+    ])
+    defer { v.remove() }
+    let w = try PDFWindow(v)
+    defer { w.close() }
+    let t = try w.tab(try #require(w.pane.openPDF(.file(v.file))))
+    let page = try #require(t.pdf.document?.page(at: 0))
+    let text = try #require(page.string) as NSString
+    t.pdf.setCurrentSelection(page.selection(for: text.range(of: "Birds rest on the far bank.")), animate: false)
+    t.selectParagraph()
+    t.released()
+    #expect(t.selectedText?.hasPrefix("The river runs north") == true && t.selectedText?.hasSuffix("far bank.") == true)
+    #expect(!t.bar.isHidden)
   }
 }
 

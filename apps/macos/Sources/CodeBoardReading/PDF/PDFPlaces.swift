@@ -22,6 +22,54 @@ enum PDFPlaces {
     .sorted { $0.0 < $1.0 }.map(\.1)
   }
 
+  /// The paragraph a line is in, as well as a page's lines tell it: the run of lines around `line` (indices into
+  /// `lines`, a page's lines in reading order, y-up as PDFKit gives them) where each line follows the one before it
+  /// (`follows`); a plain PDF has no blocks of its own
+  static func block(around line: Int, in lines: [CGRect]) -> ClosedRange<Int> {
+    guard lines.indices.contains(line) else { return line...line }
+    var from = line
+    var to = line
+    while from > 0, follows(lines[from - 1], lines[from]) { from -= 1 }
+    while to < lines.count - 1, follows(lines[to], lines[to + 1]) { to += 1 }
+    return from...to
+  }
+
+  /// Whether `b` goes on the paragraph of `a`, the line before it in reading order: it is the next line down (its
+  /// middle between half a line and 1.6 lines below, so a blank line between them ends it), in the same column (they
+  /// overlap across half the narrower), not indented past `a` by more than 0.8 of a line's height (a paragraph's
+  /// indented first line starts a new one), and `a` does not end short of `b` by more than two lines' heights and
+  /// three tenths of the wider line (a paragraph's last line is short; a ragged right edge is not). Line height: the
+  /// taller of the two
+  static func follows(_ a: CGRect, _ b: CGRect) -> Bool {
+    let h = max(a.height, b.height)
+    let down = a.midY - b.midY
+    let overlap = min(a.maxX, b.maxX) - max(a.minX, b.minX)
+    return down >= 0.5 * h && down <= 1.6 * h && overlap > 0.5 * min(a.width, b.width) && b.minX - a.minX <= 0.8 * h
+      && a.maxX >= b.maxX - max(2 * h, 0.3 * max(a.width, b.width))
+  }
+
+  /// The paragraph of `page` that `selection` (a line, as PDFKit selects one on a triple click) starts in, selected
+  /// whole; nil when the selection is on no line of the page
+  static func paragraph(of selection: PDFSelection, on page: PDFPage) -> PDFSelection? {
+    guard let all = page.selection(for: page.bounds(for: .cropBox)) else { return nil }
+    let lines = all.selectionsByLine().filter { !($0.string ?? "").isEmpty }
+    let at = selection.bounds(for: page)
+    let rects = lines.map { $0.bounds(for: page) }
+    guard
+      let i = rects.indices.max(by: {
+        rects[$0].intersection(at).width * rects[$0].intersection(at).height
+          < rects[$1].intersection(at).width * rects[$1].intersection(at).height
+      }), rects[i].intersects(at)
+    else { return nil }
+    let ranges = block(around: i, in: rects).flatMap { k in
+      (0..<lines[k].numberOfTextRanges(on: page)).map { lines[k].range(at: $0, on: page) }
+    }.filter { $0.location != NSNotFound }
+    guard let from = ranges.map(\.location).min(), let to = ranges.map({ $0.location + $0.length }).max() else {
+      return nil
+    }
+    return page.selection(for: NSRange(location: from, length: to - from))
+  }
+
   /// The text of places of a plain PDF as one selection; nil when none is on a page of `doc`
   static func selection(_ places: [Place], in doc: PDFDocument) -> PDFSelection? {
     var out: PDFSelection?
@@ -78,8 +126,57 @@ enum PDFPlaces {
     }
   }
 
-  /// The highlight drawn under a point of a page (page space), by its id
+  /// The highlight drawn under a point of a page (page space), or the mark of its annotations, by its id
   static func highlight(at point: CGPoint, on page: PDFPage) -> String? {
-    page.annotations.first { $0.type == "Highlight" && $0.bounds.contains(point) }?.userName
+    page.annotations.first { ["Highlight", "Circle"].contains($0.type) && $0.bounds.contains(point) }?.userName
+  }
+
+  /// Highlights made together (a selection across pages is one Highlight a page): the same time, colour and version
+  static func groups(_ highlights: [Highlight]) -> [[Highlight]] {
+    var out: [[Highlight]] = []
+    for h in highlights {
+      if let i = out.firstIndex(where: {
+        $0[0].at == h.at && $0[0].color == h.color && $0[0].place.version == h.place.version
+      }) {
+        out[i].append(h)
+      } else {
+        out.append([h])
+      }
+    }
+    return out
+  }
+
+  /// The mark at the end of a highlight's last line that says it has annotations: a small dot of its colour, darker
+  static func mark(after line: CGRect, _ c: Highlight.Color, id: String) -> PDFAnnotation {
+    let a = PDFAnnotation(
+      bounds: CGRect(x: line.maxX + 1, y: line.maxY - 6, width: 5, height: 5), forType: .circle, withProperties: nil)
+    let dark = color(c).withAlphaComponent(1).blended(withFraction: 0.35, of: .black) ?? .black
+    a.color = dark
+    a.interiorColor = dark
+    a.userName = id
+    return a
+  }
+
+  /// A region of a page (page space, from its media box's origin) drawn into a picture `pixelWidth` wide, on white
+  static func picture(of page: PDFPage, _ r: CGRect, pixelWidth: Int) -> CGImage? {
+    guard pixelWidth > 0, r.width > 0, r.height > 0 else { return nil }
+    let scale = CGFloat(pixelWidth) / r.width
+    let height = max(1, Int((r.height * scale).rounded()))
+    guard
+      let ctx = CGContext(
+        data: nil, width: pixelWidth, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+        space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+    else { return nil }
+    ctx.setFillColor(CGColor(gray: 1, alpha: 1))
+    ctx.fill(CGRect(x: 0, y: 0, width: pixelWidth, height: height))
+    ctx.scaleBy(x: scale, y: scale)
+    let box = page.bounds(for: .cropBox)
+    ctx.translateBy(x: box.minX - r.minX, y: box.minY - r.minY)
+    // the page as its file has it: none of the highlights drawn on it here
+    let shown = page.displaysAnnotations
+    page.displaysAnnotations = false
+    page.draw(with: .cropBox, to: ctx)
+    page.displaysAnnotations = shown
+    return ctx.makeImage()
   }
 }

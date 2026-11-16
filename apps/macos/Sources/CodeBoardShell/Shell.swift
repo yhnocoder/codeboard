@@ -228,7 +228,7 @@ public struct ShellState: Codable, Equatable, Sendable {
         guard let key = tab.key, key.hasPrefix("resource:") else { return ReadingKinds.follow(tab, in: reading) }
         return resources[key]
       }
-      sources.onSourcesChanged?()
+      sources.sourcesChanged()
       // a crumb whose board is gone cuts the crumbs there: what is past it is no way back
       func kept(_ cs: [Tab.Crumb]) -> [Tab.Crumb] { Array(cs.prefix { byID[$0.board] != nil }) }
       for i in tabs.indices {

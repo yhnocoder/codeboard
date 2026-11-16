@@ -24,4 +24,10 @@ public struct EntryIndex: Sendable {
   }
 
   public subscript(_ id: EntryID) -> Found? { byID[id] }
+
+  /// Every entry, by its folder's path
+  public var all: [Found] { byID.values.sorted { $0.path < $1.path } }
+
+  /// An entry just written, before the tree is read again
+  public mutating func update(_ entry: Entry, at path: String) { byID[entry.id] = Found(entry: entry, path: path) }
 }
