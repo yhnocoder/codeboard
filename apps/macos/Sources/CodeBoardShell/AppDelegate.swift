@@ -334,10 +334,13 @@ import CodeBoardModel
     windows.addItem(item("Show Previous Tab", #selector(showPreviousTab(_:)), "[", [.command, .shift]))
     windows.addItem(item("Show Next Tab", #selector(showNextTab(_:)), "]", [.command, .shift]))
     // ⌃Tab and ⌃⇧Tab, the other tab-switching keys, without a second visible pair of items
-    let tabKeys: [(Selector, NSEvent.ModifierFlags)] = [
-      (#selector(showNextTab(_:)), .control), (#selector(showPreviousTab(_:)), [.control, .shift]),
+    // a keyboard's ⇧Tab types a back tab (U+0019), which a "\t" item does not match; an event made with a plain tab
+    // matches only that one
+    let tabKeys: [(Selector, String, NSEvent.ModifierFlags)] = [
+      (#selector(showNextTab(_:)), "\t", .control), (#selector(showPreviousTab(_:)), "\t", [.control, .shift]),
+      (#selector(showPreviousTab(_:)), "\u{19}", [.control, .shift]),
     ]
-    for (action, mask) in tabKeys { windows.addItem(hidden(item("", action, "\t", mask))) }
+    for (action, key, mask) in tabKeys { windows.addItem(hidden(item("", action, key, mask))) }
     windows.addItem(.separator())
     windows.addItem(
       withTitle: "Bring All to Front", action: #selector(NSApplication.arrangeInFront(_:)), keyEquivalent: "")
