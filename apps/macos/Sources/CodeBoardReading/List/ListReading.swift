@@ -47,6 +47,7 @@ struct ListRow: Equatable {
   var kind: String
   var opens: Opens?
   var authors: [String] = []
+  var venue: String?
   var year: Int?
   var site: String?
   /// A web page's address: what dragging it to a board carries (ListDrag.swift)
@@ -69,6 +70,7 @@ struct ListRow: Equatable {
       id = e.id
       title = e.title
       authors = e.authors ?? []
+      venue = e.venue
       year = e.year
       // the newest PDF that is not a translation (a paper's by its arXiv number); else the newest saved page, else
       // the page online
