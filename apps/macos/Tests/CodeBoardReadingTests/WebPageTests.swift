@@ -292,6 +292,30 @@ import WebKit
 
   /// A blank tab edits its address at once; Return goes; ⌘L edits the whole address again, Escape gives it up;
   /// typing suggests the pages visited, the arrows choose one and Return goes there
+  /// On a page online the body and language choices are off: a press on one says why above the bar, until the page
+  /// changes
+  @Test func aPressOnAChoiceThatIsOffSaysWhyAboveTheBar() async throws {
+    let (v, tabs) = try tab("/a")
+    defer { tabs.close() }
+    try await until("page A") { v.web.title == "Page A" && !v.web.isLoading }
+    tabs.window.layoutIfNeeded()
+    let press = try #require(
+      NSEvent.mouseEvent(
+        with: .leftMouseDown, location: .zero, modifierFlags: [], timestamp: 0,
+        windowNumber: tabs.window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1))
+    for choice in [v.bar.extract, v.bar.translate] {
+      #expect(!choice.isEnabled && v.note.isHidden)
+      let middle = CGPoint(x: choice.frame.midX, y: choice.frame.midY)
+      #expect(choice.superview?.hitTest(choice.superview!.convert(middle, to: choice.superview!.superview)) === choice)
+      choice.mouseDown(with: press)
+      #expect(!v.note.isHidden && !v.note.text.isEmpty && v.note.text == choice.toolTip)
+      tabs.window.layoutIfNeeded()
+      #expect(v.note.frame.maxY < v.bar.frame.minY && v.note.frame.width > 100)
+      _ = try await js(v, "location.href = location.pathname == '/a' ? '/b' : '/a'; 0")
+      try await until("the next page, the note gone") { !v.web.isLoading && v.note.isHidden }
+    }
+  }
+
   @Test func theAddressIsEditedGoneToAndSuggested() async throws {
     let (v, tabs) = try tab(nil)
     defer { tabs.close() }
