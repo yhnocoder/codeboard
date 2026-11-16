@@ -1,0 +1,101 @@
+{
+  "added": 1763280000000,
+  "authors": [
+    "CodeBoard sample vault"
+  ],
+  "fields": {},
+  "highlights": [
+    {
+      "at": 1763280060000,
+      "color": "yellow",
+      "id": "h1",
+      "place": {
+        "block": {
+          "page": {
+            "page": 1
+          }
+        },
+        "range": [203, 230],
+        "version": "v1"
+      }
+    },
+    {
+      "at": 1763280120000,
+      "color": "green",
+      "id": "h2",
+      "place": {
+        "block": {
+          "page": {
+            "page": 1
+          }
+        },
+        "range": [422, 493],
+        "version": "v1"
+      }
+    },
+    {
+      "at": 1763280180000,
+      "color": "blue",
+      "id": "h3",
+      "place": {
+        "block": {
+          "page": {
+            "page": 2
+          }
+        },
+        "range": [119, 220],
+        "version": "v1"
+      }
+    }
+  ],
+  "id": "e-paged-kv",
+  "sidenotes": [
+    {
+      "alwaysShow": false,
+      "id": "en1",
+      "place": {
+        "block": {
+          "page": {
+            "page": 1
+          }
+        },
+        "range": [422, 493],
+        "version": "v1"
+      },
+      "text": "This is what `BlockManager.hash_to_block_id` is for: see the board **Blocks and cache**."
+    },
+    {
+      "alwaysShow": false,
+      "id": "en2",
+      "place": {
+        "block": {
+          "page": {
+            "page": 2
+          }
+        },
+        "range": [119, 220],
+        "version": "v1"
+      },
+      "question": {
+        "answers": [],
+        "at": 1763280200000,
+        "done": false
+      },
+      "text": "Why chain the previous block's hash in?"
+    }
+  ],
+  "title": "A tiny note on paged KV caches",
+  "version": 1,
+  "versions": [
+    {
+      "added": 1763280000000,
+      "content": {
+        "pdf": {
+          "file": "paged-kv-cache.pdf"
+        }
+      },
+      "id": "v1"
+    }
+  ],
+  "year": 2026
+}

@@ -1,0 +1,11 @@
+{
+  "content": {
+    "note": {
+      "text": "## One step\n1. **schedule**: pick sequences\n2. **run**: one batch through the model\n3. **postprocess**: append tokens, free what finished\n\nThis card is shared: edit it here and it changes on every board that shows it."
+    },
+    "title": "One step"
+  },
+  "id": "c-shared",
+  "sidenotes": [],
+  "version": 2
+}
