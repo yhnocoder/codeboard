@@ -4,10 +4,11 @@ import WebKit
 
 /// ⌘K and ⌘F: the web board's search palette (ui/Palette.tsx), its markup and stylesheet, in a web view of its own
 /// (page.html?palette, `palette`) as big as the board it is over, its scrim and all, as main's covers the board. Typed
-/// into, it asks `onSearch` for the matches, `onResources` for the Resources group (its search cancelled when the query
-/// changes) and, a little later, `onMeaning` for Related by Meaning (the page owns the pauses and asks again while
-/// indexing; an answer for an older query is dropped); a row picked or the palette closed is told to `onPick`,
-/// `onPickResource` and `onClose`. Made once and kept.
+/// into, it asks `onSearch` for the matches, `onResources` for the Resources group and `onCode` for the functions and
+/// classes of the repositories indexed (each search cancelled when the query changes) and, a little later, `onMeaning`
+/// for Related by Meaning (the page owns the pauses and asks again while indexing; an answer for an older query is
+/// dropped); a row picked or the palette closed is told to `onPick`, `onPickResource`, `onCodePick` and `onClose`.
+/// Made once and kept.
 @MainActor
 public final class SearchPanel: NSObject {
   /// What it opens with (palette.ts PaletteData)
@@ -89,6 +90,42 @@ public final class SearchPanel: NSObject {
     }
   }
 
+  /// A function or class of a repository added on this Mac (protocol.ts SearchItem's symbol): its qualified name, its
+  /// file and line, and where it is (the repository's folder, the file in it, its lines from its first decorator to
+  /// its end, its def line)
+  public struct Symbol: Codable, Equatable, Sendable {
+    public var kind = "symbol"
+    public var label: String
+    public var detail: String
+    public var glyph: String
+    public var repository: String
+    public var name: String
+    public var path: String
+    public var start: Int
+    public var line: Int
+    public var end: Int
+    public var isClass: Bool
+    /// Its first lines as Markdown, for the preview pane
+    public var preview: String
+
+    public init(
+      label: String, detail: String, repository: String, name: String, path: String, start: Int, line: Int, end: Int,
+      isClass: Bool, preview: String = ""
+    ) {
+      self.preview = preview
+      self.label = label
+      self.detail = detail
+      glyph = isClass ? "C" : "ƒ"
+      self.repository = repository
+      self.name = name
+      self.path = path
+      self.start = start
+      self.line = line
+      self.end = end
+      self.isClass = isClass
+    }
+  }
+
   public let view: WKWebView
   public var onSearch: ((_ q: String, _ thisBoard: Bool) async -> [BoardSearch.Item])?
   /// Related by Meaning for `q`: its answer told to `reply`, then the reranker's order told to it again if one comes
@@ -98,13 +135,18 @@ public final class SearchPanel: NSObject {
   /// A Resources row picked: Return opens `open`; ⌥↵ puts `collect` on the board
   public var onPickResource: ((_ open: SourceAnchor, _ collect: Collected?) -> Void)?
   public var onPick: ((Pick) -> Void)?
+  /// The functions and classes for `q`
+  public var onCode: ((_ q: String) async -> [Symbol])?
+  /// One picked: opened in the reading pane, or (`add`, ⌥↵) added to the board as a card
+  public var onCodePick: ((_ s: Symbol, _ add: Bool) -> Void)?
   public var onClose: (() -> Void)?
   public private(set) var isOpen = false
   /// How many times it was opened: an answer asked for in an earlier opening is dropped
   private var opening = 0
   private let signal = PanelSignal()
-  /// The Resources search going on: cancelled by the next query
+  /// The Resources and the functions' searches going on: cancelled by the next query
   private var resources: Task<Void, Never>?
+  private var code: Task<Void, Never>?
 
   public init(page: URL = NoteRenderer.bundledPage) {
     let config = WKWebViewConfiguration()
@@ -141,6 +183,7 @@ public final class SearchPanel: NSObject {
     guard isOpen else { return }
     isOpen = false
     resources?.cancel()
+    code?.cancel()
     view.isHidden = true
     view.callAsyncJavaScript("palette.clear()", arguments: [:], in: nil, in: .page)
   }
@@ -192,6 +235,21 @@ public final class SearchPanel: NSObject {
           _ = await self.run("palette.meaning(n, JSON.parse(m))", ["n": n, "m": json])
         }
       }
+    case "pcode":
+      let n = m["n"] as? Int ?? 0
+      let q = m["q"] as? String ?? ""
+      code?.cancel()
+      code = Task {
+        let items = await onCode?(q) ?? []
+        guard !Task.isCancelled, isOpen, let json = try? String(decoding: JSONEncoder().encode(items), as: UTF8.self)
+        else { return }
+        _ = await run("palette.code(n, JSON.parse(items))", ["n": n, "items": json])
+      }
+    case "pcodepick":
+      guard let it = m["item"] as? String, let s = try? JSONDecoder().decode(Symbol.self, from: Data(it.utf8)) else {
+        return
+      }
+      onCodePick?(s, m["add"] as? Bool ?? false)
     case "ppick":
       guard let b = m["board"] as? String, let c = m["card"] as? String else { return }
       onPick?(Pick(board: BoardID(rawValue: b), card: CardID(rawValue: c)))

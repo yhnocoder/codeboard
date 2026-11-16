@@ -28,7 +28,7 @@ final class CodeTabView: NSView, ReadingLookFollower, NSTextFieldDelegate, NSMen
   private(set) var found: [String] = []
   private(set) var outline: [CodeReading.OutlineRow] = []
   /// Gone to before the file was read: where to be once it is
-  private var pending: Int?
+  var pending: Int?
   // What takes code to the board, and ⌘-click (CodeCards.swift)
   /// The bar over a selection (Add to Board); in this view, kept over the selection as it scrolls
   private(set) var selectionBar: SelectionBar!
@@ -56,8 +56,31 @@ final class CodeTabView: NSView, ReadingLookFollower, NSTextFieldDelegate, NSMen
   var plusLine: Int?
   /// A selection is settled: its bar shows while the selection is in view
   var barWanted = false
+  // Where the file's lines are on boards, and a card's lines opened here (CodeOnBoards.swift)
+  /// The cards showing its lines, as the shell last said, and how many times it was asked
+  var onBoards: [CodeOnBoard] = []
+  var boardsAsked = 0
+  /// Their thin lines, in the page over the code
+  let marks = CodeMarks()
+  /// Behind a card's lines opened here, a moment; in the page under the code
+  let flashView = NSView()
+  /// The card each row of the list of cards is for (nil: a board's row), the line it is beside (nil: under the
+  /// selection's bar), and whether a click opened it (else the pointer, and it closes when the pointer leaves)
+  var placesShown: [CodeOnBoard?] = []
+  var placesLine: Int?
+  var placesPinned = false
+  /// Lines to mark once the file is read
+  var flashWanted: ClosedRange<Int>?
+  /// A press on a marked line's thin line, until it is let go: not the code's
+  var pressOnMark: Int?
+  /// The open code tabs' views, and what `locate` is waiting for a tab's view to show
+  static var live: [ReadingTab.ID: Weak] = [:]
+  static var pendingLocate: [ReadingTab.ID: (ClosedRange<Int>?, String?)] = [:]
+  struct Weak {
+    weak var view: CodeTabView?
+  }
 
-  enum Listing { case finder, outline, definitions }
+  enum Listing { case finder, outline, definitions, places }
 
   /// The panel's top glass dissolves over this much of the page (ShellTheme.glassDissolve): the line under it is the
   /// one at the top
@@ -91,15 +114,29 @@ final class CodeTabView: NSView, ReadingLookFollower, NSTextFieldDelegate, NSMen
       [
         SelectionAction(icon: "rectangle.stack.badge.plus", name: "Add to Board ⌥↵", id: "ui-selectionadd") {
           [weak self] in self?.addSelection()
-        }
+        },
+        SelectionAction(icon: "square.stack", name: "On Boards", id: "ui-selectionplaces") {
+          [weak self] in self?.showSelectionPlaces()
+        },
       ], look: context.bar)
     selectionBar.isHidden = true
+    // the number of cards showing the selection's lines, in place of an icon; none: no button
+    let count = selectionBar.buttons[1]
+    count.image = nil
+    count.imagePosition = .noImage
+    count.font = .monospacedDigitSystemFont(ofSize: 12, weight: .semibold)
+    count.isHidden = true
     plus.isHidden = true
     plus.target = self
     plus.action = #selector(plusPressed(_:))
     underline.wantsLayer = true
     underline.isHidden = true
     page.addSubview(underline)
+    page.addSubview(marks)
+    flashView.wantsLayer = true
+    NotificationCenter.default.addObserver(
+      self, selector: #selector(boardsChanged), name: CodeReading.boardsChanged, object: context.pane)
+    Self.live[context.tab] = Weak(view: self)
     for v in [scroll, message, plus, selectionBar!, list, bar] { addSubview(v) }
     bar.back.target = self
     bar.back.action = #selector(goBack(_:))
@@ -120,6 +157,7 @@ final class CodeTabView: NSView, ReadingLookFollower, NSTextFieldDelegate, NSMen
     load()
     readCommit()
     if let file { context.pane.codeHost?.opened(file.repository) }
+    if let (lines, note) = Self.pendingLocate.removeValue(forKey: context.tab) { locate(lines, note: note) }
   }
 
   @available(*, unavailable)
@@ -151,12 +189,18 @@ final class CodeTabView: NSView, ReadingLookFollower, NSTextFieldDelegate, NSMen
       code = v
       heads = CodeReading.heads(t.symbols)
       page.addSubview(v, positioned: .below, relativeTo: nil)
+      page.addSubview(flashView, positioned: .below, relativeTo: v)
       bar.outline.isEnabled = !t.symbols.isEmpty
       bar.outline.toolTip = t.symbols.isEmpty ? "No classes or functions in this file" : "Outline"
       needsLayout = true
       layoutSubtreeIfNeeded()
       if let line = pending { go(to: line) }
+      if let lines = flashWanted {
+        flashWanted = nil
+        flash(lines)
+      }
       placeChanged()
+      readOnBoards()
     }
   }
 
@@ -224,6 +268,7 @@ final class CodeTabView: NSView, ReadingLookFollower, NSTextFieldDelegate, NSMen
   /// Above the bar: the finder as wide as it, the outline at its right end; the definitions under the name clicked, or
   /// over it when there is no room below
   private func placeList() {
+    if listing == .places { return placePlaces() }
     let b = barFrame(shown: true)
     if listing == .definitions {
       let w = min(bounds.width - 16, 420)
@@ -255,6 +300,7 @@ final class CodeTabView: NSView, ReadingLookFollower, NSTextFieldDelegate, NSMen
     underline.layer?.backgroundColor = look.ink
     message.textColor = NSColor(cgColor: look.ink.copy(alpha: 0.55) ?? look.ink)
     code?.look = codeLook
+    drawMarks()
     needsLayout = true
   }
 
@@ -265,7 +311,7 @@ final class CodeTabView: NSView, ReadingLookFollower, NSTextFieldDelegate, NSMen
     handle(.scrolled(scroll.contentView.bounds.minY))
     if let v = code { v.place(v.frame, zoom: 1) }
     placeChanged()
-    if listing == .definitions { closeList() }
+    if listing == .definitions || listing == .places { closeList() }
     placeFloats()
   }
 
@@ -334,6 +380,8 @@ final class CodeTabView: NSView, ReadingLookFollower, NSTextFieldDelegate, NSMen
   /// A press on the code: handed to the component's view to select, the keys back here; ⌘ goes to the definition of
   /// the name pressed; a press on the selection may drag it out
   func pressed(_ e: NSEvent) {
+    pressOnMark = e.clickCount == 1 ? markedLine(at: convert(e.locationInWindow, from: nil)) : nil
+    if let line = pressOnMark { return clickMark(line) }
     closeList()
     hideSelectionBar()
     let mods = e.modifierFlags.intersection(.deviceIndependentFlagsMask)
@@ -353,6 +401,10 @@ final class CodeTabView: NSView, ReadingLookFollower, NSTextFieldDelegate, NSMen
   /// The mouse let go in the code: a press on the selection that was not dragged is a click there; the bar over the
   /// selection
   func released(_ e: NSEvent) {
+    if pressOnMark != nil {
+      pressOnMark = nil
+      return
+    }
     if let down = pressOnSelection {
       pressOnSelection = nil
       code?.mouseDown(with: down)
@@ -393,12 +445,13 @@ final class CodeTabView: NSView, ReadingLookFollower, NSTextFieldDelegate, NSMen
       case #selector(scrollToEndOfDocument(_:)), #selector(moveToEndOfDocument(_:)): .infinity
       default: nil
       }
-    // the definitions to choose from take the arrows and Return
-    if listing == .definitions, [#selector(moveUp(_:)), #selector(moveDown(_:))].contains(selector) {
+    // the definitions or cards to choose from take the arrows and Return
+    let choosing = listing == .definitions || listing == .places
+    if choosing, [#selector(moveUp(_:)), #selector(moveDown(_:))].contains(selector) {
       list.move(by: selector == #selector(moveUp(_:)) ? 1 : -1)
       return
     }
-    if listing == .definitions, selector == #selector(insertNewline(_:)), let i = list.selected { return chose(i) }
+    if choosing, selector == #selector(insertNewline(_:)), let i = list.selected { return chose(i) }
     guard let step else {
       if selector == #selector(cancelOperation(_:)), listing != nil { return closeList() }
       return super.doCommand(by: selector)
@@ -554,12 +607,18 @@ final class CodeTabView: NSView, ReadingLookFollower, NSTextFieldDelegate, NSMen
       let line = outline[i].line
       closeList()
       jump(to: file, line: line)
+    case .places:
+      guard placesShown.indices.contains(i), let c = placesShown[i] else { return }
+      closeList()
+      context.pane.codeHost?.go(to: c)
     }
   }
 
   func closeList() {
     guard let was = listing else { return }
     listing = nil
+    placesLine = nil
+    placesPinned = false
     list.show([], bottomUp: false, id: "")
     if was == .finder {
       bar.finding = false
@@ -594,6 +653,7 @@ final class CodeTabView: NSView, ReadingLookFollower, NSTextFieldDelegate, NSMen
 
   /// The selection's card in hand, once dragged far enough from the press on it and once its card is ready
   func dragged(_ e: NSEvent) {
+    if pressOnMark != nil { return }
     guard let down = pressOnSelection else {
       code?.mouseDragged(with: e)
       return

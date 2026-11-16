@@ -1269,8 +1269,8 @@ extension CanvasView {
     }
     // a preview beside a sub-board card
     if pressSubPreview(e, at: p) { return }
-    // a card header's button
-    if let (id, a) = headAct(at: p) {
+    // a card header's button (a code card's file name is pressed as the card is, below)
+    if let (id, a) = headAct(at: p), a != .path {
       if e.clickCount == 1 {
         hold(
           over: { [weak self] in self?.headAct(at: $0).map { $0 == (id, a) } == true },
@@ -1302,8 +1302,11 @@ extension CanvasView {
     }
     // a ref's preview closes, but on the press on its ref (which closes it too, as its second click)
     refPress = e.clickCount == 1 ? refAt(p) : nil
-    // a card's source: shown in the reading pane once let go where it was pressed; dragged, the card moves
+    // a card's source: shown in the reading pane once let go where it was pressed; dragged, the card moves. So is a
+    // code card's file name, whose double-click's second press is no rename of the title
     sourcePress = e.clickCount == 1 ? footAt(p) : nil
+    codePathPress = e.clickCount == 1 ? codePathAt(p) : nil
+    if e.clickCount >= 2, codePathAt(p) != nil { return }
     if let peek = refPeek,
       !(refPress.map { peek.key == refKey(.card($0.card, boardRect($0.box, on: $0.card)), $0.box) } ?? false)
     {
@@ -1415,7 +1418,7 @@ extension CanvasView {
       // the one card selected, dragged on its body: its text is selected, the card stays (interact.ts: solo, inBody);
       // on its source it moves
       if case .card(let id)? = item, was, !toggle, doc.selection == [.card(id)], sourcePress == nil,
-        restOffset(id, g.start) != nil
+        codePathPress == nil, restOffset(id, g.start) != nil
       {
         g.kind = .text(id)
         gesture = g
@@ -1574,6 +1577,9 @@ extension CanvasView {
       } else if let a = sourcePress {
         sourcePress = nil
         sources?.reveal(a)
+      } else if let id = codePathPress {
+        codePathPress = nil
+        openCodePath(id)
       } else if case .card(let id)? = item, was, !toggle, doc.selection == [.card(id)] {
         clickEdit(id, at: g.start)
       }

@@ -7,7 +7,8 @@ import CodeBoardModel
 // is defined are the shell's to say: it knows the repositories' git and their name index (CodeBoardWorkspace), which
 // this module does not.
 
-/// What code tabs ask of the shell; nil on a pane without one (nothing is added, no name is looked up)
+/// What code tabs ask of the shell; nil on a pane without one (nothing is added, no name is looked up, no line is on a
+/// board)
 @MainActor public protocol CodeHost: AnyObject {
   /// A board is in front, beside the pane, to add to
   var canAdd: Bool { get }
@@ -21,6 +22,12 @@ import CodeBoardModel
   /// Where a name used in the file is defined, the best first, or the one that stands out alone. `scan`: files not
   /// indexed yet are read for it (a click); else only what is indexed already is asked (the pointer over it)
   func definitions(_ f: CodeFile, _ name: CodeName, scan: Bool) async -> [CodeDefinition]
+  /// The cards of the vault's boards showing lines of the file as the tab shows it (`text`), each with its lines there.
+  /// Asked again when `CodeReading.boardsChanged` is posted for the pane
+  func onBoards(_ f: CodeFile, text: String) async -> [CodeOnBoard]
+  /// A card's place: on the board in front, brought into view and selected; else its board shown (in its tab when one
+  /// has it) and the card brought into view there
+  func go(to card: CodeOnBoard)
 }
 
 /// Lines of the file as shown taken to the board, as the VS Code version takes them: a snippet with the function it is
@@ -72,6 +79,11 @@ public struct CodeDefinition: Equatable, Sendable {
 }
 
 extension CodeReading {
+  /// A segment of a file as it goes to the board, a code card's
+  public static func collected(_ s: Segment, of f: CodeFile) -> Collected {
+    Collected(body: .code(s), source: nil, title: f.title, label: "\(s.firstLine)–\(s.lastLine)")
+  }
+
   /// A selection (the component's UTF-16 offsets) as a snippet: the whole lines it covers, a line it ends at the start
   /// of left out, blank lines at its ends too; nil when it is empty or blank
   static func pick(_ selection: Range<Int>, in t: Text) -> CodePick? {
@@ -202,14 +214,10 @@ extension CodeTabView {
     Task { [weak self] in
       guard let seg = await host.segment(file, pick) else { return NSSound.beep() }
       guard let self else { return }
-      self.context.collect(Self.collected(seg, of: file))
+      self.context.collect(CodeReading.collected(seg, of: file))
       // the counts follow
       if self.listing == .outline { self.showOutline() }
     }
-  }
-
-  static func collected(_ s: Segment, of f: CodeFile) -> Collected {
-    Collected(body: .code(s), source: nil, title: f.title, label: "\(s.firstLine)–\(s.lastLine)")
   }
 
   // MARK: The selection's bar
@@ -223,17 +231,16 @@ extension CodeTabView {
     guard let pick = selectionPick else { return hideSelectionBar() }
     barWanted = true
     let can = canAdd
-    for b in selectionBar.buttons {
-      b.isEnabled = can
-      b.alphaValue = can ? 1 : 0.35
-      b.toolTip = can ? "Add to Board ⌥↵" : CodeList.noBoard
-    }
-    placeFloats()
+    let add = selectionBar.buttons[0]
+    add.isEnabled = can
+    add.alphaValue = can ? 1 : 0.35
+    add.toolTip = can ? "Add to Board ⌥↵" : CodeList.noBoard
+    countOnSelection()
     guard can, let file, let host = context.pane.codeHost else { return }
     let at = v.editor.selection.range
     Task { [weak self] in
       guard let seg = await host.segment(file, pick), let self, self.code?.editor.selection.range == at else { return }
-      self.prepared = (at, Self.collected(seg, of: file))
+      self.prepared = (at, CodeReading.collected(seg, of: file))
     }
   }
 
@@ -284,6 +291,10 @@ extension CodeTabView {
   /// The pointer over the code (this view's space; nil: gone): the plus at a head line's number, and with ⌘ the name
   /// under it underlined when it has a definition. From what was read with the file: nothing is parsed here
   func hover(at p: CGPoint?, command: Bool) {
+    if hoverMarks(at: p) {
+      showPlus(nil)
+      return point(nil)
+    }
     guard let v = code, let t = text, let p, area(contains: p) else {
       showPlus(nil)
       return point(nil)

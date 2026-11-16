@@ -81,6 +81,19 @@ private func at(_ c: String) -> Against { Against(label: c, version: .git(commit
     #expect(diffLines(["a", "b"], ["a", "c"]).map(\.op.rawValue).joined() == " -+")
   }
 
+  /// A card's lines now: followed from its commit's text through the line diff (the lines still there), by their text
+  /// without that text, nowhere when neither finds them; the recorded lines checked where they say
+  @Test func linesAreFollowedFromAnOlderTextOrFoundByTheirOwn() {
+    let old = "a\nb\nc\nd"
+    let now = ["new", "a", "b", "changed", "d"]
+    #expect(followLines(2...3, from: ["a", "b", "c", "d"], to: now) == 3...3, "b moved down, c is gone")
+    #expect(followLines(3...3, from: ["a", "b", "c", "d"], to: now) == nil)
+    #expect(linesNow(start: 1, lines: ["a", "b"], old: old, in: now) == 2...3)
+    #expect(linesNow(start: 1, lines: ["a", "b"], old: nil, in: now) == 2...3, "by their text")
+    #expect(linesNow(start: 3, lines: ["c"], old: nil, in: now) == nil, "not by line number")
+    #expect(sameLinesAt(2, ["a", "b"], in: now) && !sameLinesAt(1, ["a", "b"], in: now))
+  }
+
   // Strings are compared as JavaScript compares them, by UTF-16 code unit: é and e + U+0301 are two lines
   @Test func comparesLinesByCodeUnitAsJavaScriptDoes() {
     #expect(!sameLines(["\u{e9}"], ["e\u{301}"]))

@@ -304,6 +304,12 @@ extension ReadingPane {
     open(f.title, key: f.key, kind: CodeReading.kind, payload: f.payload, preview: preview)
   }
 
+  /// A file in a kept tab (opened, or gone to), `lines` brought into view and marked a moment (nil: where it is);
+  /// `note`: a quiet line on its bar, as the commit a card opened there is from (nil: none)
+  public func openCode(_ f: CodeFile, locating lines: ClosedRange<Int>?, note: String?) {
+    CodeTabView.locate(lines, note: note, in: openCode(f, preview: false))
+  }
+
   /// The file the current tab shows, when it is a code tab
   public var currentCode: CodeFile? {
     tabs.first { $0.id == selected && $0.kind == CodeReading.kind }.flatMap { CodeFile(payload: $0.payload) }

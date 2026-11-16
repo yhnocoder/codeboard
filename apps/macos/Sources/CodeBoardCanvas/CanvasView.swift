@@ -364,6 +364,11 @@ public final class CanvasView: NSView {
   }
   /// A press on a card's source, which shows it when let go where it was pressed
   var sourcePress: SourceAnchor?
+  /// Where a code card's file name clicked opens its file, with the name's place in this view (the shell: its reading
+  /// pane, or what is missing to open it there); nil: the name is no button
+  public var onOpenCode: ((Segment, CGRect) -> Void)?
+  /// A press on a code card's file name, which opens it when let go where it was pressed
+  var codePathPress: CardID?
   /// The pictures of resource blocks the provider gave, and those asked for
   var sourcePictures = SourcePictures()
   /// The pages being read now, by card ("card/row" for a list's row), and their tasks
