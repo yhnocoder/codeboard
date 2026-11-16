@@ -10,8 +10,19 @@ import SwiftUI
 /// has its seal at the far right, and each resource how many entries it has; clicking a seal edits it.
 struct Sidebar: View {
   let shell: Shell
+  /// The repositories block under the tree (RepositoriesBlock); none in pictures of the vault tree alone
+  var repositories: RepositoriesModel?
 
   var body: some View {
+    GeometryReader { g in
+      VStack(spacing: 0) {
+        tree
+        if let repositories { RepositoriesBlock(shell: shell, model: repositories, room: g.size.height) }
+      }
+    }
+  }
+
+  private var tree: some View {
     ScrollView(.vertical) {
       VStack(alignment: .leading, spacing: 1) {
         if let tree = shell.tree {
@@ -86,7 +97,7 @@ private struct UnreadableRow: View {
 }
 
 /// Whether the click that ended is the second of a double-click
-@MainActor private var isDoubleClick: Bool { (NSApp.currentEvent?.clickCount ?? 1) >= 2 }
+@MainActor var isDoubleClick: Bool { (NSApp.currentEvent?.clickCount ?? 1) >= 2 }
 
 @MainActor private func drop(_ items: [String], into folder: String, _ shell: Shell) -> Bool {
   items.compactMap(VaultDrag.path).reduce(false) { ok, p in shell.move(p, into: folder) != nil || ok }
@@ -384,7 +395,7 @@ private struct SealSlot: View {
   }
 }
 
-private struct Row<Lead: View, Label: View, Trailing: View>: View {
+struct Row<Lead: View, Label: View, Trailing: View>: View {
   let depth: Int
   let selected: Bool
   let target: Bool
@@ -422,7 +433,7 @@ private struct DropRing: View {
 }
 
 /// A small icon button in a row, shown on hover
-private struct RowButton<Label: View>: View {
+struct RowButton<Label: View>: View {
   @ViewBuilder var label: Label
   let action: () -> Void
 
@@ -432,7 +443,7 @@ private struct RowButton<Label: View>: View {
   }
 }
 
-private struct RowButtonStyle: ButtonStyle {
+struct RowButtonStyle: ButtonStyle {
   func makeBody(configuration: Configuration) -> some View {
     Hover { hovered in
       configuration.label

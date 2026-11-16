@@ -491,6 +491,14 @@
           "sources": ["CodeBoardShell/ImportAlert.swift", "CodeBoardCanvas/CanvasDiagnostics.swift"],
           "tests": ["FullWindowSheetTests"]
         },
+        "repositories": {
+          "sources": [
+            "CodeBoardShell/RepositoriesModel.swift",
+            "CodeBoardShell/RepositoriesBlock.swift",
+            "CodeBoardWorkspace/Repositories.swift"
+          ],
+          "tests": ["RepositoriesBlockTests"]
+        },
         "web": {
           "sources": ["CodeBoardShell/ShellWeb.swift", "CodeBoardShell/ShellPages.swift", "CodeBoardReading/Web"],
           "tests": ["ShellWebTests", "PageStoreChoiceTests", "ShiyiStoreTests", "ShiyiWebTabTests"]
