@@ -8,7 +8,8 @@ import os
 /// and then nothing is added at all. Papers take PDFs and a paper by its arXiv id or address or its DOI, web pages take
 /// addresses, files take any file; no preset takes a folder
 enum ListAdd: Equatable {
-  /// Copied in, each an entry alone under its own name (papers: a paper entry, ReadingPane.addPapers)
+  /// Copied in, each an entry alone under its own name (papers: a paper entry, ReadingPane.addPapers); one with the
+  /// content of a file the resource has already, or of an earlier one of the batch, is not added (`unseen`)
   case files([URL])
   /// Each a link entry, as the web bar saves a link
   case links([URL])
@@ -23,6 +24,30 @@ enum ListAdd: Equatable {
       if preset == .papers, values?.contentType?.conforms(to: .pdf) != true { return nil }
     }
     return .files(urls)
+  }
+
+  /// Of `urls`, those with no file of the same content among `existing` (a row's key and one of its files) nor among
+  /// the fresh ones before them, and the rows of those that have one among `existing`, in order; sizes compared
+  /// first, the contents only of files the same size, read in chunks, not whole
+  static func unseen(_ urls: [URL], among existing: [(key: String, file: URL)]) -> (fresh: [URL], seen: [String]) {
+    func size(_ u: URL) -> Int? { try? u.resourceValues(forKeys: [.fileSizeKey]).fileSize }
+    // a fresh one joins with no key: a later one of its content is dropped, no row selected for it
+    var pool: [(key: String?, file: URL, size: Int?)] = existing.map { ($0.key, $0.file, size($0.file)) }
+    var fresh: [URL] = []
+    var seen: [String] = []
+    for u in urls {
+      let s = size(u)
+      let same = pool.first {
+        $0.size != nil && $0.size == s && FileManager.default.contentsEqual(atPath: u.path, andPath: $0.file.path)
+      }
+      if let same {
+        if let key = same.key { seen.append(key) }
+      } else {
+        fresh.append(u)
+        pool.append((nil, u, s))
+      }
+    }
+    return (fresh, seen)
   }
 
   /// From a pasteboard: its files, else the address or arXiv paper its text (or its link) names
@@ -121,25 +146,41 @@ extension ListTabView {
   // MARK: Adding
 
   /// `plan` added to the resource, all of it or (a file that cannot be copied) none, then the list read again with the
-  /// first one added selected; an arXiv paper comes in the background, said on the bar while it does
+  /// first one added selected (files all there already: the row of the first); an arXiv paper comes in the background,
+  /// said on the bar while it does
   func add(_ plan: ListAdd) {
     guard let vault = context.pane.vault, let r = ListReading.resource(context.payload, in: vault).0 else { return }
     say(nil)
     switch plan {
     case .files(let urls):
+      // the files the resource has: its files alone and its entries' PDFs and files
+      let have = ((try? vault.items(in: r.path)) ?? []).flatMap { item -> [(key: String, file: URL)] in
+        switch item {
+        case .file(let p): [(key: p, file: vault.url(of: p))]
+        case .entry(let e, let p):
+          e.versions.compactMap { v in
+            switch v.content {
+            case .pdf(let f, _, _), .file(let f): (key: p, file: vault.url(of: Vault.join(p, f)))
+            case .page, .translation: nil
+            }
+          }
+        case .unreadable: []
+        }
+      }
+      let (fresh, seen) = ListAdd.unseen(urls, among: have)
       var added: [String] = []
       do {
         if r.preset == .papers {
-          added = try context.pane.addPapers(pdfs: urls, to: r).map(\.found.path)
+          added = try context.pane.addPapers(pdfs: fresh, to: r).map(\.found.path)
         } else {
-          for u in urls { added.append(try vault.addFile(u, to: r.path)) }
+          for u in fresh { added.append(try vault.addFile(u, to: r.path)) }
         }
       } catch {
         // the copies made so far go again: a drop adds all or nothing
         for p in added { try? FileManager.default.removeItem(at: vault.url(of: p)) }
         return failed("The files could not be added: \(error)")
       }
-      reveal(added.first)
+      reveal(added.first ?? seen.first)
     case .links(let urls):
       var first: String?
       do {
