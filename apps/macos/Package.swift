@@ -31,7 +31,10 @@ let package = Package(
       ]),
     .target(
       name: "CodeBoardShell",
-      dependencies: ["CodeBoardModel", "CodeBoardCanvas", "CodeBoardNotes", "CodeBoardReading", "CodeBoardResources"]),
+      dependencies: [
+        "CodeBoardModel", "CodeBoardCanvas", "CodeBoardNotes", "CodeBoardReading", "CodeBoardResources",
+        "CodeBoardWorkspace",
+      ]),
     .executableTarget(name: "CodeBoard", dependencies: ["CodeBoardShell"]),
     .executableTarget(
       name: "CanvasBench",
@@ -110,7 +113,7 @@ let package = Package(
     .testTarget(
       name: "CodeBoardShellTests",
       dependencies: [
-        "CodeBoardShell", "CodeBoardCanvas", "CodeBoardNotes",
+        "CodeBoardShell", "CodeBoardCanvas", "CodeBoardNotes", "CodeBoardWorkspace",
         .product(name: "TestGuard", package: "better-swift-markdown"),
       ]),
     // the reading pane beside the board and what its tabs show (PDF/, Web/, List/, Shared/); AppKit, PDFKit, the model

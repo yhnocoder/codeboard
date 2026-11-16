@@ -37,6 +37,8 @@ import CodeBoardResources
   private var window: NSWindow?
   private var panes: BoardPanes?
   private var watcher: VaultWatcher?
+  /// The repositories added on this Mac, in the app's data folder
+  private var repositories: RepositoriesModel?
   private var appearance: NSKeyValueObservation?
   /// Only the latest tree read is applied
   private var treeRead = 0
@@ -77,7 +79,8 @@ import CodeBoardResources
       // a build made with a vault to start in (make-app.sh's FIRST_VAULT): opened on its first launch only
       open(URL(filePath: first, directoryHint: .isDirectory), restoring: nil)
     }
-    let (window, panes) = makeMainWindow(shell: shell)
+    repositories = shell.machineFolder.map { RepositoriesModel.forApp(folder: $0) }
+    let (window, panes) = makeMainWindow(shell: shell, repositories: repositories)
     self.window = window
     self.panes = panes
     panes.onVaultChanged = { [weak self] in self?.readTree(reloadBoards: true) }
