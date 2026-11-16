@@ -27,11 +27,13 @@ extension ShellCode {
 
   /// A click on the call `name` at `line` and `col` (UTF-16) of the card's segment `s`; recv: the call's receiver as
   /// the card's mark knows it; pick: one of an earlier answer's definitions
-  func expand(_ s: Segment, line: Int, col: Int, name: String, recv: String? = nil, pick: ExpandPick? = nil) async
-    -> CallTarget
-  {
-    switch await fileOf(s) {
+  func expand(
+    _ s: Segment, line: Int, col: Int, name: String, recv: String? = nil, pick: ExpandPick? = nil,
+    say: @escaping @MainActor (Missing?) -> Void = { _ in }
+  ) async -> CallTarget {
+    switch await fileOf(s, say: say) {
     case .missing(let m): return .missing(m)
+    case .none: return .none("Free code has no source to follow.", name: nil)
     case .file(let f): return await expand(s, in: f, line: line, col: col, name: name, recv: recv, pick: pick)
     }
   }
@@ -57,42 +59,51 @@ extension ShellCode {
     }
   }
 
-  enum FileOf {
+  enum FileOf: Equatable {
     case file(CodeFile)
     case missing(Missing)
+    /// Free code: no file, nothing to say
+    case none
   }
 
-  /// Where a card's file is on this Mac, as its file name opens it, without fetching
-  func fileOf(_ s: Segment) async -> FileOf {
-    guard let repositories else { return .missing(Missing(message: "No repositories can be added on this Mac.")) }
+  // ponytail: the same locating as ShellCodeCards' open(_:say:), case for case; one function for both once that file
+  // is free to change
+  /// Where a card's file is on this Mac, found as its file name opens it: a commit missing from a repository with a
+  /// remote is fetched first, `say` telling that it is (and nil once it is done)
+  func fileOf(_ s: Segment, say: @escaping @MainActor (Missing?) -> Void = { _ in }) async -> FileOf {
     switch s.source {
     case .git(let repository, let commit, let path, _, let checkout)?:
+      guard let repositories else { return .missing(Missing(message: "No repositories can be added on this Mac.")) }
       do {
-        let m = try await repositories.locate(repository: repository, commit: commit, checkout: checkout, fetch: false)
+        var m = try await repositories.locate(repository: repository, commit: commit, checkout: checkout, fetch: false)
+        if case .commitMissing(let r) = m, r.remote != nil {
+          say(Missing(message: "Fetching \(commit.prefix(7)) from \(RepositoriesModel.name(r))…", busy: true))
+          m = try await repositories.locate(repository: repository, commit: commit, checkout: checkout)
+          say(nil)
+        }
         switch m {
         case .found(let r, let root): return .file(Self.file(r, root: root, path: path))
         case .commitMissing(let r):
           let root = await repositories.root(of: r)
-          return .missing(
-            Self.missing(m, commit: commit, current: root.map { Self.file(r, root: $0, path: path) })
-              ?? Missing(
-                message: "Commit \(commit.prefix(7)) cannot be found."))
+          let current = root.map { Self.file(r, root: $0, path: path) }
+          return Self.missing(m, commit: commit, current: current).map(FileOf.missing) ?? .none
         case .notAdded:
-          return .missing(Self.missing(m, commit: commit, current: nil) ?? Missing(message: "Not added on this Mac."))
+          return Self.missing(m, commit: commit, current: nil).map(FileOf.missing) ?? .none
         }
       } catch {
         return .missing(Missing(message: RepositoriesModel.words(error)))
       }
     case .file(let path, _)?:
-      guard let abs = await repositories.locateFile(path),
-        let r = repositories.list.first(where: { abs.hasPrefix($0.path + "/") })
+      guard let abs = await repositories?.locateFile(path),
+        let r = repositories?.list.first(where: { abs.hasPrefix($0.path + "/") })
       else { return .missing(Missing(message: "\(path) is in no repository added on this Mac.")) }
       return .file(
         CodeFile(repository: r.path, name: RepositoriesModel.name(r), path: String(abs.dropFirst(r.path.count + 1))))
     case .package(let name, let version, _)?:
-      return .missing(Missing(message: "This card's code is from \(name) \(version), an installed package."))
-    case nil:
-      return .missing(Missing(message: "Free code has no source to follow."))
+      return .missing(
+        Missing(
+          message: "This card's code is from \(name) \(version), an installed package, which is not opened here yet."))
+    case nil: return .none
     }
   }
 

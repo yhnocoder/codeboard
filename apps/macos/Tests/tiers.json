@@ -520,7 +520,7 @@
           "tests": ["RepositoriesBlockTests", "ShellCodeTests"]
         },
         "calls": {
-          "sources": ["CodeBoardShell/ShellCalls.swift", "CodeBoardWorkspace/Expand.swift", "CodeBoardWorkspace/Crossing.swift"],
+          "sources": ["CodeBoardShell/ShellCalls.swift", "CodeBoardWorkspace/Expand.swift", "CodeBoardWorkspace/Crossing.swift", "CodeBoardWorkspace/Peeking.swift"],
           "tests": ["ShellCallsTests"]
         },
         "web": {

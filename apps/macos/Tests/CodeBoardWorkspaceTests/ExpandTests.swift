@@ -221,6 +221,22 @@ struct ExpandTests {
     }
   }
 
+  @Test func aClickRunsAtClickPriorityHoldingTheIndexBuildBack() async throws {
+    try await withCross { h in
+      h.fake.answer([Def(abs: h.abs("vllm/base.py"), line: 2, col: 8)])
+      let gate = h.fake.hold(.definitions)
+      let lay = try await seg(h, "vllm/layer.py", "Attention.forward")
+      let i = try #require(lay.text.firstIndex { $0.contains("self.impl.forward") })
+      let req = ExpandRequest(seg: lay, line: lay.start + i, col: unitIndex(lay.text[i], "forward"), name: "forward")
+      let click = Task { await h.resolver.expand(req) }
+      await gate.untilArrived()
+      #expect(await !settles { await h.lookup.index.sched.clear(.index) })
+      gate.open()
+      #expect(card(await click.value)?.segment.symbol?.qual == "AttentionImpl.forward")
+      await h.lookup.index.sched.clear(.index)
+    }
+  }
+
   // nano-vllm, by the name index alone
 
   @Test func aCallOnAnAttributeGoesToTheMethodOfTheClassItIsNamedLike() async throws {

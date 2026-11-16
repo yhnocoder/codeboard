@@ -160,7 +160,8 @@ struct InsertionSet {
 public actor NameIndex {
   private let ws: any CodeWorkspace
   private let analysis: AnalysisCache
-  private let sched: Scheduler
+  /// The priorities the background build yields to; a click on a call runs at .click
+  public nonisolated let sched: Scheduler
 
   /// File → its place in the list: results are in this order (a name's candidates keep their order)
   private var order: [String: Int] = [:]

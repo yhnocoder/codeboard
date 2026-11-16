@@ -90,8 +90,13 @@ extension Resolver {
     var qual: String { e.qual }
   }
 
-  /// Where a click on a call goes, and the card it makes
+  /// Where a click on a call goes, and the card it makes: at click priority, so the name index's background build,
+  /// the prefetch and the warm-up wait
   public func expand(_ m: ExpandRequest) async -> Expanded {
+    await lookup.index.sched.run(.click) { await self.expandNow(m) }
+  }
+
+  private func expandNow(_ m: ExpandRequest) async -> Expanded {
     let seg = m.seg
     switch seg.src {
     case .free: return .none(reason: "Free code has no source to follow.", name: nil)
@@ -230,7 +235,7 @@ extension Resolver {
   }
 
   /// A path as the host shows it back to the file: relative to the first root
-  private func fromHostPath(_ p: String) -> String {
+  func fromHostPath(_ p: String) -> String {
     NodePath.isAbsolute(p) ? p : NodePath.resolve(lookup.ws.roots.first ?? "", p)
   }
 

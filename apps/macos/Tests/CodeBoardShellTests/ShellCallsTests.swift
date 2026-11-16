@@ -94,6 +94,54 @@ private let scheduler = """
       Issue.record("not missing")
       return
     }
-    #expect(m.message == "No repositories can be added on this Mac.")
+    #expect(m.message == "This card's code is from torch 2.5.0, an installed package, which is not opened here yet.")
+  }
+
+  /// What the card's file name says (ShellCodeCards' open), for the same card
+  private func opening(_ code: ShellCode, _ s: Segment) async -> ShellCode.Missing? {
+    var said: ShellCode.Missing?
+    await code.open(s) { said = $0 }
+    return said
+  }
+
+  @Test func aCallOnACardWhoseRepositoryOrCommitIsNotHereSaysWhatItsFileNameSays() async throws {
+    let data = ShellCode.realPath(FileManager.default.temporaryDirectory.appending(path: "cb-calls-\(UUID())").path)
+    defer { try? FileManager.default.removeItem(atPath: data) }
+    let r = data + "/engine"
+    try FileManager.default.createDirectory(atPath: r, withIntermediateDirectories: true)
+    try engine.write(toFile: r + "/engine.py", atomically: true, encoding: .utf8)
+    try git(r, "-c", "init.defaultBranch=main", "init", "-q")
+    try git(r, "add", "-A")
+    try git(r, "commit", "-qm", "base")
+    let repositories = RepositoriesModel(
+      folder: URL(filePath: data + "/data"), runner: ProcessGitRunner(), defaults: nil)
+    let code = ShellCode(git: GitCache(), board: { nil })
+    code.repositories = repositories
+    let card = { (repository: String?, commit: String, checkout: String?) in
+      Segment(
+        id: SegmentID(rawValue: "s1"),
+        source: .git(repository: repository, commit: commit, path: "engine.py", uncommitted: false, checkout: checkout),
+        language: "python", firstLine: 2, lines: ["    def step(self):", "        return self.scheduler.schedule(2)"])
+    }
+    // a repository not added
+    let away = card("git@github.com:acme/elsewhere.git", "0123456789abcdef0123456789abcdef01234567", nil)
+    guard case .missing(let m) = await code.expand(away, line: 3, col: 30, name: "schedule") else {
+      Issue.record("not missing")
+      return
+    }
+    #expect(
+      m.message == "acme/elsewhere is not added on this Mac." && m.offer == .clone("git@github.com:acme/elsewhere.git"))
+    let said = await opening(code, away)
+    #expect(m == said)
+    // read in a folder added here, which has no remote to fetch the commit from: the file as it is now is offered
+    await repositories.addFolder(r)
+    let old = card(nil, "0123456789abcdef0123456789abcdef01234567", r)
+    guard case .missing(let n) = await code.expand(old, line: 3, col: 30, name: "schedule") else {
+      Issue.record("not missing")
+      return
+    }
+    let saidOld = await opening(code, old)
+    #expect(n.message.hasPrefix("Commit 0123456 is not in ") && n == saidOld, "\(n)")
+    #expect(n.offer == .current(CodeFile(repository: r, name: "engine", path: "engine.py")))
   }
 }
