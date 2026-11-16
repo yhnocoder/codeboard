@@ -91,10 +91,11 @@ extension Vault {
   }
 
   /// A file that is an entry alone given a folder of its own, named as the file without its extension, with `entry`
-  /// written in it: the folder is built under a hidden name, the file goes into it in one rename, and the folder is
-  /// renamed into place. The folder's path
+  /// written in it: the folder is built under a hidden name, the file goes into it in one rename (as `name`, the name
+  /// its versions give it, when its own is not a plain file name), and the folder is renamed into place. The folder's
+  /// path
   @discardableResult
-  public func promote(file path: String, to entry: Entry) throws -> String {
+  public func promote(file path: String, to entry: Entry, as name: String? = nil) throws -> String {
     let from = url(of: path)
     let resource = path.split(separator: "/").dropLast().joined(separator: "/")
     let hidden = url(of: resource).appending(path: ".\(from.lastPathComponent).entry-\(UUID().uuidString)")
@@ -105,7 +106,7 @@ extension Vault {
       try? FileManager.default.removeItem(at: hidden)
       throw VaultError.unwritable(from, error.localizedDescription)
     }
-    let inside = hidden.appending(path: from.lastPathComponent)
+    let inside = hidden.appending(path: name ?? from.lastPathComponent)
     do { try Vault.rename(from, to: inside) } catch {
       try? FileManager.default.removeItem(at: hidden)
       throw error
@@ -119,6 +120,35 @@ extension Vault {
       throw error
     }
     return to
+  }
+
+  /// A copy of the file at `source` put in the resource at `resource` as an entry alone, under its own name (` 2`, ` 3`…
+  /// before the extension when taken): copied under a hidden name, then one rename, never over anything. Its path
+  @discardableResult
+  public func addFile(_ source: URL, to resource: String) throws -> String {
+    let ext = source.pathExtension
+    let base = freeName(
+      in: resource, source.deletingPathExtension().lastPathComponent, extension: ext.isEmpty ? nil : ext)
+    let path = Vault.join(resource, ext.isEmpty ? base : "\(base).\(ext)")
+    let hidden = url(of: resource).appending(path: ".\(base).new-\(UUID().uuidString)")
+    do {
+      try FileManager.default.copyItem(at: source, to: hidden)
+    } catch {
+      throw VaultError.unwritable(url(of: path), error.localizedDescription)
+    }
+    do { try Vault.rename(hidden, to: url(of: path)) } catch {
+      try? FileManager.default.removeItem(at: hidden)
+      throw error
+    }
+    return path
+  }
+
+  /// A name a version may give its file (FORMAT.md: a plain file name): `name` when it is one, else `file` with its
+  /// extension
+  public static func plainFileName(_ name: String) -> String {
+    if isFileName(name) { return name }
+    let ext = (name as NSString).pathExtension
+    return isFileName("file.\(ext)") && !ext.isEmpty ? "file.\(ext)" : "file"
   }
 
   private func readFile(_ file: URL) throws -> Data {
