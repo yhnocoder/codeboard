@@ -11,13 +11,27 @@ extension WebReading {
 
   @MainActor static func heard(_ heading: String?, for a: SourceAnchor) { headings["\(a)"] = heading }
 
-  /// A web entry's card foot: the site icon and the entry's title, and the heading before the place, lighter, when it
+  /// A web entry's card foot: the site's icon and the entry's title, and the heading before the place, lighter, when it
   /// is known; nil for an entry that is not a web page's, is gone, or has not the anchor's version
   @MainActor public static func sourceLabel(_ a: SourceAnchor, in pane: ReadingPane) -> SourceLabel? {
     guard let found = pane.entries[a.entry], case .web = found.entry.origin,
       a.place.map({ p in found.entry.versions.contains { $0.id == p.version } }) ?? true
     else { return nil }
-    return SourceLabel(title: found.entry.title, number: headings["\(a)"], icon: .site)
+    return SourceLabel(title: found.entry.title, number: headings["\(a)"], icon: icon(of: found, in: pane))
+  }
+
+  /// The site's own icon when it can be drawn: the file kept with the entry, or an https address
+  @MainActor private static func icon(of found: EntryIndex.Found, in pane: ReadingPane) -> SourceLabel.Icon {
+    switch found.entry.meta?.icon {
+    case .file(let name)?:
+      guard Vault.isFileName(name), let vault = pane.vault else { return .site }
+      let file = vault.url(of: found.path).appending(path: Vault.imagesFolder).appending(path: name)
+      return FileManager.default.fileExists(atPath: file.path) ? .image(file) : .site
+    case .url(let address)?:
+      guard let url = URL(string: address), url.scheme == "https", url.host() != nil else { return .site }
+      return .image(url)
+    default: return .site
+    }
   }
 
   /// A web entry's place shown in a web tab: a page saved whole in the saved page's tab, at its block when the reader

@@ -284,4 +284,31 @@ import WebKit
     #expect(WebReading.reveal(SourceAnchor(entry: entry.id), in: tabs.pane))
     #expect(tabs.pane.tabs.count == 2 && tabs.pane.selected == tabs.pane.tabs[1].id, "the tab on it gone to")
   }
+
+  /// The source line's icon is the site's own when it can be drawn: the file kept in the entry's images, or an https
+  /// address; otherwise the site's mark
+  @Test func aWebSourcesIconIsTheSitesOwnWhenItCanBeDrawn() throws {
+    let resource = try vault.newResource(in: "", title: "Web", preset: .web).path
+    let path = try vault.save(
+      SavedItem(id: "l1", kind: .link, url: Self.address.absoluteString, title: "Linked", savedAt: 1_000), in: resource)
+    let images = vault.url(of: path).appending(path: Vault.imagesFolder)
+    try FileManager.default.createDirectory(at: images, withIntermediateDirectories: true)
+    try Data("<svg xmlns='http://www.w3.org/2000/svg'/>".utf8).write(to: images.appending(path: "icon.svg"))
+    let tabs = try WebTabs(vault: vault)
+    defer { done(tabs) }
+    var entry = try vault.entry(at: path)
+    func icon(_ source: ImageSource?) -> SourceLabel.Icon? {
+      entry.meta = WebMeta(icon: source)
+      tabs.pane.entries.update(entry, at: path)
+      return WebReading.sourceLabel(SourceAnchor(entry: entry.id), in: tabs.pane)?.icon
+    }
+    #expect(icon(.file("icon.svg")) == .image(images.appending(path: "icon.svg")))
+    #expect(icon(.file("gone.png")) == .site, "not kept")
+    #expect(icon(.file("../icon.svg")) == .site, "not a file name")
+    let https = "https://example.com/favicon.ico"
+    #expect(icon(.url(https)) == .image(URL(string: https)!))
+    #expect(icon(.url("http://example.com/favicon.ico")) == .site)
+    #expect(icon(.url("data:image/png;base64,AAAA")) == .site)
+    #expect(icon(nil) == .site)
+  }
 }
