@@ -23,6 +23,26 @@ extension CanvasView {
     }
   }
 
+  /// Whether board `b` shows this board through its sub-board cards, all the way down (core wouldCycle)
+  func holdsThisBoard(_ b: BoardID) -> Bool {
+    guard let (here, vault) = shown, let tree = try? vault.tree() else { return false }
+    // the boards each board shows as sub-boards, read once
+    let byID = Dictionary(tree.allBoards.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+    var seen: Set<BoardID> = []
+    func holds(_ b: BoardID) -> Bool {
+      guard seen.insert(b).inserted, let vb = byID[b],
+        let file = try? vault.board(at: vb.path)
+      else { return false }
+      return file.cards.contains { c in
+        guard case .own(let k) = c.content, case .board(let s) = k.body, case .board(let t) = s.target else {
+          return false
+        }
+        return t == here.id || holds(t)
+      }
+    }
+    return holds(b)
+  }
+
   /// The way down to board `b` through sub-board cards, this board's first, nine deep at most (core subboard.ts
   /// cardPath): each card and the board it shows
   func subPath(to b: BoardID) -> [SubHop]? {
