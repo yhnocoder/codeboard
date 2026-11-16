@@ -33,6 +33,8 @@ struct Gesture {
     case sticker(StickerDrag)
     /// A Link List's row dragged
     case row(RowDrag)
+    /// A sub-board card's preview dragged by its header (CanvasSubPreviews)
+    case preview(PreviewDrag)
     /// The text of the one card selected, selected at rest (CanvasRestText)
     case text(CardID)
   }
@@ -1131,6 +1133,8 @@ extension CanvasView {
     dropPicture()
     // a press anywhere puts away a row's bookmark (WebBody.tsx: pointerdown leaves the row)
     closeRowPeek()
+    // and a title row of the previews opened in place, but on itself
+    foldPeek(at: camera.board(convert(e.locationInWindow, from: nil)))
     // and the text selected at rest (the browser's selection goes with a press)
     clearRestText()
     if spacePanDown(e) { return }
@@ -1500,6 +1504,11 @@ extension CanvasView {
       dragRow(&d, view: v)
       g.kind = .row(d)
       gesture = g
+    case .preview(var d):
+      guard d.moved || hypot(v.x - g.startView.x, v.y - g.startView.y) >= dragSlop else { return }
+      dragPreview(&d, by: CGVector(dx: p.x - g.start.x, dy: p.y - g.start.y))
+      g.kind = .preview(d)
+      gesture = g
     case .text(let id):
       dragRestText(id, from: g.start, to: p)
     case .nudge, .still:
@@ -1607,6 +1616,9 @@ extension CanvasView {
       commitSticker(d, at: p, free: e.modifierFlags.contains(.option))
     case .row(let d):
       commitRow(d, view: convert(e.locationInWindow, from: nil))
+    case .preview(let d):
+      gesture = nil
+      dropPreview(d)
     case .nudge, .still:
       gesture = nil
     }

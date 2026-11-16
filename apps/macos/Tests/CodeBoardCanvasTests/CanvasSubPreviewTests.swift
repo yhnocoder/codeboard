@@ -42,18 +42,18 @@ extension CanvasSubBoardTests {
     #expect(pv.open == [cid("a"), cid("c"), cid("d")] && pv.exp == [cid("a"), cid("c")] && pv.tit == [cid("d")])
   }
 
-  /// A vault with a board Kid of two Notes and a board showing it on a sub-board card f
-  func previewRig() async throws -> (Rig, VaultBoard) {
+  /// A vault with a board Kid of `n` Notes (k1, k2… two to a row) and a board showing it on a sub-board card f
+  func previewRig(_ n: Int = 2) async throws -> (Rig, VaultBoard) {
     let root = FileManager.default.temporaryDirectory.appending(path: "canvas-edit-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    let cards = (0..<n).map { note("k\($0 + 1)", x: Double($0 % 2) * 400, y: Double($0 / 2) * 300) }
     let kid = try Vault(root: root).newBoard(
-      in: "", title: "Kid",
-      board: Board(id: BoardID(rawValue: "kid"), cards: [note("k1", x: 0, y: 0), note("k2", x: 400, y: 0)]))
+      in: "", title: "Kid", board: Board(id: BoardID(rawValue: "kid"), cards: cards))
     let frame = Card(
       id: cid("f"), x: 100, y: 100, width: 560, height: 360,
       content: .own(CardContent(body: .board(SubBoard(board: kid.id)))))
     let r = try await Rig(Board(id: BoardID(rawValue: "here"), cards: [frame]), zoom: 1, root: root)
-    await r.until("the map drawn") { block(r, "k2") != nil }
+    await r.until("the map drawn") { block(r, "k\(n)") != nil }
     return (r, kid)
   }
 
@@ -258,5 +258,74 @@ extension CanvasSubBoardTests {
     try press(.clear(f))
     #expect(c.subPreviews.open[f] == nil && c.subPreviews.shown[f] == nil && c.previewActs(f).isEmpty)
     #expect(r.doc.history.undoSteps.isEmpty)
+  }
+}
+
+extension CanvasSubBoardTests {
+  /// dropRight and dropTitles: before the first expanded one whose middle is below where it is let go, the lowest of
+  /// four then first in the title rows; into the title rows at the line and place let go on
+  @Test func aPreviewLetGoOnTheRightOrTheTitleRowsGoesWhereTheWebBoardPutsIt() {
+    let f = CGRect(x: 0, y: 0, width: 100, height: 100)
+    var pv = SubPreview(open: [], exp: [cid("a"), cid("b"), cid("c")], tit: [cid("d"), cid("e")])
+    let at = { (exp: [CardID]) in SubPreview.layout(f, exp: exp, tit: [], columns: 1, height: { _ in 100 }).boxes }
+    pv.dropRight(cid("d"), y: 120, layout: at)
+    #expect(pv.exp == [cid("a"), cid("d"), cid("b")] && pv.tit == [cid("c"), cid("e")])
+    pv.dropTitles(cid("a"), row: 0, col: 1, per: 2)
+    #expect(pv.exp == [cid("d"), cid("b")] && pv.tit == [cid("c"), cid("a"), cid("e")])
+    pv.dropTitles(cid("d"), row: 5, col: 0, per: 2)
+    #expect(pv.tit.last == cid("d"))
+  }
+
+  /// A title row dragged by its header onto the top of the right expands first there, the lowest there going to the
+  /// title rows; an expanded one dragged onto the title rows is the first of them. Let go where it was pressed, a title
+  /// row opens in place over the rows below it, and a press elsewhere folds it back
+  @Test func previewsAreDraggedBetweenTheRightAndTheTitleRowsAndATitleRowOpensInPlace() async throws {
+    let (r, _) = try await previewRig(5)
+    defer { r.close() }
+    let c = r.canvas
+    let f = cid("f")
+    for k in 1...5 { r.click(try #require(block(r, "k\(k)"))) }
+    await r.until("all drawn") { c.subPreviews.drawn[f]?.count == 5 }
+    #expect(c.subPreviews.open[f]?.exp == [cid("k1"), cid("k2"), cid("k3")])
+    #expect(c.subPreviews.open[f]?.tit == [cid("k4"), cid("k5")])
+    var lay = try #require(c.previewLayout(f))
+    // the title rows under the card, two to a line
+    #expect(lay.titles.minY == 100 + 360 + 14 && lay.per == 2)
+    let k1 = try #require(lay.boxes[cid("k1")])
+    let k5 = try #require(lay.boxes[cid("k5")])
+    let press = CGPoint(x: k5.midX, y: k5.minY + 15)
+    var zone: PreviewDrag.Zone?
+    var drops = 0
+    r.drag(press, CGPoint(x: k1.minX + 100, y: k1.minY + 15)) {
+      if case .preview(let d)? = c.gesture?.kind { zone = d.zone }
+      drops = c.subPreviews.shown[f]?.drops.sublayers?.count ?? 0
+    }
+    #expect(zone == .right && drops == 1 && c.subPreviews.shown[f]?.drops.sublayers?.isEmpty != false)
+    #expect(c.subPreviews.open[f]?.exp == [cid("k5"), cid("k1"), cid("k2")])
+    #expect(c.subPreviews.open[f]?.tit == [cid("k3"), cid("k4")])
+    // numbered as opened, wherever they are
+    #expect(c.subPreviews.open[f]?.open == (1...5).map { cid("k\($0)") })
+    // k5 onto the first title row
+    lay = try #require(c.previewLayout(f))
+    let top = try #require(lay.boxes[cid("k5")])
+    let row = try #require(lay.boxes[cid("k3")])
+    r.drag(CGPoint(x: top.midX, y: top.minY + 15), CGPoint(x: row.minX + 30, y: row.minY + 10)) {
+      if case .preview(let d)? = c.gesture?.kind { zone = d.zone }
+      drops = c.subPreviews.shown[f]?.drops.sublayers?.count ?? 0
+    }
+    #expect(zone == .titles && drops == 2)
+    #expect(c.subPreviews.open[f]?.exp == [cid("k1"), cid("k2")])
+    #expect(c.subPreviews.open[f]?.tit == [cid("k5"), cid("k3"), cid("k4")])
+    #expect(r.doc.history.undoSteps.isEmpty)
+    // a title row clicked opens in place, as wide as an expanded one and over the rows below; a press elsewhere folds it
+    lay = try #require(c.previewLayout(f))
+    let k4 = try #require(lay.boxes[cid("k4")])
+    r.click(CGPoint(x: k4.midX, y: k4.minY + 15))
+    #expect(c.subPreviews.peek.map { $0 == (f, cid("k4")) } == true)
+    let open = try #require(c.previewLayout(f)?.boxes[cid("k4")])
+    #expect(open.origin == k4.origin && open.width == 260 && open.height == c.previewHeight(f, cid("k4")))
+    #expect(c.subPreviews.shown[f]?.cards[cid("k4")]?.layer.zPosition == 1)
+    r.click(CGPoint(x: 1200, y: 650))
+    #expect(c.subPreviews.peek == nil && c.previewLayout(f)?.boxes[cid("k4")] == k4)
   }
 }
