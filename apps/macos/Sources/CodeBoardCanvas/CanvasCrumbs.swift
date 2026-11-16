@@ -392,8 +392,9 @@ extension CanvasView {
   // MARK: In and out
 
   /// Double-click, ⌘↵ or Open on a sub-board card (enterFrame): its board in this tab, the name flying to the breadcrumb;
-  /// on through `deeper` and to card `reveal` there (a [[ref]] to a card in a sub-board)
+  /// on through `deeper` and to card `reveal` there (a [[ref]] to a card in a sub-board). Not a board this one is in
   func enterSubBoard(_ id: CardID, _ target: BoardID, deeper: [SubHop] = [], reveal: CardID? = nil) {
+    if target == shown?.board.id || holdsThisBoard(target) { return toast("Can’t open a board inside itself.") }
     guard let enter = onEnterBoard else {
       return onOpenBoard?(deeper.last?.board ?? target, reveal.map { .card($0) }) ?? ()
     }
