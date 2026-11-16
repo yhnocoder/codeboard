@@ -1,4 +1,4 @@
-# 网页标签页（只跑 Mac，不对照）：File > New Web Tab 开一个空白网页标签页，地址正在编辑；工具条的下边和白板右下角那一组的下边在一条线上（白板窄的时候，白板的工具条按设计叠在那一组上面）；输入环回地址回车前往，点链接到下一页，后退、前进；往下滚收起工具条，往上滚露出来；⌘L 再编辑地址，Esc 放弃；Save Link 之后 vault 里有了 网页 资料和这一页的条目
+# 网页标签页（只跑 Mac，不对照）：File > New Web Tab 开一个空白网页标签页，地址正在编辑；工具条的下边和白板右下角那一组的下边在一条线上（白板窄的时候，白板的工具条按设计叠在那一组上面）；输入环回地址回车前往，点链接到下一页，后退、前进；往下滚收起工具条，往上滚露出来；⌘L 再编辑地址，Esc 放弃；Save Link 之后 vault 里有了 网页 资料和这一页的条目；Save Full Page 之后保存按钮换成整页存好了的样子（只拍不判：驱动读不到按钮的状态；要先 node apps/macos/tools/shiyi/fetch.mjs 取来存档服务和页面脚本，没有时这一项是灰的）
 # only: mac
 # site: site/web
 zoom 1
@@ -37,3 +37,7 @@ wait 300
 expect entry:网页 has Page A
 expect row:网页 = shown
 shot saved @ui.webbar
+click @ui.websave
+pick Save Full Page
+wait 12000
+shot fullpage @ui.webbar
