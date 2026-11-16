@@ -43,7 +43,7 @@ public final class CanvasView: NSView {
   let display: NativeNotes
   var theme = Theme.warmInk
   /// The board shown, to show again in another theme
-  var shown: (board: VaultBoard, vault: Vault)?
+  package var shown: (board: VaultBoard, vault: Vault)?
   /// What is drawn; every change of it (a card added, gone, moved or resized, a Section folded, an undo, another
   /// board) has what is under a resting pointer hovered again on the next frame
   var scene: Scene? {
@@ -119,7 +119,7 @@ public final class CanvasView: NSView {
     get { levels.mode }
     set { levels.mode = newValue }
   }
-  var camera = Camera(origin: .zero, zoom: 1)
+  package var camera = Camera(origin: .zero, zoom: 1)
   /// The camera the world was last put on device pixels at, at rest (`settleOnPixels`)
   var settledAt: Camera?
   /// Where the next board shown is shown from (back to a board: where it was), instead of all of it in view
@@ -185,7 +185,7 @@ public final class CanvasView: NSView {
   // MARK: Editing state (CanvasEditing.swift)
 
   /// The open board this canvas edits; nil: it only shows a board read from the vault
-  var document: BoardDocument?
+  package var document: BoardDocument?
   var stopObserving: (() -> Void)?
   /// The board the scene was made from
   var shownBoard: Board?

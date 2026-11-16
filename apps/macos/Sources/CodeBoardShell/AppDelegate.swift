@@ -28,15 +28,23 @@ import CodeBoardResources
   withExtendedLifetime(delegate) { NSApp.run() }
 }
 
+/// The shell an app window shows (there is one window, so one shell). The acceptance driver reads the app's state
+/// through it, typed: a change that moves that state then breaks the driver's build, not its answers
+@MainActor package func shell(of window: NSWindow?) -> Shell? {
+  (NSApp.delegate as? AppDelegate)?.shell
+}
+
 /// Owns the one window and does what touches the disk for the shell: the vault choice, its tree and watcher, the import,
 /// saving the state. Menu actions reach it through the responder chain.
 @MainActor final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
   private static let stateKey = "shell"
   private static let themeKey = "theme"
-  private let shell = Shell()
+  fileprivate let shell = Shell()
   private var window: NSWindow?
   private var panes: BoardPanes?
   private var watcher: VaultWatcher?
+  /// The repositories added on this Mac, in the app's data folder
+  private var repositories: RepositoriesModel?
   private var appearance: NSKeyValueObservation?
   /// Only the latest tree read is applied
   private var treeRead = 0
@@ -77,7 +85,8 @@ import CodeBoardResources
       // a build made with a vault to start in (make-app.sh's FIRST_VAULT): opened on its first launch only
       open(URL(filePath: first, directoryHint: .isDirectory), restoring: nil)
     }
-    let (window, panes) = makeMainWindow(shell: shell)
+    repositories = shell.machineFolder.map { RepositoriesModel.forApp(folder: $0) }
+    let (window, panes) = makeMainWindow(shell: shell, repositories: repositories)
     self.window = window
     self.panes = panes
     panes.onVaultChanged = { [weak self] in self?.readTree(reloadBoards: true) }
