@@ -330,6 +330,24 @@ public struct ShellState: Codable, Equatable, Sendable {
     tabs.insert(tabs.remove(at: i), at: max(0, min(index, tabs.count)))
   }
 
+  /// A tab taken out whole (to another window), the one beside it selected as closing it does
+  func take(_ tab: Tab.ID) -> Tab? {
+    guard let t = tabs.first(where: { $0.id == tab }) else { return nil }
+    close(tab)
+    return t
+  }
+
+  /// A tab from another window, whole, at `index`, selected
+  func insert(_ tab: Tab, at index: Int) {
+    tabs.insert(tab, at: max(0, min(index, tabs.count)))
+    selected = tab.id
+  }
+
+  /// Where a board tab dragged from another window would go in this window's row, while it is over it
+  public internal(set) var tabDrop: Int?
+  /// What a board tab dragged out of the row tells (WindowSet's)
+  @ObservationIgnored var tabDragging: TabDragging?
+
   /// A tab in the reading pane titled `title` (a resource's name), the pane shown; the tab opened for the same `key`
   /// is gone to instead of a second
   public func openReadingTab(title: String, key: String) {
