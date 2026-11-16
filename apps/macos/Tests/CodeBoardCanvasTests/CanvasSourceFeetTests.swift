@@ -268,6 +268,53 @@ extension CanvasRemoteImageTests {
       #expect(fake.asked.count == wider && picture(r, "i1")?.still === large)
     }
 
+    /// The picture of a card with a strip under it fills the picture's own area: its top row at the card's top, its
+    /// bottom row just above the strip, none of it cut (it was drawn a strip's height down)
+    @Test func aPictureWithItsSourceUnderItIsDrawnFromTheCardsTopWhole() async throws {
+      let fake = FakeSources()
+      fake.labels["e1"] = SourceLabel(title: "Sparse Gradient Notes", number: "2405.01234", icon: .paper)
+      fake.sizes["e1"] = CGSize(width: 400, height: 200)
+      let r = try await Rig(
+        Board(id: BoardID(rawValue: "block-rows"), cards: [block("i1", entry: "e1")]), zoom: 1, sources: fake)
+      defer { r.close() }
+      await r.until("asked for") { !fake.asked.isEmpty }
+      // the top tenth red, the bottom tenth blue, green between
+      let (w, h) = (400, 200)
+      let ctx = try #require(
+        CGContext(
+          data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
+          bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+      for (y, c) in [(0, [0.0, 0, 1]), (20, [0, 1, 0]), (180, [1, 0, 0])] {
+        ctx.setFillColor(CGColor(red: c[0], green: c[1], blue: c[2], alpha: 1))
+        ctx.fill(CGRect(x: 0, y: y, width: w, height: h - y))
+      }
+      let made = try #require(ctx.makeImage())
+      fake.picture = made
+      fake.letGo()
+      await r.until("drawn with it") { picture(r, "i1")?.still === made }
+      await r.settle()
+      await r.idle()
+      let p = try #require(picture(r, "i1"))
+      #expect(p.below > 20, "a strip under the picture")
+      let it = r.canvas.items[try #require(r.canvas.index(of: .card(cid("i1"))))]
+      let surface = try #require((it.rest.contents as? IOSurface) ?? (it.held.contents as? IOSurface))
+      let img = try #require(CanvasView.image(surface))
+      let k = CGFloat(img.height) / r.rect("i1").height
+      let data = try #require(img.dataProvider?.data as Data?)
+      /// Which of red, green, blue is strongest in the card's middle column, `y` points down the card
+      func colour(_ y: CGFloat) -> String {
+        let at = min(img.height - 1, Int(y * k)) * img.bytesPerRow + img.width / 2 * 4
+        let px = [data[at], data[at + 1], data[at + 2]]
+        guard let top = px.max(), top > 150, px.filter({ $0 > 100 }).count == 1 else { return "none \(px)" }
+        // the surface is BGRA
+        return ["blue", "green", "red"][px.firstIndex(of: top)!]
+      }
+      let area = r.rect("i1").height - p.below
+      #expect(colour(3) == "red", "its top row at the card's top")
+      #expect(colour(area / 2) == "green")
+      #expect(colour(area - 3) == "blue", "its bottom row just above the strip")
+    }
+
     @Test func aBlockWithNoPictureShowsTheMissingPictureAndOneGoneItsSourceMissing() async throws {
       let fake = FakeSources()
       let r = try await Rig(
