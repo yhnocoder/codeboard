@@ -56,9 +56,11 @@ public final class NoteRenderer: NoteDisplay {
   /// `folder` (the board package or `.codeboard/shared`), as `scale` device pixels per point, in the board theme `look`
   /// (its id: warm-ink, ink-wash) and its `dark` variant or not, its [[refs]] drawn as `refs` resolve them. Among the requests waiting for the web
   /// view a higher `priority` goes first; a request cancelled before its turn draws nothing.
+  /// ponytail: `preamble` is not handed to the page (the app's Notes are drawn by NativeNotes); pass it in PageNote if
+  /// this renderer draws Notes again
   public func snapshot(
     of note: NoteBody, width: Double, height: Double?, folder: URL, scale: Double, look: String, dark: Bool,
-    refs: [NoteRef] = [], hideHead: Bool = false, priority: Int
+    refs: [NoteRef] = [], hideHead: Bool = false, preamble: String = "", priority: Int
   ) async throws -> NoteSnapshot {
     let json = try PageNote(
       note, width: width, height: height, look: look, dark: dark, refs: refs, hideHead: hideHead
@@ -96,7 +98,7 @@ public final class NoteRenderer: NoteDisplay {
   /// The picture `snapshot` would give, if the disk cache has it; never opens the web view
   public func cached(
     of note: NoteBody, width: Double, height: Double?, folder: URL, scale: Double, look: String, dark: Bool,
-    refs: [NoteRef] = [], hideHead: Bool = false
+    refs: [NoteRef] = [], hideHead: Bool = false, preamble: String = ""
   ) async -> NoteSnapshot? {
     guard
       let json = try? PageNote(
