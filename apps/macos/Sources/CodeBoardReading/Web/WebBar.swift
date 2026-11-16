@@ -1,29 +1,28 @@
 import AppKit
 
-/// The board toolbar's glass (CanvasToolbar.makeGlass and .pill in Warm Ink): the page blurred under a tint, in a
-/// continuous rounded rect with a hairline round it and the float shadow under it. What sits on it goes in `content`
+/// The board toolbar's glass in the board's theme (ReadingBarLook): the page blurred under a tint, in a continuous
+/// rounded rect with a hairline round it and the float shadow under it. What sits on it goes in `content`
 class WebGlass: NSView {
   let content = NSView()
   private let blur = NSVisualEffectView()
   private let tint = NSView()
-  private let radius: CGFloat
+  var look: ReadingBarLook {
+    didSet { restyle() }
+  }
 
-  init(radius: CGFloat) {
-    self.radius = radius
+  init(look: ReadingBarLook) {
+    self.look = look
     super.init(frame: .zero)
     wantsLayer = true
     for v in [blur, tint, content] {
       v.wantsLayer = true
       v.autoresizingMask = [.width, .height]
-      v.layer?.cornerRadius = radius
       v.layer?.cornerCurve = .continuous
       v.layer?.masksToBounds = true
       addSubview(v)
     }
-    blur.blendingMode = .withinWindow
-    blur.material = .underWindowBackground
     blur.state = .active
-    layer?.shadowOpacity = 1
+    layer?.shadowColor = CGColor(gray: 0, alpha: 1)
     layer?.shadowRadius = 10
     layer?.shadowOffset = CGSize(width: 0, height: -5)
     restyle()
@@ -34,48 +33,46 @@ class WebGlass: NSView {
 
   override func layout() {
     super.layout()
-    layer?.shadowPath = CGPath(
-      roundedRect: bounds, cornerWidth: min(radius, bounds.height / 2), cornerHeight: min(radius, bounds.height / 2),
-      transform: nil)
+    let r = min(look.radius, bounds.height / 2)
+    layer?.shadowPath = CGPath(roundedRect: bounds, cornerWidth: r, cornerHeight: r, transform: nil)
   }
 
-  override func viewDidChangeEffectiveAppearance() {
-    super.viewDidChangeEffectiveAppearance()
-    restyle()
-  }
-
-  /// themes.css --wi-glass over the blur, the hairline and the lower of the float shadows, light and dark
-  private func restyle() {
-    let dark = effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-    func c(_ r: CGFloat, _ g: CGFloat, _ b: CGFloat, _ a: CGFloat) -> CGColor {
-      CGColor(srgbRed: r / 255, green: g / 255, blue: b / 255, alpha: a)
-    }
-    tint.layer?.backgroundColor = dark ? c(40, 39, 36, 0.6) : c(250, 248, 244, 0.62)
+  /// The look's glass over the blur, its hairline and the float shadow; the controls on it in its appearance
+  func restyle() {
+    appearance = NSAppearance(named: look.dark ? .darkAqua : .aqua)
+    blur.material = look.material
+    blur.blendingMode = look.blending
+    for v in [blur, tint, content] { v.layer?.cornerRadius = look.radius }
+    tint.layer?.backgroundColor = look.glass
     content.layer?.borderWidth = 0.5
-    content.layer?.borderColor = dark ? c(255, 240, 220, 0.11) : c(60, 45, 20, 0.16)
-    layer?.shadowColor = dark ? c(0, 0, 0, 0.55) : c(50, 35, 10, 0.18)
+    content.layer?.borderColor = look.ring
+    layer?.shadowOpacity = look.dark ? 0.55 : 0.18
+    needsLayout = true
   }
 }
 
 /// The bar floating over a web page: back and forward through the page's history, the address, saving, and what is to
 /// come, shown but not working yet: body or full page, original, side by side or translation
 final class WebBar: WebGlass {
-  let back = WebBar.button("chevron.backward", "Back", "ui-web-back")
-  let forward = WebBar.button("chevron.forward", "Forward", "ui-web-forward")
+  let back = WebBar.button("chevron.backward", "Back", "ui-webback")
+  let forward = WebBar.button("chevron.forward", "Forward", "ui-webforward")
   let address = WebAddressField()
-  let extract = WebBar.segments([("doc.plaintext", "Body"), ("doc.richtext", "Full Page")], "ui-web-extract")
+  let extract = WebBar.segments([("doc.plaintext", "Body"), ("doc.richtext", "Full Page")], "ui-webextract")
   let translate = WebBar.segments(
     [("character", "Original"), ("rectangle.split.2x1", "Side by Side"), ("translate", "Translation")],
-    "ui-web-translate")
-  let save = WebBar.button("square.and.arrow.down", "Save", "ui-web-save")
+    "ui-webtranslate")
+  let save = WebBar.button("square.and.arrow.down", "Save", "ui-websave")
   /// Over the save button while a saving is under way
   private let saving = NSProgressIndicator()
   /// The address keeps this much before what is to come gives way, the translation first
   static let addressMinWidth: CGFloat = 96
 
-  override init(radius: CGFloat) {
-    super.init(radius: radius)
-    setAccessibilityIdentifier("ui-web-bar")
+  /// What the save button says now
+  private var state = Save.off("")
+
+  override init(look: ReadingBarLook) {
+    super.init(look: look)
+    setAccessibilityIdentifier("ui-webbar")
     for c in [extract, translate, save] { c.isEnabled = false }
     for v in [back, forward, address, extract, translate, save] { content.addSubview(v) }
     saving.style = .spinning
@@ -95,6 +92,7 @@ final class WebBar: WebGlass {
   }
 
   func show(_ state: Save) {
+    self.state = state
     let (symbol, tip): (String?, String) =
       switch state {
       case .off(let why): ("square.and.arrow.down", why)
@@ -110,9 +108,9 @@ final class WebBar: WebGlass {
     save.isEnabled = if case .off = state { false } else { true }
     save.contentTintColor =
       switch state {
-      case .saved(.link), .saved(.page): .controlAccentColor
+      case .saved(.link), .saved(.page): NSColor(cgColor: look.accent)
       case .failed: .systemRed
-      default: .secondaryLabelColor
+      default: NSColor(cgColor: look.ink)
       }
     if case .saving = state { saving.startAnimation(nil) } else { saving.stopAnimation(nil) }
   }
@@ -127,18 +125,29 @@ final class WebBar: WebGlass {
     }
   }
 
+  /// The buttons in the look's ink, the saved state in its accent
+  override func restyle() {
+    super.restyle()
+    for b in [back, forward] { b.contentTintColor = NSColor(cgColor: look.ink) }
+    address.lit = look.ink.copy(alpha: 0.07)
+    address.textColor = NSColor(cgColor: look.ink)
+    show(state)
+  }
+
+  /// The buttons the size of the board toolbar's, 4 in and 2 apart as there
   override func layout() {
     super.layout()
     let h = bounds.height
-    func place(_ v: NSView, x: CGFloat, width: CGFloat, height: CGFloat = 28) {
+    let button = look.button
+    func place(_ v: NSView, x: CGFloat, width: CGFloat, height: CGFloat) {
       v.frame = CGRect(x: x, y: ((h - height) / 2).rounded(), width: width, height: height)
     }
-    place(back, x: 4, width: 30)
-    place(forward, x: 36, width: 30)
+    place(back, x: 4, width: button.width, height: button.height)
+    place(forward, x: 4 + button.width + 2, width: button.width, height: button.height)
     var right = bounds.width - 4
-    place(save, x: right - 30, width: 30)
+    place(save, x: right - button.width, width: button.width, height: button.height)
     saving.frame = save.bounds.insetBy(dx: (save.bounds.width - 16) / 2, dy: (save.bounds.height - 16) / 2)
-    right -= 30 + 4
+    right -= button.width + 4
     for s in [extract, translate] { s.sizeToFit() }
     let start = forward.frame.maxX + 6
     let fit = right - start - Self.addressMinWidth
@@ -157,7 +166,6 @@ final class WebBar: WebGlass {
     let b = NSButton(
       image: NSImage(systemSymbolName: symbol, accessibilityDescription: name) ?? NSImage(), target: nil, action: nil)
     b.isBordered = false
-    b.contentTintColor = .secondaryLabelColor
     b.toolTip = name
     b.setAccessibilityLabel(name)
     b.setAccessibilityIdentifier(id)
@@ -182,6 +190,8 @@ final class WebBar: WebGlass {
 final class WebAddressField: NSTextField {
   /// Editing starts: the field is told what to hold first
   var onEdit: (() -> Void)?
+  /// Under the address while it is edited
+  var lit: CGColor?
 
   init() {
     super.init(frame: .zero)
@@ -198,7 +208,7 @@ final class WebAddressField: NSTextField {
     layer?.cornerCurve = .continuous
     placeholderString = "Address"
     setAccessibilityLabel("Address")
-    setAccessibilityIdentifier("ui-web-address")
+    setAccessibilityIdentifier("ui-webaddress")
   }
 
   @available(*, unavailable)
@@ -214,7 +224,7 @@ final class WebAddressField: NSTextField {
   override func becomeFirstResponder() -> Bool {
     onEdit?()
     alignment = .natural
-    layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(0.07).cgColor
+    layer?.backgroundColor = lit
     guard super.becomeFirstResponder() else { return false }
     currentEditor()?.selectAll(nil)
     return true
@@ -237,9 +247,9 @@ final class WebSuggestions: WebGlass {
   private var rows: [NSButton] = []
   static let rowHeight: CGFloat = 26
 
-  override init(radius: CGFloat) {
-    super.init(radius: radius)
-    setAccessibilityIdentifier("ui-web-suggestions")
+  override init(look: ReadingBarLook) {
+    super.init(look: look)
+    setAccessibilityIdentifier("ui-websuggestions")
     setAccessibilityRole(.list)
   }
 
@@ -265,7 +275,7 @@ final class WebSuggestions: WebGlass {
       b.tag = i
       b.wantsLayer = true
       b.layer?.cornerRadius = 7
-      b.setAccessibilityIdentifier("ui-web-suggestion-\(i)")
+      b.setAccessibilityIdentifier("ui-websuggestion\(i)")
       content.addSubview(b)
       return b
     }
@@ -278,7 +288,7 @@ final class WebSuggestions: WebGlass {
     let next = (selected ?? -1) + step
     selected = entries.indices.contains(next) ? next : nil
     for (i, r) in rows.enumerated() {
-      r.layer?.backgroundColor = i == selected ? NSColor.labelColor.withAlphaComponent(0.08).cgColor : nil
+      r.layer?.backgroundColor = i == selected ? look.ink.copy(alpha: 0.08) : nil
     }
     return selected.map { entries[$0] }
   }

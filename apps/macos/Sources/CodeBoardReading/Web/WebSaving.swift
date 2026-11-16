@@ -1,56 +1,11 @@
+import CodeBoardModel
+import CodeBoardResources
 import Foundation
 import WebKit
 
-/// What a web tab asks its owner to do with what it saves, and what it asks for of what was saved
-public protocol WebSaving: Sendable {
-  func saveLink(_ meta: WebReading.PageMeta) async throws
-  /// `file` is the page captured whole, one self-contained HTML file, the tab's until this returns. The saved page's
-  /// hash
-  func savePage(_ meta: WebReading.PageMeta, file: URL) async throws -> String
-  /// Whether `url` is saved, and how
-  func saved(_ url: URL) async -> WebReading.Saved
-  /// The saving service's rule files for pages of `host`, as JSON; none when it has none or cannot be reached
-  func rules(forHost host: String) async -> [Data]
-  /// The page saved as `hash`, as a file on this Mac; throws when it cannot be had here
-  func savedPage(hash: String) async throws -> URL
-}
-
 extension WebReading {
-  /// A page as saved: its address and title, and what the metadata script read of it when there is one
-  public struct PageMeta: Equatable, Sendable {
-    public var url: URL
-    public var title: String
-    public var description: String?
-    public var siteName: String?
-    public var icon: URL?
-    public var cover: URL?
-
-    public init(
-      url: URL, title: String, description: String? = nil, siteName: String? = nil, icon: URL? = nil,
-      cover: URL? = nil
-    ) {
-      self.url = url
-      self.title = title
-      self.description = description
-      self.siteName = siteName
-      self.icon = icon
-      self.cover = cover
-    }
-
-    /// From the script's `{url, title, description, site_name, cover, favicon}`, the page's own address and title
-    /// where it gives none
-    init(script: Any?, url: URL, title: String) {
-      let d = script as? [String: Any] ?? [:]
-      func text(_ key: String) -> String? { (d[key] as? String).flatMap { $0.isEmpty ? nil : $0 } }
-      self.init(
-        url: text("url").flatMap(URL.init(string:)) ?? url, title: text("title") ?? title,
-        description: text("description"), siteName: text("site_name"), icon: text("favicon").flatMap(URL.init(string:)),
-        cover: text("cover").flatMap(URL.init(string:)))
-    }
-  }
-
   /// How an address is saved
-  public enum Saved: Equatable, Sendable {
+  enum Saved: Equatable, Sendable {
     case unsaved
     case link
     case page(hash: String)
@@ -58,9 +13,48 @@ extension WebReading {
 
   /// The world the saving scripts run in and post to, out of the page's reach
   @MainActor static let scriptWorld = WKContentWorld.world(name: "shiyi")
+
+  /// The resource saving goes into: the vault's first with the web preset, in the sidebar's order (the top level's
+  /// first, then each folder's), or with none a new one, 网页, at the top level. Its path
+  static func webResource(in vault: Vault) throws -> String {
+    if let r = try vault.tree().allFolders.lazy.flatMap(\.resources).first(where: { $0.preset == .web }) {
+      return r.path
+    }
+    return try vault.newResource(in: "", title: "网页", preset: .web).path
+  }
 }
 
-/// The saving service's scripts, read from the folder `Context.scripts` names; none when one is missing
+extension WebMeta {
+  /// What the metadata script read of a page, `{title, description, site_name, cover, favicon}`, its pictures by
+  /// address; the page's own title where it gives none
+  init(script: Any?, title: String, at date: Date = Date()) {
+    let d = script as? [String: Any] ?? [:]
+    func text(_ key: String) -> String? { (d[key] as? String).flatMap { $0.isEmpty ? nil : $0 } }
+    self.init(
+      title: text("title") ?? (title.isEmpty ? nil : title), description: text("description"),
+      site: text("site_name"), image: text("cover").map(ImageSource.url), icon: text("favicon").map(ImageSource.url),
+      fetchedAt: (date.timeIntervalSince1970 * 1000).rounded())
+  }
+}
+
+extension ReadingPane {
+  /// How `url` is saved, from the vault's entries: its entry's latest page saved whole, else a link
+  func webSaved(_ url: URL) -> WebReading.Saved {
+    let address = Vault.pageAddress(url.absoluteString)
+    guard let e = entries.all.lazy.map(\.entry).first(where: { $0.origin == .web(address) }) else { return .unsaved }
+    let hashes = e.versions.compactMap { v -> String? in if case .page(let h, _) = v.content { h } else { nil } }
+    return hashes.last.map { .page(hash: $0) } ?? .link
+  }
+
+  /// What was saved, in its entry in the web resource with what was read of the page; the entries know it at once
+  func saveWeb(_ item: SavedItem, meta: WebMeta) throws {
+    guard let vault else { return }
+    let path = try vault.save(item, in: WebReading.webResource(in: vault), meta: meta)
+    entries.update(try vault.entry(at: path), at: path)
+  }
+}
+
+/// The saving service's scripts, read from the folder `register` was given; none when one is missing
 struct WebScripts {
   var hooks: String
   var capture: String

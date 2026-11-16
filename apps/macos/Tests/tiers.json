@@ -481,6 +481,10 @@
           "sources": ["CodeBoardShell/ImportAlert.swift", "CodeBoardCanvas/CanvasDiagnostics.swift"],
           "tests": ["FullWindowSheetTests"]
         },
+        "web": {
+          "sources": ["CodeBoardShell/ShellWeb.swift", "CodeBoardReading/Web"],
+          "tests": ["ShellWebTests"]
+        },
         "reading pane": {
           "sources": [
             "CodeBoardShell/MainWindow.swift",

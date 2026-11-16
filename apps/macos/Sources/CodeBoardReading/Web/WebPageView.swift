@@ -1,14 +1,19 @@
 import AppKit
+import CodeBoardModel
+import CodeBoardResources
 import WebKit
 
 /// A web page filling its tab, with its bar floating over the page's bottom edge. The bar comes and goes as
 /// `WebBarVisibility` says, moving over the page: the page is never laid out again for it. A saved page is shown in
-/// the same view, under the app's own scheme with its scripts off, until the tab goes to an address
-final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUIDelegate {
+/// the same view, under the app's own scheme with its scripts off, until the tab goes to an address. The tab follows
+/// what it shows (its title, what it saves), so that a session restored opens it again
+final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUIDelegate, ReadingLookFollower {
   let web: WKWebView
   let bar: WebBar
   let suggestions: WebSuggestions
-  private let context: WebReading.Context
+  private let context: ReadingContext
+  /// The saving service; none: links alone are saved, and a saved page is not on this Mac
+  private let store: (any PageStore)?
   private(set) var visibility = WebBarVisibility()
   /// Where the bar is now, which lags `visibility` while it slides
   private var barShown = true
@@ -38,7 +43,8 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
   private var ownLoad = false
   /// Loads a saved page started by itself (a refresh, a redirect), refused
   private(set) var refused: [URL] = []
-  private var historyFile: URL { context.dataDirectory.appending(path: "history.json") }
+  /// None when the shell gave the tab no folder of its own on this Mac: no history is kept
+  private var historyFile: URL? { context.dataFolder?.appending(path: "history.json") }
   static let slide: TimeInterval = 0.18
 
   /// Scroll offsets, posted from the page's scroll events in a world of their own so that the page's scripts neither
@@ -48,25 +54,28 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
     addEventListener("scroll", () => webkit.messageHandlers.scroll.postMessage(scrollY), { passive: true })
     """
 
-  init(page: WebReading.Page, context: WebReading.Context) {
+  /// `scripts`: the folder of the saving service's page scripts; `websiteData`: where its sites keep their data
+  init(context: ReadingContext, store: (any PageStore)?, scripts: URL?, websiteData: WKWebsiteDataStore) {
     self.context = context
+    self.store = store
+    let page = WebReading.Page(payload: context.payload)
     let config = WKWebViewConfiguration()
-    config.websiteDataStore = context.websiteData
+    config.websiteDataStore = websiteData
     config.applicationNameForUserAgent = WebReading.applicationName
-    config.setURLSchemeHandler(SavedPageHandler(saving: context.saving), forURLScheme: WebReading.savedScheme)
+    config.setURLSchemeHandler(SavedPageHandler(store: store), forURLScheme: WebReading.savedScheme)
     userScripts = config.userContentController
     let relay = ScrollRelay()
     userScripts.add(relay, contentWorld: .defaultClient, name: "scroll")
     scroll = WKUserScript(
       source: Self.scrollScript, injectionTime: .atDocumentStart, forMainFrameOnly: true, in: .defaultClient)
-    scripts = WebScripts(context.scripts)
+    self.scripts = WebScripts(scripts)
     let saving = SavingRelay()
-    if scripts != nil {
+    if self.scripts != nil {
       userScripts.addScriptMessageHandler(saving, contentWorld: WebReading.scriptWorld, name: "shiyi")
     }
     web = WKWebView(frame: .zero, configuration: config)
-    bar = WebBar(radius: context.look.radius)
-    suggestions = WebSuggestions(radius: context.look.radius)
+    bar = WebBar(look: context.bar)
+    suggestions = WebSuggestions(look: context.bar)
     editOnShow = page == .online(nil)
     super.init(frame: .zero)
     setAccessibilityIdentifier("ui-web")
@@ -76,7 +85,7 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
     web.navigationDelegate = self
     web.uiDelegate = self
     web.autoresizingMask = [.width, .height]
-    web.setAccessibilityIdentifier("ui-web-page")
+    web.setAccessibilityIdentifier("ui-webpage")
     addSubview(web)
     suggestions.isHidden = true
     suggestions.onChoose = { [weak self] url in self?.go(to: url) }
@@ -104,7 +113,7 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
       web.observe(\.canGoForward) { [weak self] _, _ in MainActor.assumeIsolated { self?.historyChanged() } },
     ]
     clearedObserver = NotificationCenter.default.addObserver(
-      forName: WebReading.siteDataCleared, object: context.websiteData, queue: .main
+      forName: WebReading.siteDataCleared, object: websiteData, queue: .main
     ) { [weak self] note in
       let domain = note.userInfo?["domain"] as? String
       MainActor.assumeIsolated { self?.siteDataCleared(domain) }
@@ -137,12 +146,20 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
       x: b.minX, y: b.minY - 6 - suggestions.height, width: b.width, height: suggestions.height)
   }
 
+  /// The board toolbar's height and distance from the bottom, so that beside the board the two bars' edges are on one
+  /// line; as far from the sides as from the bottom
   private func barFrame(shown: Bool) -> CGRect {
-    let look = context.look
+    let look = bar.look
     let y = bounds.height - look.bottom - look.height
     return CGRect(
-      x: look.side, y: shown ? y : bounds.height + look.radius, width: max(0, bounds.width - 2 * look.side),
+      x: look.bottom, y: shown ? y : bounds.height + look.radius, width: max(0, bounds.width - 2 * look.bottom),
       height: look.height)
+  }
+
+  func barLookChanged(_ look: ReadingBarLook) {
+    bar.look = look
+    suggestions.look = look
+    needsLayout = true
   }
 
   override func viewDidMoveToWindow() {
@@ -239,19 +256,22 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
 
   private func pageChanged() {
     if !bar.address.isEditing { bar.address.show(WebAddress.shown(address)) }
-    let page = page
-    if case .saved(_, _, let title) = page {
-      context.changed(web.title.flatMap { $0.isEmpty ? nil : $0 } ?? title, page)
-    } else {
-      context.changed(web.title, page)
+    // before its first page the tab keeps what it was opened with
+    if web.url != nil {
+      let page = page
+      let own = web.title.flatMap { $0.isEmpty ? nil : $0 }
+      let title = if case .saved(_, _, let saved) = page { own ?? saved } else { own ?? WebAddress.shown(address) }
+      context.update(title: title, payload: page.payload, key: page.key)
     }
     if web.url != savedFor { askSaved() }
-    bar.extract.isEnabled = onSaved && scripts != nil
+    bar.extract.isEnabled = onSaved && scripts != nil && store != nil
     bar.extract.toolTip =
       if bar.extract.isEnabled {
         nil
       } else if scripts == nil {
         "Body view needs the saving service's page scripts, which are not on this Mac"
+      } else if store == nil {
+        "Body view needs the saving service, which is not set up on this Mac"
       } else {
         "Body view is for saved pages"
       }
@@ -302,10 +322,10 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
 
   /// A saved page loaded: the reader given its site's rule files, in the mode chosen
   private func read() {
-    guard case .saved(_, let address, _) = page, scripts != nil, let saving = context.saving else { return }
+    guard case .saved(_, let address, _) = page, scripts != nil, let store else { return }
     let url = web.url
     Task {
-      let files = await saving.rules(forHost: address.host() ?? "").compactMap {
+      let files = ((try? await store.rules(forHost: address.host() ?? "")) ?? []).compactMap {
         try? JSONSerialization.jsonObject(with: $0)
       }
       guard web.url == url else { return }
@@ -324,14 +344,15 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
 
   /// The page in the history: a visit when it has loaded, its title when that comes (often after it has loaded)
   private func record(counted: Bool) {
-    guard let url = web.url, ["http", "https"].contains(url.scheme), counted || web.title?.isEmpty == false else {
-      return
-    }
-    let (title, file) = (web.title, historyFile)
+    guard let url = web.url, ["http", "https"].contains(url.scheme), counted || web.title?.isEmpty == false,
+      let file = historyFile
+    else { return }
+    let title = web.title
     Task { await WebHistoryFile.shared.visit(url, title: title, at: Date(), counted: counted, in: file) }
   }
 
-  /// A link to a new window opens here
+  /// A link to a new window opens here: a tab of its own would need the configuration WebKit hands over, which the
+  /// tab's view cannot be made with
   func webView(
     _ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for action: WKNavigationAction,
     windowFeatures: WKWindowFeatures
@@ -358,10 +379,15 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
       item.target = self
       menu.addItem(item)
     }
-    if scripts == nil {
-      page.isEnabled = false
-      page.toolTip = "Saving a page whole needs the saving service's page scripts, which are not on this Mac"
-    }
+    page.isEnabled = scripts != nil && store != nil
+    page.toolTip =
+      if scripts == nil {
+        "Saving a page whole needs the saving service's page scripts, which are not on this Mac"
+      } else if store == nil {
+        "Saving a page whole needs the saving service, which is not set up on this Mac"
+      } else {
+        nil
+      }
     return menu
   }
 
@@ -371,8 +397,10 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
     capture.cancel()
   }
 
+  /// The link in its entry in the vault, with what the metadata script read of the page when there is one; the
+  /// saving service, when there is one, keeps it too
   @objc func saveLink(_ sender: Any?) {
-    guard let saving = context.saving, let url = web.url, ["http", "https"].contains(url.scheme) else { return }
+    guard context.pane.vault != nil, let url = web.url, ["http", "https"].contains(url.scheme) else { return }
     let title = web.title ?? ""
     Task {
       let script =
@@ -380,8 +408,14 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
         ? nil
         : try? await web.callAsyncJavaScript(
           "return await shiyiCapture.meta()", contentWorld: WebReading.scriptWorld)
+      let meta = WebMeta(script: script, title: title)
+      let name = meta.title ?? WebAddress.shown(url)
       do {
-        try await saving.saveLink(WebReading.PageMeta(script: script, url: url, title: title))
+        let item =
+          try await store?.saveLink(PageLink(url: url.absoluteString, title: name))
+          ?? SavedItem(
+            id: "", kind: .link, url: url.absoluteString, title: name, savedAt: Int64(meta.fetchedAt ?? 0))
+        try context.pane.saveWeb(item, meta: meta)
         if web.url == url, saved == .unsaved { saved = .link }
         if capture == nil { showSaved() }
       } catch {
@@ -390,11 +424,12 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
     }
   }
 
+  /// The page captured whole, kept by the saving service and listed as one more version of its entry
   @objc func savePage(_ sender: Any?) {
-    guard capture == nil, scripts != nil, let saving = context.saving, let url = web.url,
+    guard capture == nil, scripts != nil, let store, context.pane.vault != nil, let url = web.url,
       ["http", "https"].contains(url.scheme)
     else { return }
-    let (title, cookies) = (web.title ?? "", context.websiteData.httpCookieStore)
+    let (title, cookies) = (web.title ?? "", web.configuration.websiteDataStore.httpCookieStore)
     let capture = WebCapture(web: web) { [weak self] stage in self?.showSave(.saving(stage: stage)) }
     self.capture = capture
     showSave(.saving(stage: ""))
@@ -402,16 +437,19 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
       defer { if self.capture === capture { self.capture = nil } }
       do {
         async let jar = cookies.allCookies()
-        let files = await saving.rules(forHost: url.host() ?? "")
+        let files = (try? await store.rules(forHost: url.host() ?? "")) ?? []
         let (file, script) = try await capture.run(files: files, cookies: await jar)
         defer { try? FileManager.default.removeItem(at: file) }
-        let hash: String
+        let meta = WebMeta(script: script, title: title)
+        let item: SavedItem
         do {
-          hash = try await saving.savePage(WebReading.PageMeta(script: script, url: url, title: title), file: file)
+          item = try await store.savePage(
+            PageCapture(url: url.absoluteString, title: meta.title ?? WebAddress.shown(url)), file: file)
+          try context.pane.saveWeb(item, meta: meta)
         } catch {
           throw WebSaveError(code: "store", message: error.localizedDescription)
         }
-        if web.url == url { saved = .page(hash: hash) }
+        if web.url == url, let hash = item.pageHash { saved = .page(hash: hash) }
         showSaved()
       } catch is CancellationError {
         showSaved()
@@ -423,22 +461,22 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
     }
   }
 
-  /// A new address: how it is saved, from the owner
+  /// A new address: how it is saved, from the vault
   private func askSaved() {
     savedFor = web.url
-    saved = if case .saved(let hash, _, _) = page { .page(hash: hash) } else { .unsaved }
+    saved =
+      if case .saved(let hash, _, _) = page {
+        .page(hash: hash)
+      } else if let url = web.url, ["http", "https"].contains(url.scheme) {
+        context.pane.webSaved(url)
+      } else {
+        .unsaved
+      }
     if capture == nil { showSaved() }
-    guard let saving = context.saving, let url = web.url, ["http", "https"].contains(url.scheme) else { return }
-    Task {
-      let s = await saving.saved(url)
-      guard web.url == url else { return }
-      saved = s
-      if capture == nil { showSaved() }
-    }
   }
 
   private func showSaved() {
-    guard context.saving != nil else { return showSave(.off("Saving is not set up")) }
+    guard context.pane.vault != nil else { return showSave(.off("Saving needs an open vault")) }
     if onSaved { return showSave(.off("This is the page as it was saved")) }
     guard let url = web.url, ["http", "https"].contains(url.scheme) else {
       return showSave(.off("No page to save"))
@@ -472,7 +510,7 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
     bar.address.stringValue = address?.absoluteString ?? ""
     typed = bar.address.stringValue
     handle(.editing(true))
-    let file = historyFile
+    guard let file = historyFile else { return }
     Task { [weak self] in
       let h = await WebHistoryFile.shared.read(file)
       self?.history = h

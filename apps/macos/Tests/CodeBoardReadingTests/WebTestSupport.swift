@@ -1,9 +1,14 @@
+import AppKit
+import CodeBoardModel
+import CodeBoardResources
 import Foundation
 import Network
+import WebKit
 
 @testable import CodeBoardReading
 
-// What the web tab's tests share: the loopback server their made-up pages come from, and waiting on a page.
+// What the web tab's tests share: the loopback server their made-up pages come from, waiting on a page, the saving
+// service in memory and a reading pane of web tabs.
 
 /// Waits for `ok`, looking again every few milliseconds; the time is only a bound
 @MainActor func until(_ what: String, _ ok: () async throws -> Bool) async throws {
@@ -93,38 +98,104 @@ final class LoopbackServer: Sendable {
   }
 }
 
-/// The owner of the web tabs under test: what they saved, kept in memory, and what it says was saved
-actor TestSaving: WebSaving {
+/// The saving service of the web tabs under test, in memory: what they saved, and the saved pages it has
+actor TestStore: PageStore {
   struct Page: Sendable {
-    var meta: WebReading.PageMeta
+    var capture: PageCapture
     var file: URL
     var html: String
   }
 
-  private(set) var links: [WebReading.PageMeta] = []
+  private(set) var links: [PageLink] = []
   private(set) var pages: [Page] = []
-  private var states: [URL: WebReading.Saved] = [:]
   private var ruleFiles: [String: [Data]] = [:]
   private var files: [String: URL] = [:]
 
-  func saveLink(_ meta: WebReading.PageMeta) { links.append(meta) }
-
-  func savePage(_ meta: WebReading.PageMeta, file: URL) throws -> String {
-    pages.append(Page(meta: meta, file: file, html: try String(contentsOf: file, encoding: .utf8)))
-    return "hash-\(pages.count)"
+  func saveLink(_ meta: PageLink) -> SavedItem {
+    links.append(meta)
+    return SavedItem(id: "link-\(links.count)", kind: .link, url: meta.url, title: meta.title, savedAt: 1_000)
   }
 
-  func saved(_ url: URL) -> WebReading.Saved { states[url] ?? .unsaved }
+  /// Hashes `00…01`, `00…02`…
+  func savePage(_ meta: PageCapture, file: URL) throws -> SavedItem {
+    let html = try String(contentsOf: file, encoding: .utf8)
+    pages.append(Page(capture: meta, file: file, html: html))
+    return SavedItem(
+      id: "page-\(pages.count)", kind: .page, url: meta.url, title: meta.title, savedAt: 2_000,
+      pageHash: Self.hash(pages.count), bytes: Int64(html.utf8.count))
+  }
+
+  static func hash(_ n: Int) -> String { String(format: "%064x", n) }
+
+  func items(kind: SavedItem.Kind?, after: String?, limit: Int) -> SavedItems { SavedItems(items: []) }
+
+  func writePage(hash: String, to: URL) throws -> Int64 {
+    guard let f = files[hash] else { throw CocoaError(.fileNoSuchFile) }
+    let data = try Data(contentsOf: f)
+    try data.write(to: to)
+    return Int64(data.count)
+  }
+
+  func pin(id: String, pinned: Bool) {}
   func rules(forHost host: String) -> [Data] { ruleFiles[host] ?? [] }
 
-  func savedPage(hash: String) throws -> URL {
-    guard let f = files[hash] else { throw CocoaError(.fileNoSuchFile) }
-    return f
-  }
-
-  func set(_ url: URL, _ state: WebReading.Saved) { states[url] = state }
   func set(rules: [String], forHost host: String) { ruleFiles[host] = rules.map { Data($0.utf8) } }
   func set(file: URL, forHash hash: String) { files[hash] = file }
+}
+
+/// A reading pane whose web tabs keep their sites' data in a store in memory of the test's own, and their history in
+/// a folder of its own (none: `keeps` false), in a window never ordered in. Each tab is made as the pane makes it,
+/// with web tabs registered for it just before, since other tests register their own
+@MainActor final class WebTabs {
+  let pane = ReadingPane()
+  let paneView: ReadingPaneView
+  let window: NSWindow
+  let websiteData: WKWebsiteDataStore
+  let machine = FileManager.default.temporaryDirectory.appending(path: "web-machine-\(UUID().uuidString)")
+  private let store: (any PageStore)?
+  private let scripts: URL?
+
+  init(
+    vault: Vault? = nil, store: (any PageStore)? = nil, scripts: URL? = nil,
+    websiteData: WKWebsiteDataStore = .nonPersistent(), keeps: Bool = true
+  ) throws {
+    _ = NSApplication.shared
+    self.store = store
+    self.scripts = scripts
+    self.websiteData = websiteData
+    pane.vault = vault
+    if let vault { pane.entries = EntryIndex(vault, try vault.tree()) }
+    if keeps { pane.machineFolder = machine }
+    paneView = ReadingPaneView(pane: pane)
+    window = NSWindow(
+      contentRect: CGRect(x: -30000, y: -30000, width: 600, height: 500), styleMask: [.titled], backing: .buffered,
+      defer: false)
+    window.isReleasedWhenClosed = false
+    window.contentView = paneView
+  }
+
+  /// The web tabs' folder on this Mac
+  var data: URL { machine.appending(path: "Web") }
+
+  /// A new web tab showing what `payload` names, selected; its view
+  func open(_ payload: [String: String] = [:]) -> WebPageView {
+    let (store, scripts, websiteData) = (store, scripts, websiteData)
+    ReadingKinds.register(WebReading.kind, icon: "globe") {
+      WebPageView(context: $0, store: store, scripts: scripts, websiteData: websiteData)
+    }
+    let id = pane.open("New Tab", kind: WebReading.kind, payload: payload)
+    paneView.sync()
+    window.layoutIfNeeded()
+    return paneView.views[id] as! WebPageView
+  }
+
+  /// The tab `view` is in
+  func tab(_ view: WebPageView) -> ReadingTab? { pane.tabs.first { paneView.views[$0.id] === view } }
+
+  func close() {
+    window.close()
+    try? FileManager.default.removeItem(at: machine)
+  }
 }
 
 /// Stand-ins for the saving service's page scripts, speaking their messages, written to a folder of their own
