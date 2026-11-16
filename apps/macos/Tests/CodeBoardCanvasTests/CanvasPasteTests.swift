@@ -198,13 +198,13 @@ import Testing
     let drag = Drag(files: [a, t, b], at: r.at(CGPoint(x: 700, y: 600)))
     #expect(r.canvas.draggingEntered(drag) == .copy)
     #expect(r.canvas.performDragOperation(drag))
+    // said at the drop: read now, since the toast goes away by itself while the pictures are still being read
+    let said = r.canvas.toastText
     await r.until("both cards") { r.doc.board.cards.count == 3 }
     let made = Array(r.doc.board.cards.dropFirst())
     #expect(made.map(\.width) == [200, 100])
     #expect(made.map(\.x) == [700, 700 + 200 + CanvasView.pasteGap] && made.map(\.y) == [600, 600])
-    #expect(
-      r.canvas.toastText
-        == "notes.txt isn't an image: only PNG, JPEG, GIF, WebP and SVG files can be dropped on the board")
+    #expect(said == "notes.txt isn't an image: only PNG, JPEG, GIF, WebP and SVG files can be dropped on the board")
   }
 
   /// A link and a list of them (newWeb, newLinkList by addCards) from the pointer's place, as main's paste gives it

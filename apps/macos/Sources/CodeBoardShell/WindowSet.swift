@@ -1,6 +1,7 @@
 import AppKit
 import CodeBoardCanvas
 import CodeBoardModel
+import CodeBoardReading
 import Observation
 
 /// One window as saved: its shell's state and where it was, on which screen
@@ -33,8 +34,9 @@ struct SavedWindow: Codable, Equatable {
   @ObservationIgnored var present: (NSWindow) -> Void = { $0.makeKeyAndOrderFront(nil) }
   /// Gives a window the keys (a board tab moved into it); a driver never brings it in front
   @ObservationIgnored var focus: (NSWindow) -> Void = { $0.makeKeyAndOrderFront(nil) }
-  /// A board tab dragged out of its row, every window's
+  /// A board tab dragged out of its row, every window's, and a reading tab
   @ObservationIgnored private(set) var tabDrag: TabDrag!
+  @ObservationIgnored private(set) var readingDrag: TabDrag!
   static let stateKey = "windows"
   /// What one window saved before there were several
   static let oldStateKey = "shell"
@@ -42,7 +44,8 @@ struct SavedWindow: Codable, Equatable {
   init(session: VaultSession = VaultSession()) {
     self.session = session
     documents = BoardDocuments(session: session)
-    tabDrag = TabDrag(set: self)
+    tabDrag = TabDrag(set: self, kind: .board)
+    readingDrag = TabDrag(set: self, kind: .reading)
   }
 
   @MainActor final class Entry: NSObject, NSWindowDelegate {
@@ -128,6 +131,12 @@ struct SavedWindow: Codable, Equatable {
       return nil
     }
     shell.tabDragging = tabDrag
+    shell.reading.tabDragger = readingDrag
+    // a window that shows only its reading pane closes with its last reading tab
+    shell.reading.lastClosed = { [weak e] in
+      guard let e, e.shell.readingOnly, e.shell.tabs.isEmpty else { return }
+      e.window.close()
+    }
     configure(panes)
     all.append(e)
     return e
@@ -204,12 +213,89 @@ struct SavedWindow: Codable, Equatable {
     return e
   }
 
-  /// The window whose board tabs hold `tab`
-  func entry(holding tab: Tab.ID) -> Entry? { all.first { $0.shell.tabs.contains { $0.id == tab } } }
+  // MARK: Reading tabs between windows
 
-  /// A window's board tab row on screen
-  func tabRow(of e: Entry) -> CGRect? {
-    guard let row = e.window.contentView.flatMap({ Self.view($0, "ui-boardtabs") }), !row.isHiddenOrHasHiddenAncestor
+  /// Reading tab `id` moved whole from `from` into `to`'s reading pane at `index`, with its view as it is (a web page
+  /// not loaded again, signed in and scrolled as it was; a PDF on its page, its selection kept). `to` selects it and
+  /// takes the keys; `from` selects the one beside it, and closes when nothing is left in it: no tab at all, or no
+  /// reading tab in a window that shows only the reading pane
+  func moveReading(_ id: ReadingTab.ID, from: Entry, to: Entry, at index: Int) {
+    guard from !== to, all.contains(where: { $0 === from }), all.contains(where: { $0 === to }),
+      from.shell.reading.tabs.contains(where: { $0.id == id }), let fv = readingView(of: from),
+      let tv = readingView(of: to)
+    else { return }
+    // the view first: either pane view's sync would otherwise let it go, or make the tab a new one
+    let handed = fv.handOver(id)
+    guard let t = from.shell.reading.take(id) else { return }
+    if let handed { tv.adopt(handed.view, handed.place, for: id) }
+    to.shell.reading.insert(t, at: index)
+    fv.sync()
+    tv.sync()
+    focus(to.window)
+    tv.takeKeys()
+    if from.shell.reading.tabs.isEmpty, from.shell.tabs.isEmpty || from.shell.readingOnly { from.window.close() }
+  }
+
+  /// Reading tab `id` moved whole into a window that shows only the reading pane, with no sidebar, at `frame` (nil:
+  /// beside `from`, as wide as the reading pane it leaves), and when `tabX` is given moved sideways so that its tab
+  /// begins there on screen; a reading-only window's only tab stays, there being nothing to split
+  @discardableResult func moveReadingToNewWindow(
+    _ id: ReadingTab.ID, from: Entry, frame: CGRect?, tabX: CGFloat? = nil
+  ) -> Entry? {
+    guard from.shell.reading.tabs.contains(where: { $0.id == id }),
+      !(from.shell.readingOnly && from.shell.reading.tabs.count == 1),
+      let e = make(nil, from: from, showing: false)
+    else { return nil }
+    e.shell.readingOnly = true
+    e.shell.sidebarShown = false
+    e.shell.reading.side = from.shell.reading.side
+    e.shell.reading.width = from.shell.reading.width
+    e.window.setFrame(frame ?? readingFrame(of: from).offsetBy(dx: 24, dy: -24), display: false)
+    moveReading(id, from: from, to: e, at: 0)
+    if let tabX {
+      e.window.contentView?.layoutSubtreeIfNeeded()
+      if let row = tabRow(of: e, .reading) {
+        e.window.setFrameOrigin(
+          CGPoint(x: e.window.frame.minX + tabX - row.minX - ShellTheme.stripPadding, y: e.window.frame.minY))
+      }
+    }
+    present(e.window)
+    return e
+  }
+
+  /// A window as wide as `e`'s reading panel and as tall as `e`, where `e` is, for its reading pane alone
+  func readingFrame(of e: Entry) -> CGRect {
+    let w = e.window.frame
+    let pane = readingView(of: e).map { e.window.convertToScreen($0.convert($0.bounds, to: nil)).width }
+    return CGRect(x: w.minX, y: w.minY, width: (pane ?? e.shell.reading.width) + 2 * ShellTheme.inset, height: w.height)
+  }
+
+  func readingView(of e: Entry) -> ReadingPaneView? {
+    e.window.contentView.flatMap { Self.view($0, "ui-readingpane") } as? ReadingPaneView
+  }
+
+  // MARK: Tab rows
+
+  /// The window whose tabs of `kind` hold `tab`
+  func entry(holding tab: UUID, _ kind: TabKind = .board) -> Entry? {
+    all.first { source(of: $0, kind).stripTabs.contains { $0.id == tab } }
+  }
+
+  func source(of e: Entry, _ kind: TabKind) -> any TabSource { kind == .board ? e.shell : e.shell.reading }
+
+  /// Where a tab of `kind` dragged from another window would go in `e`'s row, nil when it is not over it
+  func setDrop(_ index: Int?, in e: Entry, _ kind: TabKind) {
+    switch kind {
+    case .board: if e.shell.tabDrop != index { e.shell.tabDrop = index }
+    case .reading: if e.shell.reading.tabDrop != index { e.shell.reading.tabDrop = index }
+    }
+  }
+
+  /// A window's tab row of `kind` on screen. A window that shows only its reading pane has no board row: its reading
+  /// tab's page stands for it, where a board tab let go brings the board panel back
+  func tabRow(of e: Entry, _ kind: TabKind = .board) -> CGRect? {
+    let id = kind == .reading ? "ui-readingtabs" : e.shell.readingOnly ? "ui-readingpane" : "ui-boardtabs"
+    guard let row = e.window.contentView.flatMap({ Self.view($0, id) }), !row.isHiddenOrHasHiddenAncestor
     else { return nil }
     return e.window.convertToScreen(row.convert(row.bounds, to: nil))
   }
@@ -220,26 +306,30 @@ struct SavedWindow: Codable, Equatable {
     return nil
   }
 
-  /// The board tab rows of the windows on screen, frontmost first
-  func tabRows() -> [(entry: Entry, frame: CGRect)] {
+  /// The tab rows of `kind` of the windows on screen, frontmost first
+  func tabRows(_ kind: TabKind = .board) -> [(entry: Entry, frame: CGRect)] {
     let z = NSApplication.shared.orderedWindows
     return all.filter { onScreen($0.window) }
       .sorted { (z.firstIndex(of: $0.window) ?? .max) < (z.firstIndex(of: $1.window) ?? .max) }
-      .compactMap { e in tabRow(of: e).map { (e, $0) } }
+      .compactMap { e in tabRow(of: e, kind).map { (e, $0) } }
   }
 
-  /// The window whose board tab row (of `rows`, frontmost first) is at `p` on screen, `slack` above and below it
+  /// The window whose tab row of `kind` (of `rows`, frontmost first) is at `p` on screen, `slack` above and below it
   /// counting, and where in it a tab let go there goes
-  func row(at p: CGPoint, slack: CGFloat, in rows: [(entry: Entry, frame: CGRect)]) -> (entry: Entry, index: Int)? {
+  func row(
+    at p: CGPoint, slack: CGFloat, in rows: [(entry: Entry, frame: CGRect)], _ kind: TabKind = .board
+  ) -> (entry: Entry, index: Int)? {
     guard let (e, r) = rows.first(where: { $0.frame.insetBy(dx: 0, dy: -slack).contains(p) }) else { return nil }
-    // the tabs as the row lays them out (TabStrip): from its padding, each its width and 2 apart
-    var x = r.minX + ShellTheme.stripPadding
-    for (i, t) in e.shell.stripTabs.enumerated() {
+    // the tabs as the row lays them out (TabStrip): from its padding, each its width and 2 apart, scrolled sideways
+    let source = source(of: e, kind)
+    let tabs = source.stripTabs
+    var x = r.minX + ShellTheme.stripPadding - source.stripScroll
+    for (i, t) in tabs.enumerated() {
       let w = TabItem.width(of: t.title)
       if p.x < x + w / 2 { return (e, i) }
       x += w + 2
     }
-    return (e, e.shell.tabs.count)
+    return (e, tabs.count)
   }
 
   private func closed(_ e: Entry) {

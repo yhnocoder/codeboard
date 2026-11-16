@@ -4,13 +4,13 @@ import CodeBoardNotes
 import TreeSitterHighlight
 
 // What a reading pane collects onto the board (Collected): selected text as an ordinary Note with its source, a figure
-// or a table as an image card showing that block of the entry, a web page's picture as an image card of its own. Its
-// Add to Board and ⌥↵ (`collect`) put it in a free place of the view; dragged over the board, the card as it will be is
-// in hand, centred on the pointer as a sticker being placed is, and let go it lands there. Either way it is selected,
-// one step, in the Section it lands in. A web address dragged alone (a resource list's web page, a link from a page or
-// a browser) is held and let go the same way, as the Web card a pasted address makes, its page read once it lands.
-// Several rows of a resource's list dragged at once are several items: each a card, in a row to the right of the first,
-// which alone is in hand, all of them one step.
+// or a table as an image card showing that block of the entry, a web page's picture as an image card of its own, a code
+// tab's lines as a code card. Its Add to Board and ⌥↵ (`collect`) put it in a free place of the view; dragged over the
+// board, the card as it will be is in hand, centred on the pointer as a sticker being placed is, and let go it lands
+// there. Either way it is selected, one step, in the Section it lands in. A web address dragged alone (a resource
+// list's web page, a link from a page or a browser) is held and let go the same way, as the Web card a pasted address
+// makes, its page read once it lands. Several rows of a resource's list dragged at once are several items: each a card,
+// in a row to the right of the first, which alone is in hand, all of them one step.
 
 /// What a drag over the board holds that becomes a card
 enum Held: Equatable {
@@ -61,6 +61,10 @@ extension CanvasView {
       return Card(
         id: id, x: p.x, y: p.y, width: w.rounded(),
         content: .own(CardContent(body: .image(ImageCard(source: .resource(a), alt: alt)))))
+    case .code(let s):
+      return Card(
+        id: id, x: p.x, y: p.y, width: Self.codeWidth(s),
+        content: .own(CardContent(body: .code(CodeCard(segments: [s])))))
     case .picture(let url, let alt, let w, _):
       // a web page's picture: read from its address as a pasted address is, or a data: one kept in the board's images
       // as a pasted picture is (an SVG is refused: a paste has it cleaned first); its source the entry the page is
@@ -87,7 +91,7 @@ extension CanvasView {
   }
 
   /// How big its card is before it is laid out: an image's natural size, a Note or a Web card as tall as a pasted one
-  /// is taken to be
+  /// is taken to be, code as tall as its lines with the card's head
   func heldSize(_ held: Held) -> CGSize? {
     switch held {
     case .web: CGSize(width: Board.webWidth, height: 112)
@@ -95,6 +99,7 @@ extension CanvasView {
       switch c.body {
       case .note: CGSize(width: Board.newNoteWidth, height: 160)
       case .image(_, let w, let h): c.source == nil ? nil : CGSize(width: w.rounded(), height: h)
+      case .code(let s): CGSize(width: Self.codeWidth(s), height: 52 + Double(s.lines.count) * 19)
       case .picture(_, _, let w, let h):
         w > 0 && h > 0 ? CGSize(width: Self.pictureWidth(w), height: Self.pictureWidth(w) * h / w) : nil
       }
@@ -109,6 +114,12 @@ extension CanvasView {
     return
       (links.lazy.compactMap { webAddress($0.absoluteString) }.first
       ?? pb.string(forType: .string).flatMap(webAddress)).map(Held.web)
+  }
+
+  /// A new code card's width: its longest line's, tabs as four spaces, within 380…760 (layout.ts defaultWidth)
+  static func codeWidth(_ s: Segment) -> Double {
+    let longest = s.lines.map { $0.replacingOccurrences(of: "\t", with: "    ").utf16.count }.max() ?? 0
+    return (min(760, max(380, Double(max(20, longest)) * 7.4 + 70))).rounded()
   }
 
   /// What a drag holds, a card for each of its items that is one: one item as `held` reads it; of several (rows of a

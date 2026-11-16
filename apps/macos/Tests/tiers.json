@@ -508,9 +508,10 @@
             "CodeBoardShell/RepositoriesModel.swift",
             "CodeBoardShell/RepositoriesBlock.swift",
             "CodeBoardWorkspace/Repositories.swift",
-            "CodeBoardReading/Code"
+            "CodeBoardReading/Code",
+            "CodeBoardShell/ShellCode.swift"
           ],
-          "tests": ["RepositoriesBlockTests"]
+          "tests": ["RepositoriesBlockTests", "ShellCodeTests"]
         },
         "web": {
           "sources": [
@@ -577,7 +578,7 @@
         },
         "reading: code": {
           "sources": ["CodeBoardReading/Code"],
-          "tests": ["CodeReadingTests"]
+          "tests": ["CodeReadingTests", "CodeCardsTests"]
         },
         "reading: list": {
           "sources": ["CodeBoardReading/List"],

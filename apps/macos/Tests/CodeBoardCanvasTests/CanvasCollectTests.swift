@@ -96,6 +96,44 @@ extension CanvasPasteTests {
       #expect(r.doc.history.undoSteps.count == 1)
     }
 
+    static let code = Collected(
+      body: .code(
+        Segment(
+          id: SegmentID(rawValue: "s1"),
+          source: .git(
+            repository: "https://github.com/acme/engine", commit: "abc1234", path: "engine.py", uncommitted: false,
+            checkout: nil),
+          language: "python", firstLine: 12, lines: ["def step(self):", "    return self.run()"],
+          symbol: Symbol(name: "Engine.step", kind: .function))),
+      source: nil, title: "engine.py", label: "12–13")
+
+    /// A code tab's lines: a code card of their segment, its width the longest line's (at least 380), selected, one
+    /// step that undo takes back whole; the same lines again are a second card
+    @Test func addToBoardMakesACodeCardOfItsSegmentAndAgainASecond() async throws {
+      let (r, _) = try await rig()
+      defer { r.close() }
+      let before = Set(r.doc.board.cards.map(\.id))
+      #expect(r.canvas.collect(Self.code))
+      let c = try added(r, before)
+      guard case .own(let k) = c.content, case .code(let code) = k.body, case .code(let seg) = Self.code.body else {
+        Issue.record("not a code card: \(c)")
+        return
+      }
+      #expect(code.segments == [seg] && k.title == nil && cardTitle(k) == "Engine.step" && c.width == 380)
+      #expect(
+        r.doc.selection == [.card(c.id)] && r.doc.undoName == "Add to Board" && r.doc.history.undoSteps.count == 1)
+      await r.until("its card drawn") { r.canvas.index(of: .card(c.id)) != nil }
+      #expect(r.canvas.camera.visible(r.canvas.bounds.size).contains(r.rect(c.id.rawValue)), "in view")
+      #expect(r.canvas.collect(Self.code))
+      #expect(r.doc.board.cards.count == before.count + 2 && r.doc.history.undoSteps.count == 2, "a second card")
+      r.doc.undo()
+      r.doc.undo()
+      #expect(Set(r.doc.board.cards.map(\.id)) == before, "each add one step")
+      var long = seg
+      long.lines = [String(repeating: "x", count: 200)]
+      #expect(CanvasView.codeWidth(long) == 760 && CanvasView.codeWidth(seg) == 380)
+    }
+
     @Test func aWebPictureIsAnImageCardAtItsAddressWithThePageAsItsSource() async throws {
       // read through the test's own loader: never the network
       let png = CanvasPasteTests.png(600, 300)

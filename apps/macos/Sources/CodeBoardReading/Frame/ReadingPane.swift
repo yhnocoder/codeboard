@@ -110,6 +110,8 @@ public struct ReadingTab: Codable, Equatable, Identifiable, Sendable {
   /// The commit a repository's files are read at, short (its HEAD), by the repository's folder; nil when it is none
   /// or unknown. The shell gives the repositories' own
   @ObservationIgnored public var commitOf: @Sendable (String) async -> String? = { _ in nil }
+  /// What code tabs ask of the shell: code cards' segments, the board in front, definitions (Code/CodeCards.swift)
+  @ObservationIgnored public var codeHost: (any CodeHost)?
 
   public init() {}
 
@@ -132,6 +134,22 @@ public struct ReadingTab: Codable, Equatable, Identifiable, Sendable {
     tabs = s.tabs
     selected = s.selected.flatMap { id in tabs.contains { $0.id == id } ? id : nil } ?? tabs.first?.id
   }
+
+  /// A tab taken out whole (to another window's pane), the one beside it selected as closing it does
+  public func take(_ id: ReadingTab.ID) -> ReadingTab? { remove(id) }
+
+  /// A tab from another window's pane, whole, at `index`, selected, the pane shown
+  public func insert(_ tab: ReadingTab, at index: Int) {
+    tabs.insert(tab, at: max(0, min(index, tabs.count)))
+    selected = tab.id
+    shown = true
+  }
+
+  /// Where a tab dragged from another window would go in this pane's row, while it is over it (the shell's tab row)
+  public var tabDrop: Int?
+  /// What a tab dragged out of the row tells (the shell's), and how far the row is scrolled sideways
+  @ObservationIgnored public var tabDragger: AnyObject?
+  @ObservationIgnored public var stripScroll: CGFloat = 0
 
   /// Another vault: the tabs were the last one's
   public func closeAll() {
@@ -179,9 +197,18 @@ public struct ReadingTab: Codable, Equatable, Identifiable, Sendable {
   /// Closing the selected tab selects the one to its right, else the one to its left; the last one closed leaves the
   /// pane open, empty
   public func close(_ tab: ReadingTab.ID) {
-    guard let i = tabs.firstIndex(where: { $0.id == tab }) else { return }
-    tabs.remove(at: i)
+    guard remove(tab) != nil else { return }
+    if tabs.isEmpty { lastClosed?() }
+  }
+
+  /// The last tab was closed (not moved to another window): a window that shows only this pane closes
+  @ObservationIgnored public var lastClosed: (() -> Void)?
+
+  private func remove(_ tab: ReadingTab.ID) -> ReadingTab? {
+    guard let i = tabs.firstIndex(where: { $0.id == tab }) else { return nil }
+    let t = tabs.remove(at: i)
     if selected == tab { selected = tabs.isEmpty ? nil : tabs[min(i, tabs.count - 1)].id }
+    return t
   }
 
   /// What the tabs show changed: `title` gives each tab its title now, nil when what it shows is gone and it closes

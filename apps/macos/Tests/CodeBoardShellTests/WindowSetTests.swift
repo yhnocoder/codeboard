@@ -1,11 +1,11 @@
 import AppKit
 import CodeBoardModel
-import CodeBoardReading
 import CodeBoardResources
 import Foundation
 import Testing
 
 @testable import CodeBoardCanvas
+@testable import CodeBoardReading
 @testable import CodeBoardShell
 
 // The app's windows over one session and one table of open boards: each window its own tabs, selection and camera,
@@ -212,7 +212,7 @@ import Testing
     // a PDF entry's passage, open in the second window: there, the first's pane opens nothing
     let resource = try vault.newResource(in: "", title: "Papers", preset: .papers)
     let file = "\(resource.path)/Field notes.pdf"
-    try onePagePDF().write(to: vault.url(of: file))
+    try pdf([""]).write(to: vault.url(of: file))
     let e = Entry(
       id: EntryID(rawValue: "e1"), title: "Field notes", added: 0,
       versions: [Version(id: VersionID(rawValue: "v1"), added: 0, content: .pdf(file: "file.pdf"))])
@@ -234,12 +234,19 @@ import Testing
     #expect(first.shell.reading.tabs.map(\.kind) == ["pdf", "web"])
   }
 
-  func onePagePDF() -> Data {
+  /// A PDF of a page per text
+  func pdf(_ pages: [String]) -> Data {
     let data = NSMutableData()
     var box = CGRect(x: 0, y: 0, width: 300, height: 400)
     let ctx = CGContext(consumer: CGDataConsumer(data: data as CFMutableData)!, mediaBox: &box, nil)!
-    ctx.beginPDFPage(nil)
-    ctx.endPDFPage()
+    for text in pages {
+      ctx.beginPDFPage(nil)
+      NSGraphicsContext.current = NSGraphicsContext(cgContext: ctx, flipped: false)
+      (text as NSString).draw(
+        in: CGRect(x: 20, y: 20, width: 260, height: 360), withAttributes: [.font: NSFont.systemFont(ofSize: 14)])
+      NSGraphicsContext.current = nil
+      ctx.endPDFPage()
+    }
     ctx.closePDF()
     return data as Data
   }
@@ -369,5 +376,279 @@ import Testing
     await until("a window of its own") { set.all.contains { $0.shell.tabs.map(\.id) == [other] } }
     let made = try #require(set.all.first { $0.shell.tabs.map(\.id) == [other] })
     #expect(made.window.frame.size == second.window.frame.size)
+  }
+
+  // MARK: Reading tabs between windows
+
+  /// Both windows on screen and laid out side by side, each reading pane's views made for its tabs
+  func laidOut(_ set: WindowSet, _ first: WindowSet.Entry, _ second: WindowSet.Entry) {
+    set.onScreen = { _ in true }
+    set.focus = { _ in }
+    set.readingDrag.showPicture = { _ in }
+    set.tabDrag.showPicture = { _ in }
+    first.window.setFrame(CGRect(x: 100, y: 100, width: 1200, height: 700), display: false)
+    second.window.setFrame(CGRect(x: 1400, y: 100, width: 1200, height: 700), display: false)
+    for e in [first, second] {
+      e.window.contentView?.layoutSubtreeIfNeeded()
+      set.readingView(of: e)?.sync()
+    }
+  }
+
+  func view(_ e: WindowSet.Entry, _ id: String) -> NSView? {
+    func find(_ v: NSView) -> NSView? {
+      v.accessibilityIdentifier() == id ? v : v.subviews.lazy.compactMap(find).first
+    }
+    return e.window.contentView.flatMap(find)
+  }
+
+  func js(_ v: WebPageView, _ script: String) async -> Int? {
+    try? await v.web.evaluateJavaScript(script) as? Int
+  }
+
+  @Test func aWebTabMovedToAnotherWindowTakesItsLiveViewAndItsPageIsNotLoadedAgain() async throws {
+    let (set, first, second, vault) = try twoWindows()
+    defer { try? FileManager.default.removeItem(at: vault.root) }
+    first.shell.openWeb(nil)
+    first.shell.openWeb(nil)
+    let (stay, tab) = (first.shell.reading.tabs[0].id, first.shell.reading.tabs[1].id)
+    laidOut(set, first, second)
+    let from = try #require(set.readingView(of: first))
+    let to = try #require(set.readingView(of: second))
+    let v = try #require(from.views[tab] as? WebPageView)
+    v.web.loadHTMLString("<p>harbour</p>", baseURL: nil)
+    await until("the page loaded") { !v.web.isLoading && v.web.url != nil }
+    _ = try? await v.web.evaluateJavaScript("window.mark = 7; 0")
+    #expect(await js(v, "window.mark") == 7)
+
+    set.moveReading(tab, from: first, to: second, at: 0)
+    #expect(second.shell.reading.tabs.map(\.id) == [tab] && second.shell.reading.selected == tab)
+    #expect(to.views[tab] === v && v.superview === to && v.window === second.window && !v.isHidden)
+    #expect(from.views[tab] == nil && first.shell.reading.tabs.map(\.id) == [stay])
+    #expect(first.shell.reading.selected == stay)
+    // what it says goes to the pane it is in now
+    #expect(to.places[tab]?.pane === second.shell.reading && to.places[tab]?.paneView === to)
+    from.sync()
+    to.sync()
+    #expect(to.views[tab] === v && v.superview === to)
+    #expect(await js(v, "window.mark") == 7, "the same page, not loaded again")
+
+    // the last reading tab moved away from a window with a board tab: it stays, its pane empty
+    set.moveReading(stay, from: first, to: second, at: 9)
+    #expect(set.all.count == 2 && first.shell.reading.tabs.isEmpty && second.shell.reading.tabs.last?.id == stay)
+  }
+
+  @Test func aPDFTabMovedToAnotherWindowStaysOnItsPageWithItsSelection() async throws {
+    let (set, first, second, vault) = try twoWindows()
+    defer { try? FileManager.default.removeItem(at: vault.root) }
+    let resource = try vault.newResource(in: "", title: "Papers", preset: .papers)
+    let file = "\(resource.path)/Tides.pdf"
+    try pdf(["The first page.", "The river runs north."]).write(to: vault.url(of: file))
+    let e = Entry(
+      id: EntryID(rawValue: "e1"), title: "Tides", added: 0,
+      versions: [Version(id: VersionID(rawValue: "v1"), added: 0, content: .pdf(file: "file.pdf"))])
+    _ = try vault.promote(file: file, to: e, as: "file.pdf")
+    first.shell.apply(.success(try vault.tree()))
+    set.onScreen = { _ in false }
+    first.shell.sources.reveal(SourceAnchor(entry: e.id, place: Place(version: e.versions[0].id, block: .page(1))))
+    let tab = try #require(first.shell.reading.selected)
+    laidOut(set, first, second)
+    let t = try #require(set.readingView(of: first)?.views[tab] as? PDFTabView)
+    let page = try #require(t.pdf.document?.page(at: 1))
+    t.pdf.go(to: page)
+    t.pdf.setCurrentSelection(page.selection(for: (page.string! as NSString).range(of: "river")), animate: false)
+    #expect(t.pdf.currentPage === page)
+
+    set.moveReading(tab, from: first, to: second, at: 0)
+    #expect(set.readingView(of: second)?.views[tab] === t && t.window === second.window)
+    #expect(t.pdf.currentPage === page && t.pdf.currentSelection?.string == "river")
+    #expect(t.context.pane === second.shell.reading && t.context.paneView === set.readingView(of: second))
+  }
+
+  @Test func aReadingTabInAWindowOfItsOwnShowsOnlyTheReadingPaneUntilABoardTabArrives() async throws {
+    let (set, first, second, vault) = try twoWindows()
+    defer { try? FileManager.default.removeItem(at: vault.root) }
+    first.shell.openWeb(nil)
+    first.shell.openWeb(nil)
+    let tab = first.shell.reading.tabs[1].id
+    laidOut(set, first, second)
+    let v = try #require(set.readingView(of: first)?.views[tab])
+    let panel = try #require(set.readingView(of: first)).frame.width
+
+    let made = try #require(set.moveReadingToNewWindow(tab, from: first, frame: nil))
+    made.window.contentView?.layoutSubtreeIfNeeded()
+    #expect(made.shell.readingOnly && !made.shell.sidebarShown && made.shell.tabs.isEmpty)
+    #expect(made.shell.reading.tabs.map(\.id) == [tab] && set.readingView(of: made)?.views[tab] === v)
+    #expect(made.window.frame.width == panel + 2 * ShellTheme.inset && made.window.frame.height == 700)
+    // no board panel and no divider; the reading panel takes the room, its tabs after the title controls
+    #expect(view(made, "ui-boardtabs")?.isHiddenOrHasHiddenAncestor == true)
+    #expect(view(made, "ui-readingdivider")?.isHidden == true)
+    let pane = try #require(set.readingView(of: made))
+    #expect(abs(pane.frame.width - (made.window.contentLayoutRect.width - 2 * ShellTheme.inset)) < 1)
+    let row = try #require(set.tabRow(of: made, .reading))
+    #expect(row.minX - made.window.frame.minX > 80)
+    // its only tab stays: there is nothing to split
+    #expect(set.moveReadingToNewWindow(tab, from: made, frame: nil) == nil && set.all.count == 3)
+
+    // a board opened from its sidebar: the board panel comes back, the reading pane beside it
+    made.shell.show(b)
+    made.window.contentView?.layoutSubtreeIfNeeded()
+    #expect(!made.shell.readingOnly && view(made, "ui-boardtabs")?.isHiddenOrHasHiddenAncestor == false)
+    #expect(view(made, "ui-readingdivider")?.isHidden == false && pane.frame.width < panel + 1)
+  }
+
+  @Test func aReadingOnlyWindowClosesWithItsLastReadingTabAndComesBackAsOne() async throws {
+    let (set, first, second, vault) = try twoWindows()
+    defer { try? FileManager.default.removeItem(at: vault.root) }
+    for _ in 0..<3 { first.shell.openWeb(nil) }
+    let ids = first.shell.reading.tabs.map(\.id)
+    laidOut(set, first, second)
+    let frame = CGRect(x: 300, y: 200, width: 520, height: 640)
+    let made = try #require(set.moveReadingToNewWindow(ids[1], from: first, frame: frame))
+    #expect(made.window.frame == frame)
+    let other = try #require(set.moveReadingToNewWindow(ids[2], from: first, frame: nil))
+
+    // saved, and opened again from what was saved: no board tab, its reading tab, its frame
+    let name = "WindowSetTests-\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: name))
+    defer { defaults.removePersistentDomain(forName: name) }
+    set.save(in: defaults)
+    let saved = try #require(WindowSet.saved(in: defaults).first { $0.shell.readingOnly == true })
+    #expect(saved.shell.tabs.isEmpty && saved.shell.reading?.tabs.map(\.id) == [ids[1]] && saved.frame == frame)
+    #expect(WindowSet.saved(in: defaults).filter { $0.shell.readingOnly == true }.count == 2)
+    #expect(try #require(first.shell.state).readingOnly == nil)
+    made.window.close()
+    let again = try #require(set.open(saved))
+    #expect(again.shell.readingOnly && again.shell.tabs.isEmpty && again.shell.reading.tabs.map(\.id) == [ids[1]])
+    if saved.screen != nil { #expect(again.window.frame == frame) }
+
+    // its last reading tab closed: the window closes; in a window with a board tab the pane stays, empty
+    again.shell.reading.close(ids[1])
+    #expect(!set.all.contains { $0 === again })
+    first.shell.reading.close(ids[0])
+    #expect(set.all.contains { $0 === first } && first.shell.reading.tabs.isEmpty)
+    // its last reading tab moved to another window: it closes too
+    set.moveReading(ids[2], from: other, to: second, at: 0)
+    #expect(!set.all.contains { $0 === other } && second.shell.reading.tabs.map(\.id) == [ids[2]])
+  }
+
+  @Test func aReadingTabDraggedGoesOnlyToReadingRowsAndWhereNoneIsToAWindowOfItsOwn() async throws {
+    let (set, first, second, vault) = try twoWindows()
+    defer { try? FileManager.default.removeItem(at: vault.root) }
+    first.shell.openWeb(nil)
+    first.shell.openWeb(nil)
+    second.shell.openWeb(nil)
+    let tab = first.shell.reading.tabs[1].id
+    laidOut(set, first, second)
+    let drag = set.readingDrag!
+    let row1 = try #require(set.tabRow(of: first, .reading))
+    let reading2 = try #require(set.tabRow(of: second, .reading))
+    let board2 = try #require(set.tabRow(of: second))
+    let grab = CGPoint(x: 10, y: 6)
+    let start = CGPoint(x: row1.minX + ShellTheme.stripPadding + TabItem.width(of: "New Tab") + 12, y: row1.midY)
+    #expect(!drag.dragged(tab, title: "New Tab", at: start, grab: grab))
+    #expect(drag.dragged(tab, title: "New Tab", at: CGPoint(x: start.x, y: row1.minY - 60), grab: grab))
+    // over the other window's board row: not a row for it, nothing marked
+    let overBoard = CGPoint(x: board2.minX + 20, y: board2.midY)
+    #expect(drag.dragged(tab, title: "New Tab", at: overBoard, grab: grab))
+    #expect(second.shell.tabDrop == nil && second.shell.reading.tabDrop == nil)
+    // over its reading row: the place it would go marked there
+    let over = CGPoint(x: reading2.minX + ShellTheme.stripPadding + TabItem.width(of: "New Tab") + 4, y: reading2.midY)
+    #expect(drag.dragged(tab, title: "New Tab", at: over, grab: grab) && second.shell.reading.tabDrop == 1)
+    drag.dropped(tab, at: over)
+    #expect(second.shell.reading.tabs.map(\.id).last == tab && second.shell.reading.tabDrop == nil)
+    #expect(set.readingView(of: second)?.views[tab] is WebPageView)
+
+    // a board tab over a reading row: nothing marked, and let go there it is a window of its own
+    let board = try #require(second.shell.selected)
+    second.shell.show(a, newTab: true)
+    set.sync()
+    let bd = set.tabDrag!
+    let bstart = CGPoint(x: board2.minX + 20, y: board2.midY)
+    _ = bd.dragged(board, title: "A", at: bstart, grab: grab)
+    _ = bd.dragged(board, title: "A", at: CGPoint(x: bstart.x, y: board2.minY - 300), grab: grab)
+    let readingRow1 = CGPoint(x: row1.minX + 20, y: row1.midY)
+    #expect(bd.dragged(board, title: "A", at: readingRow1, grab: grab) && first.shell.tabDrop == nil)
+    #expect(first.shell.reading.tabDrop == nil)
+    bd.cancel()
+    bd.dropped(board, at: readingRow1)
+
+    // let go where no row is: a window with only the reading pane, its tab under the pointer
+    let moving = second.shell.reading.tabs[0].id
+    let from = CGPoint(x: reading2.minX + 30, y: reading2.midY)
+    let width = set.readingFrame(of: second).width
+    _ = drag.dragged(moving, title: "New Tab", at: from, grab: grab)
+    _ = drag.dragged(moving, title: "New Tab", at: CGPoint(x: from.x, y: reading2.minY - 300), grab: grab)
+    let away = CGPoint(x: from.x + 100, y: reading2.minY - 300)
+    drag.dropped(moving, at: away)
+    let made = try #require(set.all.first { $0.shell.reading.tabs.map(\.id) == [moving] })
+    #expect(made.shell.readingOnly && made.window.frame.width == width && made.window.frame.height == 700)
+    let row = try #require(set.tabRow(of: made, .reading))
+    #expect(abs(row.minX + ShellTheme.stripPadding - (away.x - grab.x)) < 1)
+    #expect(abs(made.window.frame.minY - (away.y - (from.y - second.window.frame.minY))) < 1)
+
+    // a board tab let go on the reading-only window's page: it moves in, and the board panel is back
+    let pv = try #require(set.readingView(of: made))
+    let page = made.window.convertToScreen(pv.convert(pv.bounds, to: nil))
+    let target = CGPoint(x: page.midX, y: page.midY)
+    let other = try #require(second.shell.tabs.last?.id)
+    _ = bd.dragged(other, title: "A", at: bstart, grab: grab)
+    _ = bd.dragged(other, title: "A", at: CGPoint(x: bstart.x, y: board2.minY - 300), grab: grab)
+    #expect(bd.dragged(other, title: "A", at: target, grab: grab) && made.shell.tabDrop == 0)
+    bd.dropped(other, at: target)
+    await until("the board tab moved in") { made.shell.tabs.map(\.id) == [other] }
+    #expect(!made.shell.readingOnly)
+  }
+
+  @Test func whereATabLetGoOnAnotherWindowsRowGoesCountsTheRowScrolledSideways() async throws {
+    let (set, first, second, vault) = try twoWindows()
+    defer { try? FileManager.default.removeItem(at: vault.root) }
+    for _ in 0..<3 { second.shell.openWeb(nil) }
+    laidOut(set, first, second)
+    let rows = set.tabRows(.reading)
+    let r = try #require(rows.first { $0.entry === second }?.frame)
+    let w = TabItem.width(of: "New Tab")
+    let p = CGPoint(x: r.minX + ShellTheme.stripPadding + w / 2 - 2, y: r.midY)
+    #expect(set.row(at: p, slack: 0, in: rows, .reading)?.index == 0)
+    second.shell.reading.stripScroll = w + 2
+    #expect(set.row(at: p, slack: 0, in: rows, .reading)?.index == 1)
+    let boards = set.tabRows()
+    let b = try #require(boards.first { $0.entry === second }?.frame)
+    let q = CGPoint(x: b.minX + ShellTheme.stripPadding + TabItem.width(of: "A") / 2 - 2, y: b.midY)
+    #expect(set.row(at: q, slack: 0, in: boards)?.index == 0)
+    second.shell.stripScroll = TabItem.width(of: "A") + 2
+    #expect(set.row(at: q, slack: 0, in: boards)?.index == 1)
+  }
+
+  @Test func aWebSourceOpenInAnotherWindowIsSelectedThere() async throws {
+    let (set, first, second, vault) = try twoWindows()
+    defer { try? FileManager.default.removeItem(at: vault.root) }
+    set.onScreen = { _ in true }
+    let resource = try vault.newResource(in: "", title: "Reading", preset: .papers)
+    let hash = String(repeating: "ab", count: 32)
+    let e = Entry(
+      id: EntryID(rawValue: "w1"), title: "Quay plans", added: 1, origin: .web("http://127.0.0.1:9/quay"),
+      versions: [
+        Version(id: VersionID(rawValue: "v1"), added: 1, content: .page(hash: hash, bytes: 9)),
+        Version(id: VersionID(rawValue: "v2"), added: 2, content: .pdf(file: "none.pdf")),
+      ])
+    try vault.newEntry(e, in: resource.path)
+    first.shell.apply(.success(try vault.tree()))
+    // its saved page open in the second window: selected there, nothing opened here
+    let page = WebReading.Page.saved(hash: hash, address: URL(string: "http://127.0.0.1:9/quay")!, title: "Quay plans")
+    second.shell.reading.open("Quay plans", key: page.key, kind: WebReading.kind, payload: page.payload)
+    let saved = try #require(second.shell.reading.selected)
+    second.shell.openWeb(nil)
+    first.shell.sources.reveal(SourceAnchor(entry: e.id, place: Place(version: e.versions[0].id, block: .id("1.b2"))))
+    #expect(first.shell.reading.tabs.isEmpty && second.shell.reading.selected == saved)
+    // the page online, open there: the same
+    second.shell.openWeb(URL(string: "http://127.0.0.1:9/quay"))
+    let online = try #require(second.shell.reading.selected)
+    second.shell.openWeb(nil)
+    first.shell.sources.reveal(SourceAnchor(entry: e.id, place: Place(version: e.versions[1].id, block: .page(1))))
+    #expect(first.shell.reading.tabs.isEmpty && second.shell.reading.selected == online)
+    // the other window off screen: here
+    set.onScreen = { _ in false }
+    first.shell.sources.reveal(SourceAnchor(entry: e.id, place: Place(version: e.versions[0].id, block: .id("1.b2"))))
+    #expect(first.shell.reading.tabs.map(\.key) == [page.key])
   }
 }
