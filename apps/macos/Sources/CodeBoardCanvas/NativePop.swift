@@ -1064,8 +1064,8 @@ package final class GripView: NSView {
   package override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
   package override func resetCursorRects() { addCursorRect(bounds, cursor: .openHand) }
 
+  // a press here ends no writing: the popup is moved while a sidenote is written in it, the keys staying with its input
   package override func mouseDown(with e: NSEvent) {
-    popOf(self)?.endFields()
     from = e.locationInWindow
   }
 
