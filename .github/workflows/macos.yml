@@ -54,6 +54,11 @@ jobs:
       # before anything resolves the package's dependencies
       - uses: ./.github/actions/private-package
         with: { token: "${{ secrets.SHIYI_READ_TOKEN }}" }
+      # the saving service's executable and page scripts, two files of the same private release (11 MB, into
+      # apps/macos/.build-shiyi): the app the scenarios drive carries them. They are fetched in every run and kept out of
+      # the caches and the uploaded files. Without the token there is no netrc file, and the app runs without the service
+      - name: Fetch the saving service
+        run: if [ -f ~/.netrc ]; then SHIYI_NETRC="$HOME/.netrc" node apps/macos/tools/shiyi/fetch.mjs; fi
       # the last regular full run's build (see the app job): the driver is in it, so only what changed since is compiled
       - id: built
         uses: ./.github/actions/sealed-cache
@@ -123,6 +128,10 @@ jobs:
       # before anything resolves the package's dependencies
       - uses: ./.github/actions/private-package
         with: { token: "${{ secrets.SHIYI_READ_TOKEN }}" }
+      # the saving service's executable and page scripts (see the accept job): the tests that run the real service are
+      # skipped without them
+      - name: Fetch the saving service
+        run: if [ -f ~/.netrc ]; then SHIYI_NETRC="$HOME/.netrc" node tools/shiyi/fetch.mjs; fi
       # A PR starts from the build the last regular full run made on main (.build, about 500 MB), so it compiles only
       # what differs from it: compiling everything takes 2 to 4.5 minutes, depending on the runner. The regular run
       # itself starts from nothing, so a wrong kept build lasts 6 hours at most. A cache saved on the default branch is
