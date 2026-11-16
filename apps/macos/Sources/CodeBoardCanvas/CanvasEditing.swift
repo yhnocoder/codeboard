@@ -187,6 +187,7 @@ extension CanvasView {
     let fetching = Set(webFetching.filter { !$0.contains("/") }.map(CardID.init(rawValue:)))
     fetchPictures(board)
     let remote = remotePictures
+    let sources = sourceInfo(board)
     refreshing = Task {
       let r = await Task.detached(priority: .userInitiated) {
         let package = vault.url(of: vb.path)
@@ -216,7 +217,7 @@ extension CanvasView {
         inline.merge(await CanvasView.measureInline(inlineTodo, theme: theme, display: display)) { a, _ in a }
         let s = Scene(
           board, package: package, vault: vault, theme: theme, highlighter: highlighter ?? Highlighter(), sizes: sizes,
-          inline: inline, reusing: old, vaultSeen: seen, fetching: fetching, remote: remote)
+          inline: inline, reusing: old, vaultSeen: seen, fetching: fetching, remote: remote, sources: sources)
         var before: [Scene.Owner: Scene.Item] = [:]
         for it in old.items { if let o = it.owner { before[o] = it } }
         var fresh: [Int: Fresh] = [:]
@@ -1081,7 +1082,7 @@ extension CanvasView {
       NSCursor.crosshair.set()
     } else if let (_, edge) = hitHandle(v) {
       resizeCursor(edge).set()
-    } else if arrow != nil {
+    } else if arrow != nil || footAt(bp) != nil {
       NSCursor.pointingHand.set()
     } else if hoveredRow?.grip == true {
       // .lgrip: cursor grab
@@ -1276,6 +1277,8 @@ extension CanvasView {
     }
     // a ref's preview closes, but on the press on its ref (which closes it too, as its second click)
     refPress = e.clickCount == 1 ? refAt(p) : nil
+    // a card's source: shown in the reading pane once let go where it was pressed; dragged, the card moves
+    sourcePress = e.clickCount == 1 ? footAt(p) : nil
     if let peek = refPeek,
       !(refPress.map { peek.key == refKey(.card($0.card, boardRect($0.box, on: $0.card)), $0.box) } ?? false)
     {
@@ -1384,8 +1387,11 @@ extension CanvasView {
     switch g.kind {
     case .press(let item, let toggle, let was, _):
       guard hypot(v.x - g.startView.x, v.y - g.startView.y) >= dragSlop else { return }
-      // the one card selected, dragged on its body: its text is selected, the card stays (interact.ts: solo, inBody)
-      if case .card(let id)? = item, was, !toggle, doc.selection == [.card(id)], restOffset(id, g.start) != nil {
+      // the one card selected, dragged on its body: its text is selected, the card stays (interact.ts: solo, inBody);
+      // on its source it moves
+      if case .card(let id)? = item, was, !toggle, doc.selection == [.card(id)], sourcePress == nil,
+        restOffset(id, g.start) != nil
+      {
         g.kind = .text(id)
         gesture = g
         return dragRestText(id, from: g.start, to: p)
@@ -1535,6 +1541,9 @@ extension CanvasView {
         refClicked(
           .card(r.card, boardRect(r.box, on: r.card)), r.box.ref, r.box.target, go: e.modifierFlags.contains(.command),
           writing: false)
+      } else if let a = sourcePress {
+        sourcePress = nil
+        sources?.reveal(a)
       } else if case .card(let id)? = item, was, !toggle, doc.selection == [.card(id)] {
         clickEdit(id, at: g.start)
       }

@@ -338,6 +338,21 @@ public final class CanvasView: NSView {
   /// The pictures at web addresses read so far, by address: their files; and the addresses asked for
   var remotePictures: [String: URL] = [:]
   var remoteAsked: Set<String> = []
+  /// What says where the cards' sources are and what they are called (the shell's reading side; CanvasSources.swift)
+  public var sources: SourceProvider? {
+    didSet {
+      // one provider serves every tab's canvas: each adds itself to those it tells
+      // ponytail: a closed tab's link stays in the chain (doing nothing); a list in the provider if tabs number thousands
+      let others = sources?.onSourcesChanged
+      sources?.onSourcesChanged = { [weak self] in
+        others?()
+        self?.sourcesChanged()
+      }
+      sourcesChanged()
+    }
+  }
+  /// A press on a card's source, which shows it when let go where it was pressed
+  var sourcePress: SourceAnchor?
   /// The pages being read now, by card ("card/row" for a list's row), and their tasks
   package var webFetching: Set<String> = []
   package var webTasks: [String: Task<Void, Never>] = [:]
@@ -609,6 +624,7 @@ public final class CanvasView: NSView {
     let known = CanvasView.highlighter
     let display = self.display
     let open = document?.board
+    let sources = open.map(sourceInfo) ?? [:]
     // where the camera will be once it is installed (install: arriving, else kept, else the board's top left at 100 %)
     let opensAt = keepCamera ? camera : arriving ?? keptCamera(of: board, in: vault)
     let work = Task.detached(priority: .userInitiated) {
@@ -623,7 +639,8 @@ public final class CanvasView: NSView {
       // the Note display's, compiled as the app starts: one in the app
       let highlighter = known ?? NativeNotes.highlighter
       let scene = Scene(
-        b, package: package, vault: vault, theme: theme, highlighter: highlighter, sizes: sizes, inline: inline)
+        b, package: package, vault: vault, theme: theme, highlighter: highlighter, sizes: sizes, inline: inline,
+        sources: sources)
       let fit = Camera.fit(scene.bounds, in: size).zoom
       let limits = ZoomLimits(view: size, content: scene.bounds)
       let first =

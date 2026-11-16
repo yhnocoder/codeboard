@@ -91,6 +91,8 @@ enum Drawing: Sendable {
     var folded = false
     /// Locked itself: its header starts with the lock (.lockb)
     var locked = false
+    /// Its source under its text (CanvasSources.swift)
+    var foot: Foot?
 
     /// A Box's fill; nil for a Note or a Text
     var boxFill: BoxFill? {
@@ -107,9 +109,14 @@ enum Drawing: Sendable {
     var framed: Bool
     /// Its description under the picture (Card.tsx ImageView's Desc)
     var desc: Desc?
+    /// Its source after its description, or on a strip of its own under the picture without one
+    var foot: Foot?
+    var strip: CGFloat = 0
 
     /// Drawn by the Note renderer (WebKit), as the web board's <img> draws it
     var svg: Bool { url?.pathExtension.lowercased() == "svg" }
+    /// What is under the picture: its description, or its source's strip
+    var below: CGFloat { (desc?.height ?? 0) + strip }
   }
 
   struct Label: Sendable {
@@ -227,11 +234,13 @@ enum Drawing: Sendable {
         Raster.draw(
           px, in: CGRect(x: 0, y: 0, width: CGFloat(px.width) / scale, height: CGFloat(px.height) / scale), of: ctx)
       }
+      n.foot?.draw(ctx, height: size.height, t)
     case .image(let p):
       // the picture over the card's width, its description (on the card's paper) under it
       let full = r
-      let r = CGRect(x: 0, y: 0, width: full.width, height: full.height - (p.desc?.height ?? 0))
-      if p.framed || p.desc != nil { Drawing.paper(ctx, full, t, id: p.id, rule: nil) }
+      let r = CGRect(x: 0, y: 0, width: full.width, height: full.height - p.below)
+      let paper = p.framed || p.desc != nil || p.foot != nil
+      if paper { Drawing.paper(ctx, full, t, id: p.id, rule: nil) }
       if let d = p.desc {
         ctx.saveGState()
         ctx.addPath(Drawing.squircle(full, t.cardRadius))
@@ -268,7 +277,8 @@ enum Drawing: Sendable {
         }
       }
       ctx.restoreGState()
-      if p.framed || p.desc != nil { Drawing.edge(ctx, full, t) }
+      p.foot?.draw(ctx, height: full.height, t)
+      if paper { Drawing.edge(ctx, full, t) }
     case .board(let b):
       decodes += Drawing.subBoard(ctx, b, r, t, scale: scale)
     case .web(let w):

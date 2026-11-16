@@ -335,7 +335,7 @@
           "tests": ["ThemeTests", "SeededTests", "CanvasSelectionLookTests"]
         },
         "pictures": {
-          "sources": ["CodeBoardCanvas/CanvasPicture.swift"],
+          "sources": ["CodeBoardCanvas/CanvasPicture.swift", "CodeBoardCanvas/CanvasSources.swift"],
           "tests": [
             "CanvasPictureTests",
             "CanvasRemoteImageTests",
