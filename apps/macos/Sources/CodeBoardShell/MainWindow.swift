@@ -330,7 +330,13 @@ private final class Panel: NSView {
       end -= 4
     }
     tabs.frame = NSRect(x: tabsLeading, y: 0, width: max(0, end - tabsLeading), height: barHeight)
-    content.frame = NSRect(x: 0, y: barHeight, width: bounds.width, height: max(0, bounds.height - barHeight))
+    // The content takes its size at once, also while the panel slides (the sidebar hiding): a canvas resized inside
+    // the slide's implicit animation never got the new size, and stayed as narrow as it was
+    NSAnimationContext.runAnimationGroup { context in
+      context.duration = 0
+      context.allowsImplicitAnimation = false
+      content.frame = NSRect(x: 0, y: barHeight, width: bounds.width, height: max(0, bounds.height - barHeight))
+    }
     glass.frame = NSRect(x: 0, y: 0, width: bounds.width, height: barHeight + ShellTheme.glassDissolve)
     glass.place(bar: barHeight)
     if let empty {

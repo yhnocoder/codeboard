@@ -1,0 +1,14 @@
+# only: mac
+# 收起侧栏后白板变宽：右下角那组和工具栏马上按新的宽度排，不用等重启；再展开回到原处
+zoom 1
+wait 400
+mark
+key cmd+ctrl+s
+wait 900
+shot hidden
+expect ui.dock.right > was+100
+expect ui.bar.x > was+50
+key cmd+ctrl+s
+wait 900
+expect ui.dock.right ~ was
+expect ui.bar.x ~ was
