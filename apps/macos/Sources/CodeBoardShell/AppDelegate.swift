@@ -60,6 +60,15 @@ import CodeBoardResources
     }
     if let id = UserDefaults.standard.string(forKey: Self.themeKey).flatMap(Theme.ID.init) { shell.theme = id }
     appearance = follow(NSApp, into: shell)
+    // beside the cameras: Application Support/<this app's id>. Before the vault and the window: the reading tabs kept
+    // from the last run are made with the window, and a PDF tab's versions bar reads the translations as it is made
+    shell.machineFolder = cameras?.folder.deletingLastPathComponent()
+    // tongtu's work, beside it: never in the vault
+    shell.reading.translations = shell.machineFolder.map { folder in
+      Translations(folder: folder.appending(path: "Translations", directoryHint: .isDirectory)) {
+        Tongtu.find(setting: AISettings(defaults: .standard).tongtuPath)
+      }
+    }
     if let saved, FileManager.default.fileExists(atPath: saved.vault) {
       open(URL(filePath: saved.vault, directoryHint: .isDirectory), restoring: saved)
     } else if saved == nil, let first = Bundle.main.object(forInfoDictionaryKey: "CodeBoardFirstVault") as? String,
@@ -73,14 +82,6 @@ import CodeBoardResources
     self.panes = panes
     panes.onVaultChanged = { [weak self] in self?.readTree(reloadBoards: true) }
     panes.cameras = cameras
-    // beside the cameras: Application Support/<this app's id>
-    shell.machineFolder = cameras?.folder.deletingLastPathComponent()
-    // tongtu's work, beside it: never in the vault
-    shell.reading.translations = shell.machineFolder.map { folder in
-      Translations(folder: folder.appending(path: "Translations", directoryHint: .isDirectory)) {
-        Tongtu.find(setting: AISettings(defaults: .standard).tongtuPath)
-      }
-    }
     panes.pictures = CanvasView.defaultPictures
     let ai = AISettings(defaults: .standard)
     let keys = KeychainKeyStore()
