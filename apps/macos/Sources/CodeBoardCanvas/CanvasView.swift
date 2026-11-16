@@ -411,6 +411,8 @@ public final class CanvasView: NSView {
   /// The card last flashed (tests), its ring and how it is drawn some way out
   package var flashed: CardID?
   var flashRing: (CAShapeLayer, (CGFloat) -> CGPath)?
+  /// The previews open beside sub-board cards (CanvasSubPreviews.swift)
+  var subPreviews = SubPreviews()
   /// Lines selected by their numbers in a code card
   package var lineSel: Lines?
   /// A free marker pressed (its index in `marks`), where, and whether it has moved; what it would land on, tinted
@@ -824,15 +826,7 @@ public final class CanvasView: NSView {
         box.setAffineTransform(CGAffineTransform(rotationAngle: item.tilt))
         box.allowsEdgeAntialiasing = true
       }
-      if let shadow {
-        let l = CALayer()
-        l.frame = box.bounds.insetBy(dx: -shadow.margin, dy: -shadow.margin)
-        l.contents = shadow.0
-        l.contentsScale = 2
-        let side = CGFloat(shadow.0.width) / 2
-        l.contentsCenter = CGRect(x: (side / 2 - 1) / side, y: (side / 2 - 1) / side, width: 2 / side, height: 2 / side)
-        box.addSublayer(l)
-      }
+      if let shadow { box.addSublayer(CanvasView.shadowLayer(shadow, around: box.bounds)) }
       for l in [held, rest] {
         l.frame = box.bounds.insetBy(dx: -item.bleed, dy: -item.bleed)
         l.contentsGravity = .resize
@@ -980,6 +974,7 @@ public final class CanvasView: NSView {
     if openPop != nil { refreshPop() }
     if listShown, !keepCamera { closeQuestionList() }
     if !keepCamera {
+      subPreviews = SubPreviews()
       closeChip()
       cancelPlacing()
       closeStickerPalette()
@@ -988,6 +983,7 @@ public final class CanvasView: NSView {
     }
     shelfChanged()
     questionsChanged()
+    subPreviewsChanged()
     drawChrome()
   }
 
@@ -1008,6 +1004,17 @@ public final class CanvasView: NSView {
       Shadow.draw(t, card: card, scale: 2, in: ctx)
     }
     return s.map { ($0, m) }
+  }
+
+  /// The shadow nine-sliced round `r`
+  static func shadowLayer(_ shadow: (IOSurface, margin: CGFloat), around r: CGRect) -> CALayer {
+    let l = CALayer()
+    l.frame = r.insetBy(dx: -shadow.margin, dy: -shadow.margin)
+    l.contents = shadow.0
+    l.contentsScale = 2
+    let side = CGFloat(shadow.0.width) / 2
+    l.contentsCenter = CGRect(x: (side / 2 - 1) / side, y: (side / 2 - 1) / side, width: 2 / side, height: 2 / side)
+    return l
   }
 
   /// A Section's frame: a tray (fill, hairline, light inner top line) or the fill under its brush strokes

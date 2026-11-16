@@ -341,6 +341,8 @@ extension CanvasView {
       let b = summaryButtons.sublayers?[keep ? 1 : 0]
     {
       tip = (t, inView(summaryButtons.convert(b.frame, to: summaryLayer)))
+    } else if let (t, r) = previewTip() {
+      tip = (t, inView(r))
     } else {
       tip = portTip()
     }
