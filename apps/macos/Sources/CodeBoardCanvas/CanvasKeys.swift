@@ -56,6 +56,7 @@ struct BoardKey {
     BoardKey(show: "⌥⌘V", label: "Paste as Copy", group: "Create"),
     BoardKey(show: "⌘K", label: "Search", group: "View"),
     BoardKey(show: "⌘F", label: "Search This Board", group: "View"),
+    BoardKey(show: "⌘L", label: "Open Location", group: "View"),
     BoardKey(action: .fitWindow, presses: [code(18, .shift)], show: "⇧1", label: "Fit to Window", group: "View"),
     BoardKey(action: .fitSelection, presses: [code(19, .shift)], show: "⇧2", label: "Fit Selection", group: "View"),
     BoardKey(action: .fitWindow, presses: [code(29, .command)], show: "⌘0", label: "Fit All", group: "View"),
