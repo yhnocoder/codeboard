@@ -331,6 +331,9 @@ public final class CanvasView: NSView {
   /// How a Web card's page is read and opened (tests give their own: never the network or a browser)
   package var fetchPage: WebFetch = WebFetcher.live
   package var openURL: (URL) -> Void = { NSWorkspace.shared.open($0) }
+  /// Where a double-click opens a Web card's page, with its title when it has one (the shell: its reading pane); nil,
+  /// and with ⌘, the browser
+  public var onOpenWeb: ((URL, String?) -> Void)?
   /// Where the pointer is in the window (tests give their own: never the person's pointer); nil: the window's
   package var pointerInWindow: CGPoint?
   /// How an image card's picture at a web address is read (tests give their own: never the network), and the folder the
