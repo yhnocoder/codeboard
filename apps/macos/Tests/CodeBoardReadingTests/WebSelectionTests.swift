@@ -189,6 +189,41 @@ import WebKit
     #expect(pb.string(forType: .html) == "<p>No heading here.</p>" && pb.string(forType: .string) == "No heading here.")
   }
 
+  /// A picture dragged from the page is said by its script and promised on the pasteboard as a picture of the page's
+  /// entry, the page saved as a link when the drop asks; the drag over, a drag carries nothing
+  @Test func aDraggedPictureIsCarriedAsAPictureOfThePagesEntry() async throws {
+    let (v, tabs, _) = try await online("/plain")
+    defer { done(tabs) }
+    let png =
+      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+    func page(_ body: String) async throws {
+      _ = try await v.web.callAsyncJavaScript(body, arguments: ["png": png], contentWorld: .defaultClient)
+    }
+    try await page(
+      """
+      const i = document.createElement("img")
+      i.id = "pic"; i.alt = "A dot"; i.src = png
+      document.body.append(i)
+      await i.decode()
+      i.dispatchEvent(new DragEvent("dragstart", { bubbles: true }))
+      """)
+    try await until("the picture said") { v.draggedImage != nil }
+    #expect(v.web.dragsImage?() == true)
+    let pb = NSPasteboard(name: .init("codeboard-tests-drag-\(UUID().uuidString)"))
+    defer { pb.releaseGlobally() }
+    pb.declareTypes([.string], owner: nil)
+    v.web.carry(on: pb)
+    #expect(tabs.pane.entries.all.isEmpty, "nothing saved before the drop asks")
+    let c = try #require(Collected(from: pb))
+    let found = try #require(tabs.pane.entries.all.first)
+    #expect(c.source == SourceAnchor(entry: found.entry.id) && c.title == "Plain" && c.label == "")
+    #expect(c.body == .picture(url: png, alt: "A dot", width: 1, height: 1))
+    try await page("document.getElementById('pic').dispatchEvent(new DragEvent('dragend', { bubbles: true }))")
+    try await until("the drag over") { v.draggedImage == nil }
+    #expect(v.web.dragsImage?() == false)
+    try await page("document.querySelector('p').dispatchEvent(new DragEvent('dragstart', { bubbles: true }))")
+  }
+
   // MARK: Saved pages
 
   /// A saved page of an entry in the vault, its file kept by `store`: the entry's folder

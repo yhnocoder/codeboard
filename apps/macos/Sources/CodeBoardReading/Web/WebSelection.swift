@@ -112,6 +112,55 @@ extension WebReading {
     """
 }
 
+extension WebReading {
+  /// A picture of the page being dragged: said when its drag starts (its address, alternative text and natural size),
+  /// said again with a `data:` address once the page itself has read it (a picture only the signed-in page gets;
+  /// one of another site that does not let the page read it keeps its address), and `null` when the drag ends or
+  /// another begins
+  static let imageScript = """
+    (() => {
+      let live = 0
+      const post = m => webkit.messageHandlers.image.postMessage(m)
+      addEventListener("dragstart", e => {
+        const n = ++live
+        const img = e.target && e.target.tagName == "IMG" && e.target.naturalWidth ? e.target : null
+        if (!img) return post(null)
+        const m = { src: img.currentSrc || img.src, alt: img.alt || null, width: img.naturalWidth,
+          height: img.naturalHeight }
+        post(m)
+        if (!/^https?:/.test(m.src)) return
+        fetch(m.src, { credentials: "include" }).then(r => r.ok ? r.blob() : null).then(b => {
+          if (!b || !b.type.startsWith("image/") || b.size > 8e6 || n != live) return
+          const f = new FileReader()
+          f.onload = () => { if (n == live) post({ ...m, src: f.result }) }
+          f.readAsDataURL(b)
+        }).catch(() => {})
+      }, true)
+      addEventListener("dragend", () => { live++; post(null) }, true)
+    })()
+    """
+}
+
+/// A picture of the page being dragged, as its script said
+struct WebImage: Equatable {
+  var url: String
+  var alt: String?
+  var width: Double
+  var height: Double
+
+  init?(script m: Any?) {
+    guard let d = m as? [String: Any], let url = d["src"] as? String,
+      ["http:", "https:", "data:"].contains(where: url.hasPrefix),
+      let width = (d["width"] as? NSNumber)?.doubleValue, let height = (d["height"] as? NSNumber)?.doubleValue,
+      width > 0, height > 0
+    else { return nil }
+    self.url = url
+    alt = (d["alt"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+    self.width = width
+    self.height = height
+  }
+}
+
 /// What is selected on the page, as its script last said; its rectangles in the viewport's CSS pixels
 struct WebSelection: Equatable {
   /// On a saved page: a block's characters, as the reader counts them in its text (UTF-16)
@@ -181,7 +230,9 @@ final class PageWebView: WKWebView {
   /// A drag starting with a press at that point of this view: the selection's text when it is a drag of the
   /// selection the board can take
   var dragsSelection: ((CGPoint) -> String?)?
-  /// The selection as the board takes it, asked when a drop asks for it
+  /// Whether a picture of the page is being dragged that the board can take
+  var dragsImage: (() -> Bool)?
+  /// The selection or the dragged picture as the board takes it, asked when a drop asks for it
   var collecting: (() -> Collected?)?
 
   override init(frame: CGRect, configuration: WKWebViewConfiguration) {
@@ -223,7 +274,7 @@ final class PageWebView: WKWebView {
       item.setDraggingFrame(CGRect(origin: at, size: drag.picture.size), contents: drag.picture)
     }
     let session = super.beginDraggingSession(with: items, event: event, source: source)
-    if drag != nil { carry(on: session.draggingPasteboard) }
+    if drag != nil || dragsImage?() == true { carry(on: session.draggingPasteboard) }
     return session
   }
 
@@ -245,7 +296,7 @@ final class PageWebView: WKWebView {
         PageWebView, NSImage, NSPoint, NSSize, NSEvent, NSPasteboard, AnyObject, ObjCBool
       ) -> Void = { view, image, at, offset, event, pasteboard, source, slide in
         let drag = view.selectionDrag(event)
-        if drag != nil { view.carry(on: pasteboard) }
+        if drag != nil || view.dragsImage?() == true { view.carry(on: pasteboard) }
         original(view, sel, drag?.picture ?? image, drag?.at ?? at, offset, event, pasteboard, source, slide)
       }
     class_addMethod(PageWebView.self, sel, imp_implementationWithBlock(block), types)
@@ -256,6 +307,15 @@ extension PageWebView: @preconcurrency NSPasteboardTypeOwner {
   func pasteboard(_ sender: NSPasteboard, provideDataForType type: NSPasteboard.PasteboardType) {
     guard type == .collected, let data = try? collecting?()?.data() else { return }
     sender.setData(data, forType: .collected)
+  }
+}
+
+/// Hands the picture script's messages to the view
+final class ImageRelay: NSObject, WKScriptMessageHandler {
+  weak var owner: WebPageView?
+
+  func userContentController(_ c: WKUserContentController, didReceive message: WKScriptMessage) {
+    owner?.draggedImage = WebImage(script: message.body)
   }
 }
 

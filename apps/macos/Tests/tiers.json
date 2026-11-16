@@ -568,7 +568,8 @@
             "WebSavedPageTests",
             "WebTranslatingTests",
             "WebTranslationTests",
-            "WebSelectionTests"
+            "WebSelectionTests",
+            "WebPickingTests"
           ]
         },
         "reading: code": {

@@ -1,8 +1,9 @@
 import Foundation
 
 /// Whether a web tab's bar shows: scrolling down into the page hides it and it stays hidden when the scrolling stops;
-/// scrolling up, the page at its top, the pointer near the pane's bottom edge, ⌘L, editing the address and a page just
-/// loaded show it. Events in, `shown` out; the view animates the change
+/// scrolling up, the page at its top, the pointer near the pane's bottom edge, ⌘L, editing the address or correcting
+/// the body (`editing`, which holds it) and a page just loaded show it. Events in, `shown` out; the view animates the
+/// change
 struct WebBarVisibility: Equatable {
   /// No further than this from the top, the page is at its top
   static let topSlack: CGFloat = 4
