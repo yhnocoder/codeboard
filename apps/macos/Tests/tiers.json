@@ -461,7 +461,8 @@
           "sources": [
             "CodeBoardShell/ShellSearch.swift",
             "CodeBoardNotes/SearchPanel.swift",
-            "CodeBoardModel/Search.swift"
+            "CodeBoardModel/Search.swift",
+            "CodeBoardReading/List/ListSearch.swift"
           ],
           "tests": ["FullWindowSearchTests"]
         },
@@ -580,7 +581,14 @@
         },
         "reading: list": {
           "sources": ["CodeBoardReading/List"],
-          "tests": ["ListReadingTests", "ListAddingTests", "ListDragTests", "ListDeleteTests", "ListFieldsTests"]
+          "tests": [
+            "ListReadingTests",
+            "ListAddingTests",
+            "ListDragTests",
+            "ListDeleteTests",
+            "ListSearchTests",
+            "ListFieldsTests"
+          ]
         },
         "reading: shared": {
           "sources": ["CodeBoardReading/Shared", "CodeBoardModel/Collected.swift"],

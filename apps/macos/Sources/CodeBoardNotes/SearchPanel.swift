@@ -4,9 +4,10 @@ import WebKit
 
 /// ⌘K and ⌘F: the web board's search palette (ui/Palette.tsx), its markup and stylesheet, in a web view of its own
 /// (page.html?palette, `palette`) as big as the board it is over, its scrim and all, as main's covers the board. Typed
-/// into, it asks `onSearch` for the matches and, a little later, `onMeaning` for Related by Meaning (the page owns both
-/// pauses and asks again while indexing; an answer for an older query is dropped); a row picked or the palette closed is
-/// told to `onPick` and `onClose`. Made once and kept.
+/// into, it asks `onSearch` for the matches, `onResources` for the Resources group (its search cancelled when the query
+/// changes) and, a little later, `onMeaning` for Related by Meaning (the page owns the pauses and asks again while
+/// indexing; an answer for an older query is dropped); a row picked or the palette closed is told to `onPick`,
+/// `onPickResource` and `onClose`. Made once and kept.
 @MainActor
 public final class SearchPanel: NSObject {
   /// What it opens with (palette.ts PaletteData)
@@ -49,17 +50,61 @@ public final class SearchPanel: NSObject {
     }
   }
 
+  /// A row of the Resources group (palette.ts ResourceItem): an entry, at the place its text matched
+  public struct Resource: Encodable, Sendable {
+    public struct Preview: Encodable, Sendable {
+      public var md: String
+      public var `where`: String
+    }
+    public var kind = "resource"
+    public var entry: String
+    public var label: String
+    /// The line under it: the sentence that matched, with its place
+    public var context: String
+    /// Beside it: how many places matched
+    public var detail: String
+    /// What Return opens and ⌥↵ puts on the board, as JSON the page hands back
+    public var open: String
+    public var collect: String?
+    public var preview: Preview
+    /// The folder its preview's images are under
+    public var images: String
+
+    public init(
+      entry: EntryID, label: String, context: String, detail: String, open: SourceAnchor, collect: Collected?,
+      preview: String, where w: String, images: URL
+    ) {
+      self.entry = entry.rawValue
+      self.label = label
+      self.context = context
+      self.detail = detail
+      self.open = Self.json(open) ?? ""
+      self.collect = collect.flatMap { Self.json($0) }
+      self.preview = Preview(md: preview, where: w)
+      self.images = images.absoluteString
+    }
+
+    private static func json(_ v: some Encodable) -> String? {
+      (try? JSONEncoder().encode(v)).map { String(decoding: $0, as: UTF8.self) }
+    }
+  }
+
   public let view: WKWebView
   public var onSearch: ((_ q: String, _ thisBoard: Bool) async -> [BoardSearch.Item])?
   /// Related by Meaning for `q`: its answer told to `reply`, then the reranker's order told to it again if one comes
   public var onMeaning:
     ((_ q: String, _ thisBoard: Bool, _ reply: @escaping @MainActor (Related) async -> Void) async -> Void)?
+  public var onResources: ((_ q: String, _ thisBoard: Bool) async -> [Resource])?
+  /// A Resources row picked: Return opens `open`; ⌥↵ puts `collect` on the board
+  public var onPickResource: ((_ open: SourceAnchor, _ collect: Collected?) -> Void)?
   public var onPick: ((Pick) -> Void)?
   public var onClose: (() -> Void)?
   public private(set) var isOpen = false
   /// How many times it was opened: an answer asked for in an earlier opening is dropped
   private var opening = 0
   private let signal = PanelSignal()
+  /// The Resources search going on: cancelled by the next query
+  private var resources: Task<Void, Never>?
 
   public init(page: URL = NoteRenderer.bundledPage) {
     let config = WKWebViewConfiguration()
@@ -95,6 +140,7 @@ public final class SearchPanel: NSObject {
   public func close() {
     guard isOpen else { return }
     isOpen = false
+    resources?.cancel()
     view.isHidden = true
     view.callAsyncJavaScript("palette.clear()", arguments: [:], in: nil, in: .page)
   }
@@ -115,6 +161,22 @@ public final class SearchPanel: NSObject {
         guard isOpen, let json = try? String(decoding: JSONEncoder().encode(items), as: UTF8.self) else { return }
         _ = await run("palette.results(n, JSON.parse(items))", ["n": n, "items": json])
       }
+    case "presources":
+      let n = m["n"] as? Int ?? 0
+      let q = m["q"] as? String ?? ""
+      let here = m["here"] as? Bool ?? false
+      resources?.cancel()
+      resources = Task {
+        let items = await onResources?(q, here) ?? []
+        guard !Task.isCancelled, isOpen, let json = try? String(decoding: JSONEncoder().encode(items), as: UTF8.self)
+        else { return }
+        _ = await run("palette.resources(n, JSON.parse(items))", ["n": n, "items": json])
+      }
+    case "prpick":
+      let decode = { (s: String) in try? JSONDecoder().decode(SourceAnchor.self, from: Data(s.utf8)) }
+      guard let a = (m["open"] as? String).flatMap(decode) else { return }
+      let c = (m["collect"] as? String).flatMap { try? Collected(data: Data($0.utf8)) }
+      onPickResource?(a, c)
     case "pmeaning":
       let n = m["n"] as? Int ?? 0
       let q = m["q"] as? String ?? ""
