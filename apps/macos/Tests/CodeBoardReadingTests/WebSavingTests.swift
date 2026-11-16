@@ -30,6 +30,7 @@ import WebKit
     case "/a": .html("<title>Page A</title><a id='next' href='/b'>to B</a>")
     case "/b": .html("<title>Page B</title>")
     case "/mute": .html("<title>Page Mute</title>")
+    case "/late": .html("<title>Page Late</title>")
     case "/asset": LoopbackServer.Response(body: "asset for \(r.headers["cookie"] ?? "no cookie")")
     default: LoopbackServer.Response(status: "404 Not Found", body: "<title>Missing</title>")
     }
@@ -145,7 +146,8 @@ import WebKit
     try await loaded(v, "Page A")
     #expect(try await v.web.evaluateJavaScript("window.hooked === true") as? Bool == true)
     v.saveMenu().performActionForItem(at: 0)
-    try await until("the link saved") { v.saveState == .saved(.link) }
+    #expect(v.saveState == .saved(.link))
+    try await until("the metadata added") { try web().first?.1.first?.meta?.description != nil }
     try await until("the service told") {
       await store.links == [PageLink(url: url("/a").absoluteString, title: "Page A")]
     }
@@ -153,19 +155,36 @@ import WebKit
     let meta = try #require(entry.meta)
     #expect(meta.title == "Page A" && meta.description == "A made-up page" && meta.site == "Loopback")
     #expect(meta.icon == .url(url("/icon.png").absoluteString) && meta.image == .url(url("/cover.png").absoluteString))
-    #expect(entry.added == meta.fetchedAt, "when the page was read, not when the service answers")
+    #expect(entry.added <= meta.fetchedAt ?? 0, "when the link was saved, not when the script or the service answers")
   }
 
   /// The metadata script that never answers (as WebKit never does for a call made while the page is being left) does
-  /// not keep the link from being saved: after `metaWait` it is saved with the page's title alone
+  /// not keep the link from being saved: it is in the vault with the page's title as the press returns
   @Test func aLinkIsSavedWhenTheMetadataScriptNeverAnswers() async throws {
     let (v, tabs) = try tab("/mute")
     defer { done(tabs) }
     try await loaded(v, "Page Mute")
     v.saveMenu().performActionForItem(at: 0)
-    try await until("the link saved") { v.saveState == .saved(.link) }
+    #expect(v.saveState == .saved(.link))
     let meta = try #require(try web().first?.1.first?.meta)
     #expect(meta.title == "Page Mute" && meta.description == nil)
+  }
+
+  /// A metadata script that answers late: the entry is there with the title as the press returns, and what the
+  /// script read is added to it when it answers
+  @Test func aLinkIsThereAtOnceAndTakesItsMetadataWhenTheScriptAnswers() async throws {
+    let (v, tabs) = try tab("/late")
+    defer { done(tabs) }
+    try await loaded(v, "Page Late")
+    v.saveMenu().performActionForItem(at: 0)
+    #expect(v.saveState == .saved(.link))
+    let first = try #require(try web().first?.1.first)
+    #expect(first.title == "Page Late" && first.meta?.title == "Page Late" && first.meta?.description == nil)
+    #expect(tabs.pane.entries.all.map(\.entry) == [first], "the sidebar and the lists have it already")
+    _ = try await v.web.evaluateJavaScript("document.documentElement.dataset.answer = '1'; 0")
+    try await until("the metadata added") { try web().first?.1.first?.meta?.description == "A made-up page" }
+    let entries = try web().first?.1
+    #expect(entries?.count == 1 && entries?.first?.id == first.id && entries?.first?.added == first.added)
   }
 
   /// Saving a page whole: the script's fetch is answered with the tab's cookie, its two chunks written in order, the
