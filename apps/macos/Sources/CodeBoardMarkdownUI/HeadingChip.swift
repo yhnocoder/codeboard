@@ -16,7 +16,7 @@ final class HeadingChip: HoverControls {
   override func controls() -> [(id: String, box: CGRect, tip: String)] { [("chip", bounds, "")] }
   override var fade: Double { MarkdownTiming.headingChipFade }
   override var hoverInk: Double { 0.085 }
-  // main's chip has no :active; Luna asked for the web page's button press on every control of a Note (2026-11-15)
+  // the web chip has no :active; every control of a Note takes the web page's button press, this one too
   override var pressInk: Double? { 0.12 }
 
   /// over the heading's first line: `baseline` its first baseline, `left` where its text starts (editor view points)

@@ -290,7 +290,7 @@ final class CodeBand: NSView {
     }
     /// the delete actions: hovered in the warning colour (.md-bb.danger:hover)
     static let danger: Set<String> = ["delRow", "delCol"]
-    // main's .md-bb has no :active; Luna asked for the web page's button press here too (2026-11-15)
+    // the web band's .md-bb has no :active; every control of a Note takes the web page's button press, these too
     override var pressInk: Double? { 0.12 }
     var fill = MDColor(0.95, 0.95, 0.95, 1)
     var radius: CGFloat = 12

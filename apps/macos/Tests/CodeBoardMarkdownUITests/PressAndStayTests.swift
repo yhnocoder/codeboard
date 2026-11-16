@@ -6,7 +6,7 @@ import Testing
 @testable import CodeBoardMarkdownUI
 
 /// The selection's toolbar stays up while its own buttons or the format keys change the text under it, and every
-/// button of a Note's chrome shows the board's press (Luna, 2026-11-15)
+/// button of a Note's chrome shows the board's press
 @MainActor @Suite struct PressAndStayTests {
   func editing(_ src: String, _ sel: MDSelection) -> (MarkdownEditorView, NSWindow) {
     _ = boardFonts
