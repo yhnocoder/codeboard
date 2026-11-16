@@ -261,6 +261,30 @@ import Testing
     #expect(image.width == 200)
   }
 
+  @Test func aSourceOfAnEntryAsAWholeShowsItsTitleAndOpensItsPDFOrItsAddress() throws {
+    let p = try BlockPaper()
+    defer { p.v.remove() }
+    let page = Entry(
+      id: EntryID(rawValue: "e-page"), title: "Notes on mills", added: 0, origin: .web("https://example.com/mills"),
+      versions: [])
+    _ = try p.v.vault.newEntry(page, in: p.v.resource.path, with: [:])
+    let pane = ReadingPane()
+    pane.vault = p.v.vault
+    pane.entries = EntryIndex(p.v.vault, try p.v.vault.tree())
+    let s = ReadingSources(pane: pane)
+    let paper = SourceAnchor(entry: p.entry.id)
+    #expect(s.sourceLabel(paper) == SourceLabel(title: "Rivers and Mills", number: nil, icon: .paper))
+    #expect(s.blockSize(paper) == nil && s.mathPreamble(for: paper) == nil)
+    s.reveal(paper)
+    #expect(pane.tabs.count == 1 && pane.tabs[0].kind == "pdf")
+    let link = SourceAnchor(entry: page.id)
+    #expect(s.sourceLabel(link) == SourceLabel(title: "Notes on mills", number: nil, icon: .site))
+    s.reveal(link)
+    #expect(pane.tabs.count == 2 && pane.tabs[1].kind == "web")
+    #expect(pane.tabs[1].payload == ["url": "https://example.com/mills"])
+    #expect(s.sourceLabel(SourceAnchor(entry: EntryID(rawValue: "gone"))) == nil)
+  }
+
   @Test func aLinksTargetIsTheBlockItGoesToPreviewedAfterAMoment() async throws {
     let p = try BlockPaper()
     defer { p.v.remove() }

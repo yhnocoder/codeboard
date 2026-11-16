@@ -375,12 +375,13 @@ public struct Place: Equatable, Sendable {
 }
 
 /// A place in an entry named from outside it: a card's source, an image card's picture. The entry may be gone; the
-/// anchor stays
+/// anchor stays. Without a place it is the entry as a whole (a page saved as a link has no version to name a place
+/// in); an image card's picture always has one
 public struct SourceAnchor: Equatable, Sendable {
   public var entry: EntryID
-  public var place: Place
+  public var place: Place?
 
-  public init(entry: EntryID, place: Place) {
+  public init(entry: EntryID, place: Place? = nil) {
     self.entry = entry
     self.place = place
   }

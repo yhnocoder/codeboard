@@ -264,6 +264,12 @@ translates (blocks of the two correspond by order). `language`: BCP 47 (`zh`, `e
 - `page: {hash, bytes}`: a web page saved whole, kept outside the vault by its content fingerprint (`hash`, as the
   saving service names the file); `bytes` its size.
 - `file: {file}`: any other file in the entry folder, opened as the system opens it; no places in it.
+- `translation: {file}`: a saved page translated block by block. The version has `of`, a `page` version of the entry,
+  and its `language` (a file without either is refused). `file`, in the entry folder (`<of>.<language>.json`, as
+  `v1.zh.json`), is `{version: 1, scheme, blocks: {"<block id>": {hash, text}}}`: by the ids of the page's blocks, each
+  block's `text` in that language and the `hash` of the text it was translated from (a block whose text has another
+  hash now is translated again); `scheme` numbers how blocks are cut and hashed. A Place in this version names a block
+  by the same id, and its `range` counts in the translated `text`.
 
 An entry saved as a link alone has no versions. A new version of a paper is one more Version; the old ones stay, and
 every highlight, sidenote and card source keeps naming the version it was made on. Nothing is moved to the new one.
@@ -280,8 +286,10 @@ File names are plain file names, as in `images/`.
   `rect` the region.
 
 **SourceAnchor** (a Place from outside the entry: a card's `source`, an image card's `resource`): `entry, version,
-block, range?`, a Place with the entry's id. The board does not check that the entry is there: a card whose entry is
-gone keeps its anchor and is drawn as missing its source.
+block, range?`, a Place with the entry's id; or `entry` alone, the entry as a whole (what was taken from a page saved
+as a link, which has no version: its source shows the entry's title and opens its address). An image card's `resource`
+always has its place (a file where it has none is refused). The board does not check that the entry is there: a card
+whose entry is gone keeps its anchor and is drawn as missing its source.
 
 Read strictly besides: version, highlight and sidenote ids are each unique among their kind in the entry; a place's
 `version` is one of the entry's versions; `of` never names the version itself; an arXiv id has no `vN`. The sidebar
