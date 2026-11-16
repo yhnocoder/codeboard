@@ -208,6 +208,33 @@ public enum Meaning {
     return rows(r.hits, in: docs, here: here, onlyHere: onlyHere, found: found)
   }
 
+  /// The rows as the palette lists them (meaning.ts items): every board that shows one as its detail, its preview with
+  /// the passage that matched; a card on the Shelf of the board searched from carries its entry, as a word match does
+  public static func items(_ rows: [Row], in boards: [BoardSearch.Source], here: BoardID?) -> [BoardSearch.Item] {
+    let by = Dictionary(boards.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+    return rows.compactMap { r in
+      let t = r.target
+      guard let src = by[t.board],
+        let card = src.board.card(t.card) ?? src.board.shelf.lazy.flatMap(\.cards).first(where: { $0.id == t.card })
+      else { return nil }
+      let md: String
+      if let id = t.sidenote {
+        guard let n = src.board.sidenotes.first(where: { $0.id == id }) else { return nil }
+        md = BoardSearch.sidenoteMarkdown(n)
+      } else {
+        guard case .own(let c) = card.content else { return nil }
+        md = BoardSearch.cardMarkdown(c)
+      }
+      return BoardSearch.Item(
+        kind: t.kind == .card ? .card : .sidenote, label: t.label,
+        detail: t.boards.map { $0 == here ? "This board" : by[$0]?.name ?? $0.rawValue }.joined(separator: " · "),
+        board: t.board.rawValue, card: t.card.rawValue, sidenote: t.sidenote?.rawValue,
+        shelf: t.board == here ? t.shelf : nil,
+        preview: BoardSearch.preview(md, BoardSearch.whereOf(src.board, card, name: src.name), hit: r.passage),
+        images: src.images.absoluteString, faint: r.faint ? true : nil)
+    }
+  }
+
   /// UTF-16 offsets [from, to] of `s`
   private static func slice(_ s: String, _ r: [Int]) -> String? {
     let u = Array(s.utf16)
