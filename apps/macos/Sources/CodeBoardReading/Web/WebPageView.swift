@@ -62,15 +62,22 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
     addEventListener("scroll", () => webkit.messageHandlers.scroll.postMessage(scrollY), { passive: true })
     """
 
-  /// `scripts`: the folder of the saving service's page scripts; `websiteData`: where its sites keep their data
+  /// `scripts`: the folder of the saving service's page scripts; `websiteData`: where its sites keep their data. A tab
+  /// opened for a page's new window is handed the configuration WebKit made for it, which WebKit loads itself
   init(context: ReadingContext, store: (any PageStore)?, scripts: URL?, websiteData: WKWebsiteDataStore) {
     self.context = context
     self.store = store
     let page = WebReading.Page(payload: context.payload)
-    let config = WKWebViewConfiguration()
-    config.websiteDataStore = websiteData
+    let handed = context.handed as? WKWebViewConfiguration
+    // a new window's configuration is a copy of its opener's: its data store, which WebKit wants for both, and the
+    // opener's scripts and scheme handler, which it gets its own of
+    let config = handed ?? WKWebViewConfiguration()
+    if handed == nil { config.websiteDataStore = websiteData }
     config.applicationNameForUserAgent = WebReading.applicationName
-    config.setURLSchemeHandler(SavedPageHandler(store: store), forURLScheme: WebReading.savedScheme)
+    config.userContentController = WKUserContentController()
+    if config.urlSchemeHandler(forURLScheme: WebReading.savedScheme) == nil {
+      config.setURLSchemeHandler(SavedPageHandler(store: store), forURLScheme: WebReading.savedScheme)
+    }
     userScripts = config.userContentController
     let relay = ScrollRelay()
     userScripts.add(relay, contentWorld: .defaultClient, name: "scroll")
@@ -84,7 +91,7 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
     web = PageWebView(frame: .zero, configuration: config)
     bar = WebBar(look: context.bar)
     suggestions = WebSuggestions(look: context.bar)
-    editOnShow = page == .online(nil)
+    editOnShow = page == .online(nil) && handed == nil
     super.init(frame: .zero)
     setAccessibilityIdentifier("ui-web")
     relay.owner = self
@@ -271,7 +278,8 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
       let page = page
       let own = web.title.flatMap { $0.isEmpty ? nil : $0 }
       let title = if case .saved(_, _, let saved) = page { own ?? saved } else { own ?? WebAddress.shown(address) }
-      context.update(title: title, payload: page.payload, key: page.key)
+      // a page online is gone to by no key: leaving a saved page clears its
+      context.update(title: title, payload: page.payload, key: page.key ?? "")
     }
     if web.url != savedFor { askSaved() }
     bar.extract.isEnabled = onSaved && scripts != nil && store != nil
@@ -361,15 +369,14 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
     Task { await WebHistoryFile.shared.visit(url, title: title, at: Date(), counted: counted, in: file) }
   }
 
-  /// A link to a new window opens here: a tab of its own would need the configuration WebKit hands over, which the
-  /// tab's view cannot be made with
+  /// A page asking for a new window (window.open, a link to _blank) gets another web tab after this one, its view
+  /// made with the configuration WebKit hands over, so that the two pages reach each other (`window.opener`)
   func webView(
     _ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for action: WKNavigationAction,
     windowFeatures: WKWindowFeatures
   ) -> WKWebView? {
-    ownLoad = true
-    webView.load(action.request)
-    return nil
+    let title = action.request.url?.host() ?? "New Tab"
+    return (context.open(title, kind: WebReading.kind, handing: configuration) as? WebPageView)?.web
   }
 
   // MARK: Saving

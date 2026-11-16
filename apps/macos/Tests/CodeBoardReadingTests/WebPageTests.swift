@@ -30,6 +30,12 @@ import WebKit
     case ("POST", "/signin"):
       return .html(
         "<title>Signed in</title>", headers: ["Set-Cookie": "session=made-up-token; Path=/; Max-Age=3600"])
+    case ("GET", "/opener"):
+      return .html(
+        "<title>Opener</title><script>function hear(s) { document.title = 'Heard ' + s }</script>"
+          + "<a id='blank' href='/b' target='_blank'>B</a>")
+    case ("GET", "/popup"):
+      return .html("<title>Pop-up</title><script>window.opener.hear(location.pathname)</script>")
     case ("GET", "/home"):
       return .html("<title>\(r.headers["cookie"] ?? "no cookie")</title>")
     default: return LoopbackServer.Response(status: "404 Not Found", body: "<title>Missing</title>")
@@ -317,6 +323,29 @@ import WebKit
     editor.doCommand(by: #selector(NSResponder.insertNewline(_:)))
     #expect(v.suggestions.isHidden && !field.isEditing)
     try await until("the suggestion") { v.web.url == first && !v.web.isLoading }
+  }
+
+  /// A page asking for a new window gets another web tab after its own, selected, whose page is made by WebKit with
+  /// what it handed over: the pop-up calls back through `window.opener`; a link to _blank opens another tab too
+  @Test func aNewWindowOpensAnotherTabThatReachesItsOpener() async throws {
+    let (v, tabs) = try tab("/opener")
+    defer { tabs.close() }
+    try await until("the opener") { v.web.title == "Opener" && !v.web.isLoading }
+    _ = try await js(v, "window.open('/popup'); 0")
+    try await until("the pop-up called back") { v.web.title == "Heard /popup" }
+    #expect(tabs.pane.tabs.count == 2 && tabs.pane.tabs.allSatisfy { $0.kind == WebReading.kind })
+    let popup = try #require(tabs.paneView.views[tabs.pane.tabs[1].id] as? WebPageView)
+    #expect(tabs.pane.selected == tabs.pane.tabs[1].id && popup !== v)
+    try await until("the pop-up's page") { popup.web.title == "Pop-up" && !popup.web.isLoading }
+    #expect(popup.web.url == url("/popup") && tabs.tab(popup)?.payload == ["url": url("/popup").absoluteString])
+    #expect(tabs.tab(popup)?.title == "Pop-up" && !popup.bar.address.isEditing)
+    #expect(v.web.url == url("/opener"), "the opener stays where it was")
+
+    _ = try await js(v, "document.getElementById('blank').click(); 0")
+    try await until("a third tab") { tabs.pane.tabs.count == 3 }
+    let b = try #require(
+      tabs.pane.tabs.compactMap { tabs.paneView.views[$0.id] as? WebPageView }.last { $0 !== v && $0 !== popup })
+    try await until("page B in it") { b.web.title == "Page B" && !b.web.isLoading }
   }
 
   /// A blank tab keeps what it was opened with until it shows a page; without a folder of the tabs' own on this Mac

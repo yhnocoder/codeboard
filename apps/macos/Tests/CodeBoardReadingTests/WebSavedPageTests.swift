@@ -128,13 +128,14 @@ import WebKit
     editor.doCommand(by: #selector(NSResponder.insertNewline(_:)))
     try await shown(v, "Page A")
     #expect(v.page == .online(url("/a")) && tabs.tab(v)?.payload == ["url": url("/a").absoluteString])
-    #expect(tabs.tab(v)?.title == "Page A")
+    #expect(tabs.tab(v)?.title == "Page A" && tabs.tab(v)?.key == nil, "no longer gone to by the saved page's hash")
     #expect(asked.all == ["/moved", "/a"])
     #expect(v.bar.back.isEnabled)
     v.bar.back.performClick(nil)
     try await until("the saved page again") {
       v.page == saved && !v.web.isLoading && tabs.tab(v)?.payload == saved.payload
     }
+    #expect(tabs.tab(v)?.key == "web:" + Self.hash)
     #expect(try await js(v, "return document.documentElement.hasAttribute('data-ran')") as? Bool == false)
     #expect(asked.all == ["/moved", "/a"])
   }
