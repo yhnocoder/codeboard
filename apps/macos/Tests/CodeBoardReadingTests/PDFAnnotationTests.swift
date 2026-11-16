@@ -141,6 +141,31 @@ import Testing
     #expect(again.textView(again.input, doCommandBy: #selector(NSResponder.cancelOperation(_:))) && t.pop == nil)
   }
 
+  /// The keys stay in the popup's input after ↵ adds a note and after one is removed: more is written, Esc closes it
+  @Test func theKeysStayInTheAnnotationInputAfterANoteIsAddedOrRemoved() throws {
+    let v = try PDFVault()
+    defer { v.remove() }
+    let w = try PDFWindow(v)
+    defer { w.close() }
+    let t = try w.tab(try #require(w.pane.openPDF(.file(v.file))))
+    try highlighted(w, t, "runs north")
+    t.released(at: try point(on: t))
+    press(t.highlightBar.buttons[0])
+    let pop = try #require(t.pop)
+    #expect(w.window.firstResponder === pop.input)
+    func keys() -> NSTextView? { w.window.firstResponder as? NSTextView }
+    pop.input.string = "Which mill?"
+    keys()?.doCommand(by: #selector(NSResponder.insertNewline(_:)))
+    #expect(pop.notes.count == 1 && w.window.firstResponder === pop.input, "after ↵ adds")
+    keys()?.insertText("Another", replacementRange: NSRange(location: NSNotFound, length: 0))
+    keys()?.doCommand(by: #selector(NSResponder.insertNewline(_:)))
+    #expect(pop.notes.map(\.text) == ["Which mill?", "Another"])
+    press(try #require(pop.subviews.first { $0.accessibilityIdentifier() == "ui-annotationremove1" } as? NSButton))
+    #expect(pop.notes.count == 1 && w.window.firstResponder === pop.input, "after one is removed")
+    keys()?.doCommand(by: #selector(NSResponder.cancelOperation(_:)))
+    #expect(t.pop == nil, "Esc closes it")
+  }
+
   /// Questions on the entries' passages, for the board's question list: listed with their anchors, done and answered
   /// in the entry's file
   @Test func questionsAreListedWithTheirAnchorsAndAreDoneAndAnsweredInTheEntrysFile() throws {

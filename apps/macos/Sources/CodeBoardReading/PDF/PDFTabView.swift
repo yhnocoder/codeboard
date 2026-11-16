@@ -201,9 +201,10 @@ final class PDFTabView: NSView, NSDraggingSource, ReadingLookFollower {
 
   // MARK: What floats over the pages
 
-  /// `view` at `origin` (this view's space), kept there on `page` as it scrolls
+  /// `view` at `origin` (this view's space), kept there on `page` as it scrolls; one pinned already moves there without
+  /// being hidden in between (hiding it would take the keys from the view in it that has them: the popup's input)
   func pin(_ view: NSView, at origin: CGPoint, on page: PDFPage) {
-    unpin(view)
+    pinned.removeAll { $0.view === view }
     view.setFrameOrigin(origin)
     view.isHidden = false
     pinned.append((view, page, pdf.convert(pdf.convert(origin, from: self), to: page)))
