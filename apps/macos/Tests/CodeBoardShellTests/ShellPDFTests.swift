@@ -35,11 +35,12 @@ import Testing
     return url
   }
 
-  func vault() throws -> (Vault, Shell, VaultResource) {
+  /// A vault with one resource, Papers, of files (a PDF added stays a file alone) unless `preset` says otherwise
+  func vault(_ preset: ResourcePreset = .files) throws -> (Vault, Shell, VaultResource) {
     let root = fm.temporaryDirectory.appending(path: "shellpdf-\(UUID().uuidString)")
     try fm.createDirectory(at: root, withIntermediateDirectories: true)
     let vault = Vault(root: root)
-    let r = try vault.newResource(in: "", title: "Papers", preset: .papers)
+    let r = try vault.newResource(in: "", title: "Papers", preset: preset)
     let shell = Shell()
     shell.pasteboard = NSPasteboard(name: NSPasteboard.Name("shellpdf-\(UUID().uuidString)"))
     shell.open(vault, restoring: nil)
@@ -77,6 +78,26 @@ import Testing
     #expect(shell.reading.tabs.allSatisfy { $0.kind == "pdf" } && shell.reading.shown)
     #expect(shell.reading.selected == shell.reading.tabs[1].id)
     #expect(!shell.addPDFs([other], to: r), "nothing to add")
+  }
+
+  @Test func aPDFAddedToAResourceOfPapersIsAPaperEntryAtOnceTitledFromThePDF() throws {
+    let (vault, shell, r) = try vault(.papers)
+    defer { try? fm.removeItem(at: vault.root) }
+    let titled = try outside("scan 7.pdf", "Rivers run north.")
+    defer { try? fm.removeItem(at: titled.deletingLastPathComponent()) }
+    // its document info's title, as a PDF writer sets it
+    let doc = try #require(PDFDocument(url: titled))
+    doc.documentAttributes = [PDFDocumentAttribute.titleAttribute: "Quiet Rivers"]
+    #expect(doc.write(to: titled))
+    #expect(shell.addPDFs([titled], to: r))
+    let items = try vault.items(in: r.path)
+    guard case .entry(let e, let path)? = items.first, items.count == 1 else {
+      Issue.record("\(items)")
+      return
+    }
+    #expect(e.title == "Quiet Rivers" && path == "Papers.resource/Quiet Rivers")
+    #expect(shell.reading.tabs.map(\.title) == ["Quiet Rivers"])
+    #expect(shell.reading.tabs.first?.payload == ["entry": e.id.rawValue, "version": e.versions[0].id.rawValue])
   }
 
   @Test func addArxivPaperMakesAnEntryOpensItAndTheSameIdAgainOpensThatEntry() async throws {

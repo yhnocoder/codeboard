@@ -260,7 +260,10 @@ package) or `{url}`, never a resource's. The web line saves one entry per addres
 fragment).
 A date field's value is a `YYYY-MM-DD` string. A value for a field the resource does not define is kept and not shown.
 An entry that is only a file gets a folder and an `entry.json` (the file moved into it, one rename) the first time
-something needs its id: a highlight, a sidenote, a card taken from it.
+something needs its id: a highlight, a sidenote, a card taken from it. A PDF added to a resource whose preset is `papers` is an
+entry at once instead (`ReadingPane.addPaper`): titled from the PDF (its document info's title, else its first page's
+largest line, else its file's name), with the authors its document info names, then, when it carries an arXiv id or a
+DOI, filled in from arXiv or doi.org unless renamed meanwhile (`entry.json` only; the folder keeps its name).
 
 **Version** (one readable form of the entry; a paper's v1, its v2, a translation of either, one saving of a web page):
 `id, label?, added, language?, of?, content`. `label`: what its tab says (`v2`, `v2 中文`). `of`: the version this one

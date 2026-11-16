@@ -180,17 +180,25 @@ extension Shell {
     renaming = .resource(made.id)
   }
 
-  /// PDF files (chosen in Add PDF…'s panel, or dropped on the resource's row) copied into the resource, each an entry
-  /// alone under a name nothing there has, never over anything, then opened in the reading pane; whether any was
+  /// PDF files (chosen in Add PDF…'s panel, or dropped on the resource's row) copied into the resource, never over
+  /// anything, then opened in the reading pane; whether any was. In a resource of papers each is a paper entry at once
+  /// (`ReadingPane.addPaper`), titled from the PDF; elsewhere each is an entry alone under a name nothing there has
   @discardableResult
   public func addPDFs(_ urls: [URL], to resource: VaultResource) -> Bool {
     let pdfs = urls.filter { UTType(filenameExtension: $0.pathExtension)?.conforms(to: .pdf) == true }
     guard !pdfs.isEmpty else { return false }
-    var added: [String] = []
+    var added: [PDFTarget] = []
     files { v in
-      for url in pdfs { added.append(try v.addFile(url, to: resource.path)) }
+      for url in pdfs {
+        if resource.preset == .papers {
+          let e = try reading.addPaper(pdf: url, to: resource).found.entry
+          added.append(.entry(e.id, version: e.versions[0].id))
+        } else {
+          added.append(.file(try v.addFile(url, to: resource.path)))
+        }
+      }
     }
-    for path in added { openPDF(.file(path)) }
+    for t in added { openPDF(t) }
     return !added.isEmpty
   }
 
