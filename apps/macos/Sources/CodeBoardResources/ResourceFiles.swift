@@ -32,6 +32,16 @@ extension Vault {
     return try Resource(decoding: readFile(file), file: file)
   }
 
+  /// The resource file written to the package at `path`, all at once
+  public func write(_ resource: Resource, at path: String) throws {
+    let file = url(of: path).appending(path: Vault.resourceFileName)
+    do {
+      try resource.encoded().write(to: file, options: .atomic)
+    } catch {
+      throw VaultError.unwritable(file, error.localizedDescription)
+    }
+  }
+
   /// Everything in the package at `path` that is an entry; names starting with `.`, and folders without an entry file,
   /// are not
   public func items(in path: String) throws -> [ResourceItem] {

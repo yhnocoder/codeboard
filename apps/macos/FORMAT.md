@@ -249,8 +249,13 @@ each with its own `version`, now 1. Names starting with `.` are not entries. Ope
 
 **resource.json**: `version, id, preset: papers|web|files|images|blank, fields: [Field]`. The preset says which columns
 and actions the list starts with (`images`: a grid of pictures; `blank`: the title and only the columns the user adds);
-it does not limit what an entry may be. **Field** (a column the user added): `id, name, type:
-text|number|date|checkbox`; an entry's value for it is in its `entry.json`.
+it does not limit what an entry may be. **Field** (a column the user added, listed in the order the columns show):
+`id, name, type: text|number|date|checkbox|select|board, options?: [{id, name, color?}]`; an entry's value for it is in
+its `entry.json`. A new field's id is made as other ids are (`Board.newID`); renaming it changes only `name`, deleting
+it only drops it from `fields` (entries keep their values). `options`, a `select` field's labels in the user's order,
+is always written for one (maybe `[]`) and never for another kind. An option's `id` is `option-` and a random string;
+ids and names are not empty and not twice in one field. `color` is a highlight's (`yellow|green|blue|pink|purple`);
+absent, the option takes the colour of its place in the list. A file breaking any of this is refused.
 
 **entry.json**: `version, id, title, added, origin?, authors?: [String], year?, venue?, meta?: WebMeta, versions:
 [Version], highlights: [Highlight], sidenotes: [EntrySidenote], fields: {<field id>: String | Number | Bool}`. `added`
@@ -260,7 +265,9 @@ reference; a DOI's journal or proceedings, or for a book, report, thesis or data
 from the entry copies it as it is; its picture and icon are `{file}` (in `images/` in the entry's folder, as in a board
 package) or `{url}`, never a resource's. The web line saves one entry per address (the exact string, without its
 fragment).
-A date field's value is a `YYYY-MM-DD` string. A value for a field the resource does not define is kept and not shown.
+A date field's value is a `YYYY-MM-DD` string, a `select` field's its option's id (one no longer among the options is
+kept and shown as `deleted option`), a `board` field's a board id (a board gone: kept and shown as `Not found`). A
+value cleared is its key dropped. A value for a field the resource does not define is kept and not shown.
 An entry that is only a file gets a folder and an `entry.json` (the file moved into it, one rename) the first time
 something needs its id: a highlight, a sidenote, a card taken from it. A PDF added to a resource whose preset is `papers` is an
 entry at once instead (`ReadingPane.addPaper`): titled from the PDF (its document info's title, else its first page's
