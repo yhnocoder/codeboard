@@ -29,14 +29,15 @@ public struct ReadingTab: Codable, Equatable, Identifiable, Sendable {
     case id, key, title, kind, payload
   }
 
-  // a tab saved before tabs had kinds is a blank page
+  // a tab saved before tabs had kinds is a blank page, a resource's a list
   public init(from decoder: any Decoder) throws {
     let c = try decoder.container(keyedBy: CodingKeys.self)
     id = try c.decode(UUID.self, forKey: .id)
     key = try c.decodeIfPresent(String.self, forKey: .key)
     title = try c.decode(String.self, forKey: .title)
-    kind = try c.decodeIfPresent(String.self, forKey: .kind) ?? ""
-    payload = try c.decodeIfPresent([String: String].self, forKey: .payload) ?? [:]
+    let resource = key?.hasPrefix("resource:") == true ? key.map { String($0.dropFirst(9)) } : nil
+    kind = try c.decodeIfPresent(String.self, forKey: .kind) ?? (resource == nil ? "" : "list")
+    payload = try c.decodeIfPresent([String: String].self, forKey: .payload) ?? resource.map { ["resource": $0] } ?? [:]
   }
 }
 

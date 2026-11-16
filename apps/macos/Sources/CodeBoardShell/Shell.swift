@@ -223,13 +223,16 @@ public struct ShellState: Codable, Equatable, Sendable {
       byID = Dictionary(tree.allBoards.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
       for tab in tabs where byID[tab.board] == nil { close(tab.id) }
       if let vault { reading.entries = EntryIndex(vault, tree) }
-      // a resource's tab takes its new name, and closes when it is gone, as does any tab whose kind says so
+      // a resource's tab takes its new name, and closes when it is gone, as does any tab whose kind says so; its kind
+      // hears every read too
       let resources = Dictionary(
         tree.allFolders.flatMap(\.resources).map { (Self.readingKey($0.id), $0.title) }, uniquingKeysWith: { a, _ in a }
       )
       reading.follow { tab in
         guard let key = tab.key, key.hasPrefix("resource:") else { return ReadingKinds.follow(tab, in: reading) }
-        return resources[key]
+        guard let title = resources[key] else { return nil }
+        _ = ReadingKinds.follow(tab, in: reading)
+        return title
       }
       sources.sourcesChanged()
       // a crumb whose board is gone cuts the crumbs there: what is past it is no way back
@@ -321,9 +324,9 @@ public struct ShellState: Codable, Equatable, Sendable {
     reading.open(title, key: key)
   }
 
-  /// A resource's tab (its row clicked in the sidebar): opened, or gone to when it is open
+  /// A resource's tab (its row clicked in the sidebar), a list of its entries: opened, or gone to when it is open
   public func openResource(_ r: VaultResource) {
-    openReadingTab(title: r.title, key: Self.readingKey(r.id))
+    reading.open(r.title, key: Self.readingKey(r.id), kind: "list", payload: ["resource": r.id.rawValue])
   }
 
   static func readingKey(_ id: ResourceID) -> String { "resource:" + id.rawValue }

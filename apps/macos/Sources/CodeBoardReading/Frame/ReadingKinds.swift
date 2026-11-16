@@ -26,6 +26,7 @@ import CodeBoardModel
   /// This build's kinds; a new folder's goes here
   public static func registerBuiltIn() {
     PDFReading.register()
+    ListReading.register()
   }
 
   static func icon(of kind: String) -> String? { kinds[kind]?.icon }

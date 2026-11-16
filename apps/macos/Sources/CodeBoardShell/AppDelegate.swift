@@ -304,7 +304,7 @@ import CodeBoardResources
     // no keys yet: the shortcut list (CanvasKeys) has no rows for them
     file.addItem(withTitle: "New Web Tab", action: #selector(newWebTab(_:)), keyEquivalent: "")
     // a web tab's view answers it
-    file.addItem(withTitle: "Open Location…", action: NSSelectorFromString("openLocation:"), keyEquivalent: "")
+    file.addItem(withTitle: "Open Location…", action: NSSelectorFromString("openLocation:"), keyEquivalent: "l")
     file.addItem(.separator())
     file.addItem(withTitle: "Close Tab", action: #selector(closeTab(_:)), keyEquivalent: "w")
     file.addItem(item("Close Window", #selector(NSWindow.performClose(_:)), "w", [.command, .shift]))
