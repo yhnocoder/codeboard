@@ -293,6 +293,7 @@ extension CanvasView {
     let (theme, display, images) = (self.theme, self.display, self.images)
     // as sharp as the zoom it opens at needs, up to twice the screen's
     let backing = self.backing * min(2, max(1, camera.zoom))
+    let info: @MainActor @Sendable (Board) -> [String: Scene.Source] = { [weak self] in self?.sourceInfo($0) ?? [:] }
     Task {
       let got = await Task.detached { () -> [CardID: SubPreviews.Drawn] in
         guard let meta = ((try? vault.tree())?.allBoards ?? []).first(where: { $0.id == target }),
@@ -316,7 +317,7 @@ extension CanvasView {
           let k = SubPreview.width / max(1, card.width)
           let picture = await CanvasView.peekPicture(
             card, board: board.id, package: package, vault: vault, theme: theme, display: display, images: images,
-            room: card.width, backing: backing * k)
+            room: card.width, backing: backing * k, sources: info)
           out[id] = SubPreviews.Drawn(name: names.title(card), picture: picture, crop: crop)
         }
         return out

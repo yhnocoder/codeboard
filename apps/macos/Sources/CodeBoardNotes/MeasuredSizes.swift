@@ -28,7 +28,8 @@ package final class MeasuredSizes: Sendable {
     return SizeKey(
       key: SnapshotKey(
         build: build, system: ProcessInfo.processInfo.operatingSystemVersionString, note: json, scale: scale,
-        images: SnapshotKey.imageStamps(in: n.note.markdown, folder: n.folder) + extra))
+        images: SnapshotKey.imageStamps(in: n.note.markdown, folder: n.folder) + extra
+          + (n.preamble.isEmpty ? [] : ["preamble " + n.preamble])))
   }
 
   package func read(_ k: SizeKey) -> NoteMetrics? { store.readSize(k.key) }
