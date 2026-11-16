@@ -1880,6 +1880,14 @@ public final class CanvasView: NSView {
 open class BoardWindow: NSWindow {
   open override func sendEvent(_ e: NSEvent) {
     if BoardWindow.stopsGlide(e), let v = contentView?.superview ?? contentView { BoardWindow.stopGlides(in: v) }
+    // A press while an input method composes commits what it shows first, as a text view does: the Markdown editor
+    // takes a press against its source, which does not have the marked text yet
+    if [.leftMouseDown, .rightMouseDown, .otherMouseDown].contains(e.type),
+      let v = firstResponder as? NSView, let client = v as? NSTextInputClient, client.hasMarkedText()
+    {
+      client.unmarkText()
+      v.inputContext?.discardMarkedText()
+    }
     super.sendEvent(e)
   }
 
