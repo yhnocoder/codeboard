@@ -97,6 +97,8 @@ public struct Paper: Sendable {
   private let byID: [String: Int]
   /// Each page's blocks that have rects there (not the title area's), as indices into the list in its order
   private let onPage: [Int: [Int]]
+  /// The bibliographies: the lists their items (bibitems) are of
+  private let lists: Set<String>
 
   public init(list: BlockList, source: String?) {
     self.list = list
@@ -108,6 +110,7 @@ public struct Paper: Sendable {
       for n in Set(b.rects.map(\.page)) { onPage[n, default: []].append(i) }
     }
     self.onPage = onPage
+    lists = Set(list.blocks.filter { $0.kind == "bibitem" }.compactMap(\.parent))
     mathPreamble = source.flatMap(Tex.macros)
     labels = Numbering.labels(list.blocks, lines: lines, source: source)
   }
@@ -167,13 +170,19 @@ public struct Paper: Sendable {
     return out.isNull || out.isEmpty ? nil : out
   }
 
-  /// Where a link to `point` of page `page` goes: the block that holds it, else the nearest below it on the page
+  /// Where a link to `point` of page `page` goes: the block that holds it, else the nearest below it on the page. A
+  /// bibliography is not where a link goes but one of its items, the nearest below in the point's column: a citation
+  /// goes to just above its item, between it and the one before
   public func target(of point: CGPoint, page: Int) -> BlockList.Block? {
-    if let b = block(at: point, page: page) { return b }
-    let below = blocks(on: page).flatMap { b in
-      b.rects.filter { $0.page == page && $0.y1 <= point.y + 2 }.map { (b, $0) }
+    let found = block(at: point, page: page)
+    if let b = found, !lists.contains(b.id) { return b }
+    let below = blocks(on: page).filter { !lists.contains($0.id) }.flatMap { b in
+      let item = b.parent.map(lists.contains) == true
+      return b.rects.filter { r in
+        r.page == page && r.y1 <= point.y + 2 && (!item || (r.x0 - 6 <= point.x && point.x <= r.x1))
+      }.map { (b, $0) }
     }
-    return below.max { $0.1.y1 < $1.1.y1 }.map { owner($0.0) }
+    return below.max { $0.1.y1 < $1.1.y1 }.map { owner($0.0) } ?? found
   }
 
   /// The blocks with rects on page `page`, in the list's order (not the title area's)

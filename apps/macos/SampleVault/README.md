@@ -45,13 +45,11 @@ rm -rf ~/Library/Application\ Support/com.example.codeboard.try
 
 ## The private package
 
-Today the app builds from public repositories only: this one, better-swift-markdown and tree-sitter.
+The app uses the saving service's package, which is in the private repository `yhnocoder/shiyi`. A Mac without
+access to that repository cannot build the app: the build fails while it resolves the packages, before anything is
+compiled. `try.sh` then says so.
 
-A change that is not merged yet (pull request #280) makes the app use the saving service's package, which is in the
-private repository `yhnocoder/shiyi`. Once that is in, a Mac without access to that repository cannot build the app:
-the build fails while it resolves the packages, before anything is compiled. `try.sh` then says so.
-
-To build then, you need a token from the owner of `yhnocoder/shiyi`. It is a fine-grained GitHub token, read-only,
+To build, you need a token from the owner of `yhnocoder/shiyi`. It is a fine-grained GitHub token, read-only,
 with access to the contents of that one repository and nothing else. Set it up once:
 
 ```sh
@@ -59,9 +57,14 @@ apps/macos/tools/shiyi/setup-token.sh
 ```
 
 It asks for your GitHub user name and the token (the token is not shown as you type), writes them to
-`~/.config/codeboard/shiyi.netrc` (only you can read it), and checks that the token can read the repository. When the
-app uses the package, it also resolves the app's packages with the file. It writes nothing else: not `~/.netrc`, not
-the keychain, not git's settings.
+`~/.config/codeboard/shiyi.netrc` (only you can read it), and checks that the token can read the repository. Then it
+resolves the app's packages with the file (`apps/macos/tools/shiyi/resolve.sh`, which you can also run on its own
+later: SwiftPM downloads with the file, and git clones the repository with its token for that run only). It writes
+nothing else: not `~/.netrc`, not the keychain, not git's settings.
+
+Saving whole pages and reading them offline also needs the service's program and page scripts beside the app:
+`node apps/macos/tools/shiyi/fetch.mjs` fetches them with the same file into `apps/macos/.build-shiyi`, and the next
+build of the app carries them. Without them the app still builds and web pages are saved as links.
 
 ## Things to try
 

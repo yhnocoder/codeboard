@@ -179,6 +179,7 @@ public struct ShellState: Codable, Equatable, Sendable {
     WebReading.register(saving: Self.webSaving, scripts: Self.webScripts)
     self.session = session
     sources = ReadingSources(pane: reading)
+    reading.makePop = { Self.annotationPop(act: $0, resized: $1) }
     reading.onCollect = { [weak self] in self?.collect($0) }
   }
 

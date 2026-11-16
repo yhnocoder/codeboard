@@ -284,6 +284,34 @@ func samplePaper(source: String? = paperTeX) throws -> Paper {
     #expect(p.target(of: CGPoint(x: 100, y: 55), page: 7)?.id == "B7-1")
   }
 
+  /// A citation goes to just above its item, between it and the one before, inside the bibliography: the item, not the
+  /// list; the nearest below in that column, not the other's
+  @Test func aLinkIntoTheBibliographyGoesToTheItemBelowItInItsColumn() {
+    func rect(_ x: Double, _ y: Double, _ w: Double = 120, _ h: Double = 25) -> BlockList.Rect {
+      BlockList.Rect(page: 3, x0: x, y0: y, x1: x + w, y1: y + h)
+    }
+    func item(_ id: String, _ r: BlockList.Rect...) -> BlockList.Block {
+      BlockList.Block(id: id, kind: "bibitem", parent: "BIB", firstLine: 1, lastLine: 1, rects: r)
+    }
+    let bib = BlockList.Block(
+      id: "BIB", kind: "bibliography", firstLine: 1, lastLine: 1,
+      rects: [rect(20, 240, 120, 115), rect(160, 240, 120, 115)])
+    let p = Paper(
+      list: BlockList(blocks: [
+        BlockList.Block(id: "H", kind: "heading", firstLine: 1, lastLine: 1, rects: [rect(20, 360, 260, 15)]), bib,
+        // two columns of two; the third runs on from the left column's foot to the right's top
+        item("B1", rect(20, 330)), item("B2", rect(20, 300)), item("B3", rect(20, 240, 120, 55), rect(160, 330)),
+        item("B4", rect(160, 300)),
+      ]), source: nil)
+    #expect(p.target(of: CGPoint(x: 20, y: 327), page: 3)?.id == "B2", "between two items, in the list")
+    #expect(p.target(of: CGPoint(x: 160, y: 327), page: 3)?.id == "B4", "the right column's")
+    #expect(p.target(of: CGPoint(x: 20, y: 357), page: 3)?.id == "B1", "above the first, out of the list")
+    #expect(p.target(of: CGPoint(x: 60, y: 340), page: 3)?.id == "B1", "in an item")
+    #expect(p.target(of: CGPoint(x: 160, y: 357), page: 3)?.id == "B3", "an item's second column")
+    #expect(p.target(of: CGPoint(x: 100, y: 242), page: 3)?.id == "B3")
+    #expect(p.target(of: CGPoint(x: 30, y: 368), page: 3)?.id == "H", "outside the list as before")
+  }
+
   @Test func aSpanIsWidenedToItsFormulaButNotToAGroupWrappingTheParagraph() throws {
     let text = "Let $x_1$ be big."
     let pdf = "Let x1 be big."

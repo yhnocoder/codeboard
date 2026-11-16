@@ -94,7 +94,9 @@ extension CanvasView {
         guard let r = rects[c], let p = scene.placed[c], !p.folded, let code = p.code,
           case .code(let card)? = scene.parts[c]?.content.body,
           let si = card.segments.firstIndex(where: { $0.id == seg }),
-          let row = code.layout.shownRow(segment: si, line: n)
+          let row = code.layout.shownRow(segment: si, line: n),
+          // past what a card of fixed or capped height shows: clipped, as in the web board's scrolling code (.cbody)
+          code.top + row.y + row.height <= r.height
         else { continue }
         let y = code.top + row.y
         let key = "\(Scene.Owner.card(c))|\(Int(y))"
