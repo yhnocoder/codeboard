@@ -120,6 +120,7 @@ struct BoardKey {
     BoardKey(show: "⇧⌘I", label: "Import Old Boards…", group: "Board"),
     BoardKey(show: "⌘W", label: "Close Tab", group: "Board"),
     BoardKey(show: "⇧⌘W", label: "Close Window", group: "Board"),
+    BoardKey(show: "⌃⌥⌘B", label: "Record Bug Report", group: "Board"),
   ]
 }
 
