@@ -525,7 +525,7 @@
         },
         "calls": {
           "sources": ["CodeBoardShell/ShellCalls.swift", "CodeBoardWorkspace/Expand.swift", "CodeBoardWorkspace/Crossing.swift", "CodeBoardWorkspace/Peeking.swift"],
-          "tests": ["ShellCallsTests"]
+          "tests": ["ShellCallsTests", "SharedCallsTests"]
         },
         "web": {
           "sources": [

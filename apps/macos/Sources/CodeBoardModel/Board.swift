@@ -188,7 +188,7 @@ public struct Segment: Codable, Equatable, Sendable {
 }
 
 /// Where a segment's lines come from. A later kind (a resource: item, page, paragraph) is one more case
-public enum CodeSource: Equatable, Sendable {
+public enum CodeSource: Hashable, Sendable {
   /// repository: the git remote URL, nil when the old data did not have it. checkout: where the VS Code extension read the
   /// file (a folder relative to its workspace, "" for the first root, or an absolute path), kept to find the remote later
   case git(repository: String?, commit: String, path: String, uncommitted: Bool, checkout: String?)

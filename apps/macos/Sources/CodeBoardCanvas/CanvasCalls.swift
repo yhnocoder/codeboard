@@ -46,11 +46,13 @@ struct CallAt: Equatable {
 }
 
 extension CanvasView {
-  /// What the provider says of the calls on a board's code cards, for its scene (made off the main thread)
-  // ponytail: shared cards' segments are not asked (their content is read from the vault, off the main thread); ask
-  // for them when the scene reads them
-  func callInfo(_ b: Board) -> [SegmentID: [CallSpan]] {
-    guard let host = callHost else { return [:] }
+  /// What the provider says of the calls on a board's code cards, for its scene (made off the main thread). A shared
+  /// card's content is read in on an open board (BoardDocument): asked as a card of its own is; one whose file could
+  /// not be read has none to ask of
+  func callInfo(_ b: Board) -> [SegmentID: [CallSpan]] { Self.callInfo(b, callHost) }
+
+  static func callInfo(_ b: Board, _ host: CallHost?) -> [SegmentID: [CallSpan]] {
+    guard let host else { return [:] }
     var out: [SegmentID: [CallSpan]] = [:]
     for c in b.cards {
       guard case .own(let k) = c.content, case .code(let code) = k.body else { continue }

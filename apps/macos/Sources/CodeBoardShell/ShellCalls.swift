@@ -1,9 +1,11 @@
+import AppKit
 import CodeBoardAnalysis
 import CodeBoardCanvas
 import CodeBoardModel
 import CodeBoardReading
 import CodeBoardWorkspace
 import Foundation
+import Observation
 
 // Expanding a call on a code card (the VS Code version's expand): the card's file found on this Mac, its segment as
 // the workspace reads it, the click resolved there (Resolver.expand, the resolvers and the cross-language routes) and
@@ -140,22 +142,22 @@ extension ShellCode {
 }
 
 extension ShellCode {
-  /// The calls on a segment's lines, by its file at its version (highlight.ts buildView's calls); none when the file or
+  /// The calls on a segment's lines, by its file at its version (highlight.ts buildView's calls); nil when the file or
   /// the version is not on this Mac. Nothing is fetched
-  func calls(of s: Segment) async -> [CallSpan] {
-    guard case .file(let f) = await fileOf(s, fetch: false) else { return [] }
+  func calls(of s: Segment) async -> [CallSpan]? {
+    guard case .file(let f) = await fileOf(s, fetch: false) else { return nil }
     return await calls(of: s, in: f)
   }
 
   /// The same, the segment's file being `f`
-  func calls(of s: Segment, in f: CodeFile) async -> [CallSpan] {
+  func calls(of s: Segment, in f: CodeFile) async -> [CallSpan]? {
     let r = repo(f.repository)
     let abs = r.root + "/" + f.path
     let (first, last) = (s.firstLine, s.lastLine)
     return await Task.detached(priority: .utility) {
       guard let seg = await Self.codeSegment(s, at: abs, in: r.sources),
         let full = (try? await r.sources.versionText(seg)) ?? nil, !full.isEmpty
-      else { return [CallSpan]() }
+      else { return nil }
       return r.sources.lookup.analysis.segAnalysis(seg.lang, full, start: first, end: last).calls
         .filter { (first...last).contains($0.line) }
         .map { CallSpan(line: $0.line, col: $0.col, end: $0.end, name: $0.name, recv: $0.recv, dispatch: $0.dispatch) }
@@ -163,34 +165,98 @@ extension ShellCode {
   }
 }
 
-/// The board's calls on its code cards' lines (CallHost), one per window: each segment's asked of the shell once, by
-/// its source and lines, and the board told when they come
+/// The board's calls on its code cards' lines (CallHost), one per window: each segment's asked of the shell once,
+/// those asked in one turn together, and the board told once when they have all come. What a segment whose file is
+/// not here got is forgotten when the repositories change or the app comes to the front (a commit fetched, a file
+/// edited elsewhere meanwhile), as is what a segment of a file that can change (uncommitted, in no repository) got
 @MainActor final class ShellCallMarks: CallHost {
   private weak var code: ShellCode?
   var onCallsChanged: (() -> Void)?
   private struct Key: Hashable {
-    var source: String
+    var id: SegmentID
+    var source: CodeSource
     var first: Int
-    var lines: [String]
   }
-  private var known: [Key: [CallSpan]] = [:]
+  /// What a segment got (nil: its file is not here), with its lines: compared, not hashed, at each ask (the same
+  /// array's storage from refresh to refresh, so equal at once)
+  private var known: [Key: (lines: [String], calls: [CallSpan]?)] = [:]
+  private var batch: [Key: Segment] = [:]
   private var asking: Set<Key> = []
+  private var watching = false
+  private var active: NSObjectProtocol?
 
-  init(_ code: ShellCode) { self.code = code }
+  init(_ code: ShellCode) {
+    self.code = code
+    active = NotificationCenter.default.addObserver(
+      forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
+    ) { [weak self] _ in MainActor.assumeIsolated { self?.forget(changing: true) } }
+  }
+
+  isolated deinit {
+    if let active { NotificationCenter.default.removeObserver(active) }
+  }
+
+  /// Whether answers asked for have not all come
+  var isAsking: Bool { !batch.isEmpty || !asking.isEmpty }
 
   func calls(_ s: Segment) -> [CallSpan]? {
-    let k = Key(source: String(describing: s.source), first: s.firstLine, lines: s.lines)
-    if let c = known[k] { return c }
-    guard let code, asking.insert(k).inserted else { return nil }
-    Task { [weak self] in
-      let c = await code.calls(of: s)
-      guard let self else { return }
-      asking.remove(k)
-      // ponytail: forgotten all at once past 4000 segments; an LRU if boards hold more code than that
-      if known.count > 4000 { known = [:] }
-      known[k] = c
-      if !c.isEmpty { onCallsChanged?() }
-    }
+    guard let source = s.source else { return nil }
+    let k = Key(id: s.id, source: source, first: s.firstLine)
+    if let e = known[k], e.lines == s.lines { return e.calls }
+    guard let code, !asking.contains(k), batch[k] == nil else { return nil }
+    if !watching { watchRepositories(code) }
+    if batch.isEmpty { Task { [weak self] in await self?.ask() } }
+    batch[k] = s
     return nil
+  }
+
+  /// Those asked in the turn just ended, together; the board told once they have all come
+  private func ask() async {
+    guard let code else { return }
+    let asked = batch
+    batch = [:]
+    asking.formUnion(asked.keys)
+    let got = await withTaskGroup(of: (Key, Segment, [CallSpan]?).self) { g in
+      for (k, s) in asked { g.addTask { (k, s, await code.calls(of: s)) } }
+      var all: [(Key, Segment, [CallSpan]?)] = []
+      for await x in g { all.append(x) }
+      return all
+    }
+    asking.subtract(asked.keys)
+    // ponytail: forgotten all at once past 4000 segments; an LRU if boards hold more code than that
+    if known.count > 4000 { known = [:] }
+    for (k, s, c) in got { known[k] = (s.lines, c) }
+    if got.contains(where: { !($0.2?.isEmpty ?? true) }) { onCallsChanged?() }
+  }
+
+  /// What segments whose file is not here got, and with `changing` what those of files that can change got: asked
+  /// again when the board next asks, which it is told to
+  func forget(changing: Bool) {
+    let before = known.count
+    known = known.filter { k, e in
+      guard e.calls != nil else { return false }
+      guard changing else { return true }
+      switch k.source {
+      case .git(_, _, _, let uncommitted, _): return !uncommitted
+      case .file: return false
+      case .package: return true
+      }
+    }
+    if known.count != before { onCallsChanged?() }
+  }
+
+  /// A repository added or gone: what was not here may be now
+  private func watchRepositories(_ code: ShellCode) {
+    guard let r = code.repositories else { return }
+    watching = true
+    withObservationTracking {
+      _ = r.list
+    } onChange: { [weak self] in
+      Task { @MainActor [weak self] in
+        guard let self, let code = self.code else { return }
+        self.forget(changing: false)
+        self.watchRepositories(code)
+      }
+    }
   }
 }

@@ -1,9 +1,10 @@
-import CodeBoardCanvas
+import AppKit
 import CodeBoardModel
 import CodeBoardWorkspace
 import Foundation
 import Testing
 
+@testable import CodeBoardCanvas
 @testable import CodeBoardReading
 @testable import CodeBoardShell
 
@@ -100,7 +101,7 @@ private let scheduler = """
       return
     }
     #expect(m.message == "This card's code is from torch 2.5.0, an installed package, which is not opened here yet.")
-    #expect(await code.calls(of: s).isEmpty, "no marks where the source is not here")
+    #expect(await code.calls(of: s) == nil, "no marks where the source is not here")
   }
 
   /// What the card's file name says (ShellCodeCards' open), for the same card
@@ -149,5 +150,154 @@ private let scheduler = """
     let saidOld = await opening(code, old)
     #expect(n.message.hasPrefix("Commit 0123456 is not in ") && n == saidOld, "\(n)")
     #expect(n.offer == .current(CodeFile(repository: r, name: "engine", path: "engine.py")))
+  }
+
+  /// The calls the board's marks give a segment once its answers have all come
+  private func settled(_ marks: ShellCallMarks, _ s: Segment) async -> [CallSpan]? {
+    _ = marks.calls(s)
+    await until("answered") { !marks.isAsking }
+    return marks.calls(s)
+  }
+
+  private func until(_ what: String, _ f: () -> Bool) async {
+    let deadline = ContinuousClock.now + .seconds(20)
+    while !f() {
+      if ContinuousClock.now > deadline {
+        Issue.record("\(what): not within 20 s")
+        return
+      }
+      try? await Task.sleep(for: .milliseconds(5))
+    }
+  }
+
+  /// A repository made here with engine.py, committed: its folder (in a folder of its own) and HEAD
+  private func engineRepository() throws -> (data: String, root: String, head: String) {
+    let data = ShellCode.realPath(FileManager.default.temporaryDirectory.appending(path: "cb-calls-\(UUID())").path)
+    let r = data + "/engine"
+    try FileManager.default.createDirectory(atPath: r, withIntermediateDirectories: true)
+    try engine.write(toFile: r + "/engine.py", atomically: true, encoding: .utf8)
+    try git(r, "-c", "init.defaultBranch=main", "init", "-q")
+    try git(r, "add", "-A")
+    try git(r, "commit", "-qm", "base")
+    return (data, r, try git(r, "rev-parse", "HEAD"))
+  }
+
+  /// Engine.step's lines as a card of engine.py has them, its id `id`
+  private func step(_ id: String, _ source: CodeSource) -> Segment {
+    Segment(
+      id: SegmentID(rawValue: id), source: source, language: "python", firstLine: 2,
+      lines: ["    def step(self):", "        return self.scheduler.schedule(2)"])
+  }
+
+  private let schedule = CallSpan(line: 3, col: 30, end: 38, name: "schedule", recv: "self.scheduler")
+
+  @Test func aSegmentWhoseFileWasNotHereGetsItsCallsOnceItsRepositoryIsAddedOrTheAppComesToTheFront() async throws {
+    let (data, r, head) = try engineRepository()
+    defer { try? FileManager.default.removeItem(atPath: data) }
+    let repositories = RepositoriesModel(
+      folder: URL(filePath: data + "/data"), runner: ProcessGitRunner(), defaults: nil)
+    let code = ShellCode(git: GitCache(), board: { nil })
+    code.repositories = repositories
+    let marks = ShellCallMarks(code)
+    var told = 0
+    marks.onCallsChanged = { told += 1 }
+    // read in a folder not added yet: none, and not asked again at every refresh
+    let s = step("s1", .git(repository: nil, commit: head, path: "engine.py", uncommitted: false, checkout: r))
+    #expect(await settled(marks, s) == nil && !marks.isAsking && told == 0)
+    await repositories.addFolder(r)
+    // the list read at the start may come first: told at each change, asked again once told
+    await until("its calls once the repository came") {
+      _ = marks.calls(s)
+      return marks.calls(s) == [schedule]
+    }
+    #expect(told >= 2)
+    // uncommitted, its lines not in the file as it is: none; the file put right elsewhere, the app brought to the front
+    try engine.replacingOccurrences(of: "schedule(2)", with: "plan(2)")
+      .write(toFile: r + "/engine.py", atomically: true, encoding: .utf8)
+    let u = step("s2", .git(repository: nil, commit: head, path: "engine.py", uncommitted: true, checkout: r))
+    #expect(await settled(marks, u) == nil)
+    try engine.write(toFile: r + "/engine.py", atomically: true, encoding: .utf8)
+    told = 0
+    NotificationCenter.default.post(name: NSApplication.didBecomeActiveNotification, object: nil)
+    #expect(told == 1)
+    #expect(await settled(marks, u) == [schedule] && told == 2)
+    #expect(marks.calls(s) == [schedule], "a commit's calls are kept")
+  }
+
+  @Test func aBoardOfManyCodeCardsIsToldOnceAndItsRefreshAsksInLittleTime() async throws {
+    let (data, r, head) = try engineRepository()
+    defer { try? FileManager.default.removeItem(atPath: data) }
+    let repositories = RepositoriesModel(
+      folder: URL(filePath: data + "/data"), runner: ProcessGitRunner(), defaults: nil)
+    await repositories.addFolder(r)
+    let code = ShellCode(git: GitCache(), board: { nil })
+    code.repositories = repositories
+    let marks = ShellCallMarks(code)
+    var told = 0
+    marks.onCallsChanged = { told += 1 }
+    let segments = (0..<200).map {
+      step("s\($0)", .git(repository: nil, commit: head, path: "engine.py", uncommitted: false, checkout: r))
+    }
+    let board = Board(
+      id: BoardID(rawValue: "many"),
+      cards: segments.enumerated().map { i, s in
+        Card(
+          id: CardID(rawValue: "c\(i)"), x: 0, y: Double(i) * 100, width: 420,
+          content: .own(CardContent(body: .code(CodeCard(segments: [s])))))
+      })
+    #expect(CanvasView.callInfo(board, marks).isEmpty)
+    await until("answered") { !marks.isAsking }
+    #expect(told == 1, "told once for the 200 asked together")
+    #expect(CanvasView.callInfo(board, marks).count == 200)
+    // a refresh: the main thread's time asking for all 200
+    let n: UInt64 = 200
+    let start = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)
+    for _ in 0..<n { _ = CanvasView.callInfo(board, marks) }
+    let each = Double(clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) - start) / Double(n) / 1e6
+    print("callInfo of 200 code cards: \(each) ms of CPU per refresh")
+    #expect(each < 1, "\(each) ms")
+    #expect(told == 1)
+  }
+}
+
+/// A shell that knows no calls, the segments it is asked of kept
+@MainActor private final class AskedCalls: CallHost {
+  var onCallsChanged: (() -> Void)?
+  var asked: Set<SegmentID> = []
+  func calls(_ s: Segment) -> [CallSpan]? {
+    asked.insert(s.id)
+    return nil
+  }
+}
+
+@MainActor @Suite(.serialized) struct SharedCallsTests {
+  @Test func aSharedCodeCardOnAnOpenBoardIsAskedForItsCalls() async throws {
+    let fm = FileManager.default
+    let vault = Vault(root: fm.temporaryDirectory.appending(path: "calls-shared-\(UUID().uuidString)"))
+    defer { try? fm.removeItem(at: vault.root) }
+    try fm.createDirectory(at: vault.sharedFolderURL, withIntermediateDirectories: true)
+    let s = CardID(rawValue: "s")
+    let seg = Segment(
+      id: SegmentID(rawValue: "shared1"), source: .file(path: "engine.py", hash: nil), language: "python",
+      firstLine: 1, lines: ["f()"])
+    try SharedCard(id: s, content: CardContent(body: .code(CodeCard(segments: [seg])))).encoded()
+      .write(to: vault.sharedFolderURL.appending(path: "s.json"))
+    try vault.newBoard(
+      in: "", title: "A",
+      board: Board(id: BoardID(rawValue: "a"), cards: [Card(id: s, x: 0, y: 0, width: 420, content: .shared)]))
+    let shell = Shell()
+    shell.open(vault, restoring: nil)
+    shell.apply(.success(try vault.tree()))
+    let panes = BoardPanes(shell: shell)
+    panes.frame = CGRect(x: 0, y: 0, width: 1000, height: 700)
+    shell.show(BoardID(rawValue: "a"))
+    panes.sync()
+    let tab = try #require(shell.selected)
+    let pane = try #require(panes.panes[tab])
+    let host = AskedCalls()
+    pane.canvas.callHost = host
+    let deadline = ContinuousClock.now + .seconds(20)
+    while !host.asked.contains(seg.id) && ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(5)) }
+    #expect(host.asked.contains(seg.id))
   }
 }
