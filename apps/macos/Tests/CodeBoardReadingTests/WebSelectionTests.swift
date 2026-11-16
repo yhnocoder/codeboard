@@ -239,8 +239,8 @@ import WebKit
     #expect(c.source == SourceAnchor(entry: entry.id, place: place))
     #expect(c.title == "Saved" && c.label == "Second" && c.body == .note(markdown: "second"))
     #expect(
-      WebReading.sourceLabel(SourceAnchor(entry: entry.id, place: place), in: tabs.pane)
-        == SourceLabel(title: "Saved", number: "Second", icon: .site))
+      ReadingSources(pane: tabs.pane).sourceLabel(SourceAnchor(entry: entry.id, place: place))
+        == SourceLabel(title: "Saved", number: "Second", icon: .site), "the shell's provider asks the web tab")
     _ = try await v.web.callAsyncJavaScript(
       "shiyiReader.setTranslations({'1.b4': '第二段。'}); shiyiReader.setLanguage('both')",
       contentWorld: WebReading.scriptWorld)
