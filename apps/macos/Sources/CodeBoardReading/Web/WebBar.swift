@@ -525,8 +525,10 @@ final class WebSuggestionRow: NSButton {
     super.layout()
     let gap: CGFloat = 6
     let room = max(0, bounds.width - textX - 6)
-    let address = addressLabel.stringValue.isEmpty ? 0 : addressLabel.intrinsicContentSize.width + gap
-    let t = min(titleLabel.intrinsicContentSize.width, max(room * 0.6, room - address))
+    // a truncating label's intrinsic width is short of its text's by a few points: its cell's is not
+    func width(_ l: NSTextField) -> CGFloat { (l.cell?.cellSize.width ?? 0).rounded(.up) }
+    let address = addressLabel.stringValue.isEmpty ? 0 : width(addressLabel) + gap
+    let t = min(width(titleLabel), max(room * 0.6, room - address))
     let lh = titleLabel.intrinsicContentSize.height
     let y = ((bounds.height - lh) / 2).rounded()
     titleLabel.frame = CGRect(x: textX, y: y, width: t, height: lh)

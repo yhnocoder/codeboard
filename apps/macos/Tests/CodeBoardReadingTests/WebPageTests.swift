@@ -143,7 +143,7 @@ import WebKit
     let now = Date()
     s.show([
       WebHistory.Entry(url: url("/a/b?c=1"), title: "Page", lastVisit: now, count: 1),
-      WebHistory.Entry(url: url("/z"), title: "Page", lastVisit: now, count: 1),
+      WebHistory.Entry(url: url("/z"), title: "The night shift", lastVisit: now, count: 1),
       WebHistory.Entry(url: url("/"), title: "", lastVisit: now, count: 1),
     ])
     s.frame.size.height = s.height
@@ -159,6 +159,8 @@ import WebKit
       #expect(r.layer?.backgroundColor == nil)
     }
     #expect(s.rows[0].addressLabel.frame.minX > s.rows[0].titleLabel.frame.maxX)
+    let title = try #require(s.rows[1].titleLabel.cell)
+    #expect(s.rows[1].titleLabel.frame.width >= title.cellSize.width, "a short title whole")
     _ = s.move(by: 1)
     #expect(s.rows[0].chosen && s.rows[0].layer?.backgroundColor != nil && s.rows[1].layer?.backgroundColor == nil)
     let enter = NSEvent.enterExitEvent(
