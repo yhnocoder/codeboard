@@ -10,8 +10,8 @@ public enum VaultDrag {
 
 // A board or folder dragged from the sidebar onto an open folder board goes into that folder, its card where it was let
 // go (`onVaultDrop`: the path and the board point of the card's middle). Files dragged in from Finder become image
-// cards where they are let go (create.ts dropFiles). What a reading pane collects is held over the board
-// (CanvasCollect.swift)
+// cards where they are let go (create.ts dropFiles). What a reading pane collects, and a web address dragged
+// alone, is held over the board (CanvasCollect.swift)
 extension CanvasView {
   private func files(_ info: NSDraggingInfo) -> [URL] {
     info.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]

@@ -525,7 +525,7 @@ public final class CanvasView: NSView {
     // a Note's [[reference]] points at a card
     MarkdownEditing.referenceTitle = "Link to Card"
     CanvasView.all.add(self)
-    registerForDraggedTypes([.string, .fileURL, CanvasView.collectedType])
+    registerForDraggedTypes([.string, .URL, .fileURL, CanvasView.collectedType])
     // layer-hosting: the canvas owns its layer tree, y-down like the board
     let root = CALayer()
     root.isGeometryFlipped = true
