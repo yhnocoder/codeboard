@@ -130,14 +130,17 @@ extension CanvasView {
     drawChrome()
   }
 
-  /// How Free code is drawn while written: the card's code, the theme's selection (the board's .cm-content ::selection,
-  /// the accent at 26 %) and current line (.cm-activeLine, --hlrow)
-  var codeLook: CodeEditorView.Look {
-    let m = theme.metrics
+  var codeLook: CodeEditorView.Look { theme.codeLook }
+}
+
+extension Theme {
+  /// How Free code is drawn while written, and code in the reading pane: the card's code, the theme's selection (the
+  /// board's .cm-content ::selection, the accent at 26 %) and current line (.cm-activeLine, --hlrow)
+  public var codeLook: CodeEditorView.Look {
+    let m = metrics
     return CodeEditorView.Look(
-      style: theme.codeStyle, metrics: m.lines, numberColor: theme.number,
-      selection: theme.accent.copy(alpha: 0.26) ?? theme.accent, currentLine: theme.hlrow, band: Drawing.band,
-      padTop: m.padTop, padBottom: m.padBottom)
+      style: codeStyle, metrics: m.lines, numberColor: number, selection: accent.copy(alpha: 0.26) ?? accent,
+      currentLine: hlrow, band: Drawing.band, padTop: m.padTop, padBottom: m.padBottom)
   }
 }
 
