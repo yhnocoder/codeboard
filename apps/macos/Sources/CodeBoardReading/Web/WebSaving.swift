@@ -42,7 +42,7 @@ extension ReadingPane {
   func webSaved(_ url: URL) -> WebReading.Saved {
     let address = Vault.pageAddress(url.absoluteString)
     guard let e = entries.all.lazy.map(\.entry).first(where: { $0.origin == .web(address) }) else { return .unsaved }
-    let hashes = e.versions.compactMap { v -> String? in if case .page(let h, _) = v.content { h } else { nil } }
+    let hashes = e.versions.compactMap { v -> String? in if case .page(let h, _, _) = v.content { h } else { nil } }
     return hashes.last.map { .page(hash: $0) } ?? .link
   }
 
