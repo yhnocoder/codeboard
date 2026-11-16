@@ -275,9 +275,12 @@ private struct ResourceRow: View {
   let depth: Int
 
   var body: some View {
+    // open in the reading pane: a tint and its icon lit, not the board's white capsule
+    let on = shell.readingShows(resource.id)
     Row(depth: depth, selected: false, target: false) {
       Color.clear.frame(width: 14, height: 1)
-      Image(systemName: "list.bullet.rectangle").font(.system(size: 12)).foregroundStyle(ShellTheme.icon)
+      Image(systemName: "list.bullet.rectangle").font(.system(size: 12))
+        .foregroundStyle(on ? ShellTheme.selectedIcon : ShellTheme.icon)
         .frame(width: 16, height: 16)
     } label: {
       Name(shell: shell, renaming: .resource(resource.id), text: resource.title, bold: false) {
@@ -285,6 +288,11 @@ private struct ResourceRow: View {
       }
     } trailing: {
       Text("\(resource.entryCount)").font(.system(size: 11.5)).monospacedDigit().foregroundStyle(ShellTheme.muted)
+    }
+    .background {
+      if on {
+        RoundedRectangle(cornerRadius: ShellTheme.rowRadius, style: .continuous).fill(ShellTheme.shade.opacity(0.07))
+      }
     }
     .onTapGesture {
       if isDoubleClick {
