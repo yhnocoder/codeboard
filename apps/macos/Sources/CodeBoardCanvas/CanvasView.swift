@@ -186,8 +186,9 @@ public final class CanvasView: NSView {
   }
   // MARK: Editing state (CanvasEditing.swift)
 
-  /// The open board this canvas edits; nil: it only shows a board read from the vault
-  package var document: BoardDocument?
+  /// This canvas's seat at the open board it edits (its own selection there); nil: it only shows a board read from the
+  /// vault
+  package var document: BoardDocument.Seat?
   var stopObserving: (() -> Void)?
   /// The board the scene was made from
   var shownBoard: Board?
