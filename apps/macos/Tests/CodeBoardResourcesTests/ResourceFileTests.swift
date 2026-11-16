@@ -19,7 +19,7 @@ private func everything() -> Entry {
   let colors: [Highlight.Color] = [.yellow, .green, .blue, .pink, .purple]
   return Entry(
     id: EntryID(rawValue: "e-attention"), title: "Attention Is All You Need", added: 1_700_000_000_000,
-    origin: .arxiv("1706.03762"), authors: ["Ashish Vaswani", "Noam Shazeer"], year: 2017,
+    origin: .arxiv("1706.03762"), authors: ["Ashish Vaswani", "Noam Shazeer"], year: 2017, venue: "NeurIPS 2017",
     versions: [
       Version(id: v1, label: "v7", added: 1_700_000_000_000, content: .pdf(file: "1706.03762v7.pdf")),
       Version(
@@ -33,6 +33,9 @@ private func everything() -> Entry {
       Version(
         id: VersionID(rawValue: "v5"), label: "v3 中文", added: 1_700_000_260_000, language: "zh",
         of: VersionID(rawValue: "v3"), content: .translation(file: "v3.zh.json")),
+      Version(
+        id: VersionID(rawValue: "v6"), added: 1_700_000_270_000,
+        content: .page(hash: "2c26b46b68ffc68f", bytes: 9_001, blocks: "v6.blocks.json")),
     ],
     highlights: colors.enumerated().map { i, c in
       Highlight(id: "h\(i)", place: i.isMultiple(of: 2) ? page : block, color: c, at: 1_700_000_300_000 + Double(i))
@@ -66,7 +69,7 @@ private func at(_ json: inout [String: Any], _ list: String, _ i: Int, _ change:
 
 @Test func resourceFileRoundTripsEveryFieldAndKind() throws {
   let kinds: [Resource.Field.Kind] = [.text, .number, .date, .checkbox]
-  let presets: [ResourcePreset] = [.papers, .web, .files]
+  let presets: [ResourcePreset] = [.papers, .web, .files, .images, .blank]
   for preset in presets {
     let r = Resource(
       id: ResourceID(rawValue: "r1"), preset: preset,
@@ -260,6 +263,11 @@ private func at(_ json: inout [String: Any], _ list: String, _ i: Int, _ change:
     ("version v5: a translation is of a saved page", { j in at(&j, "versions", 4) { $0["of"] = "v1" } }),
     ("version v5: a translation is of a saved page", { j in at(&j, "versions", 4) { $0["of"] = nil } }),
     ("version v5: a translation without its language", { j in at(&j, "versions", 4) { $0["language"] = nil } }),
+    (
+      "versions[2].content.page: ../blocks.json is not a file name",
+      { j in at(&j, "versions", 2) { $0["content"] = ["page": ["hash": "9f", "bytes": 1, "blocks": "../blocks.json"]] }
+      }
+    ),
     (
       "versions[4].content.translation: a/b.json is not a file name",
       { j in at(&j, "versions", 4) { $0["content"] = ["translation": ["file": "a/b.json"]] } }

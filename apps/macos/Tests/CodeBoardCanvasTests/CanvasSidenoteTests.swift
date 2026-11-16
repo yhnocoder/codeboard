@@ -630,6 +630,62 @@ extension CanvasSidenoteTests {
 }
 
 extension CanvasSidenoteTests {
+  /// The questions on entries' passages (a paper's or a PDF's annotations, from the source provider): every board's
+  /// scope lists them, each entry a group titled with it after the boards, where its source line's number, the resolved
+  /// ones only with Show Resolved; the list follows the provider's changes; a row shows its passage in the reading pane,
+  /// the camera still
+  @Test func entriesQuestionsAreListedUnderTheirEntriesAndARowShowsItsPassage() async throws {
+    func q(_ id: String, _ entry: String, _ text: String, at: Double, done: Bool = false) -> EntryQuestion {
+      EntryQuestion(
+        anchor: anchor(entry, id), sidenote: nid(id),
+        note: TextNote(text: text, question: Question(at: at, done: done)), entryTitle: entry == "e1" ? "注意力" : "A PDF")
+    }
+    let fake = FakeSources()
+    fake.labels["e1"] = SourceLabel(title: "注意力", number: "p. 12", icon: .paper)
+    fake.entryQuestions = [q("eq1", "e1", "为什么缩放", at: 3000), q("eq2", "e1", "Done one", at: 4000, done: true)]
+    fake.entryQuestions.append(q("eq3", "e2", "Which kernel?", at: 2000))
+    let r = try await Rig(sidenoteBoard(question: true), zoom: 1, sources: fake)
+    defer { r.close() }
+    let c = r.canvas
+    let list = c.questionList
+    func rows() async -> String? {
+      await list.run(
+        "return [...document.querySelectorAll('.qlist-row')].map(e => e.dataset.q + ' ' + e.querySelector('.qlist-w')"
+          + ".textContent + (e.classList.contains('done') ? ' done' : '')).join('|')") as? String
+    }
+    c.toggleQuestionList(under: CGRect(x: 600, y: 650, width: 40, height: 24))
+    await r.until("the list shows") { list.view.alphaValue == 1 }
+    #expect(await rows() == "w1 调度 Scheduling", "not on this board")
+    _ = await list.run("document.querySelector('.qlist-clear').click()")
+    #expect(await rows() == "w1 调度 Scheduling|eq1 p. 12|eq3 ")
+    let groups =
+      await list.run(
+        "return [...document.querySelectorAll('.qlist-group')].map(e => e.textContent).join('|')") as? String
+    #expect(groups?.hasSuffix("|注意力|A PDF") == true)
+    _ = await list.run("document.querySelector('.ib').click()")
+    #expect(await rows() == "w1 调度 Scheduling|eq2 p. 12 done|eq1 p. 12|eq3 ", "newest first")
+    fake.entryQuestions.append(q("eq4", "e2", "Asked later", at: 5000))
+    fake.onSourcesChanged?()
+    await r.until("the new one listed") { await rows() == "w1 调度 Scheduling|eq2 p. 12 done|eq1 p. 12|eq4 |eq3 " }
+    var opened = false
+    c.onOpenBoard = { _, _ in opened = true }
+    let there = c.camera
+    _ = await list.run("document.querySelector('.qlist-row[data-q=\"eq3\"]').click()")
+    await r.until("its passage shown") { !fake.revealed.isEmpty }
+    #expect(fake.revealed == [anchor("e2", "eq3")] && !c.listShown && !opened && c.camera == there)
+  }
+
+  /// No provider, or one with no questions: the list is the boards' alone
+  @Test func withoutEntriesQuestionsTheListIsTheBoardsAlone() async throws {
+    let r = try await Rig(sidenoteBoard(question: true), zoom: 1)
+    defer { r.close() }
+    #expect(r.canvas.entryItems().groups.isEmpty && r.canvas.entryItems().rows.isEmpty)
+    r.canvas.sources = FakeSources()
+    #expect(r.canvas.entryItems().groups.isEmpty && r.canvas.entryItems().rows.isEmpty)
+  }
+}
+
+extension CanvasSidenoteTests {
   /// The other boards are read with their shared cards (core collectQuestions): a question that travels with one is
   /// listed once, on the first board in the vault that shows it, this one among them; a board-only one on its lines
   /// says its file
@@ -1120,5 +1176,114 @@ extension CanvasSidenoteTests {
     #expect(r.doc.board.sidenotes == notes, "nothing added")
     r.type(pop, "!")
     #expect(field.source == "why wai!t")
+  }
+}
+
+// The welcome back hint (host boards.ts welcomeOf, ui/QuestionList.tsx WelcomeHint): when it shows and what it says
+@Test func theWelcomeBackHintShowsAfterTwoDaysWithOpenQuestionsOrAsTheSettingSays() {
+  let t0 = Date(timeIntervalSince1970: 1_700_000_000)
+  let h: TimeInterval = 3600
+  func says(_ gap: TimeInterval, _ mode: WelcomeBack = .twoDays, open: Int = 1) -> String? {
+    CanvasView.welcome(last: t0, now: t0 + gap, mode: mode, open: open)
+  }
+  #expect(says(47 * h) == nil, "not before 2 days")
+  #expect(says(48 * h) == "Welcome back · last opened 2 days ago · 1 open question on this board")
+  #expect(says(24 * 5 * h + 3, open: 3) == "Welcome back · last opened 5 days ago · 3 open questions on this board")
+  #expect(says(5 * h, .always) == "Welcome back · last opened today · 1 open question on this board")
+  #expect(says(30 * h, .always)?.contains("last opened yesterday") == true)
+  #expect(says(9 * 24 * h, .off) == nil, "never when off")
+  #expect(says(9 * 24 * h, open: 0) == nil && says(1, .always, open: 0) == nil, "none with no open question")
+  #expect(CanvasView.welcome(last: nil, now: t0, mode: .always, open: 2) == nil, "never opened before")
+  #expect(WelcomeBack.default == .twoDays && WelcomeBack.allCases.map(\.rawValue) == ["2d", "always", "off"])
+}
+
+extension CanvasSidenoteTests {
+  /// A board opened again keeps when it was opened, per board and per machine (never in its file); after 2 days with a
+  /// question open the hint shows once, its Show opens the list, × takes it away, and another board shown clears it
+  @Test func theWelcomeBackHintComesOnReopeningAndGoesWithShowDismissOrAnotherBoard() async throws {
+    let r = try await Rig(sidenoteBoard(question: true), zoom: 1)
+    let machine = FileManager.default.temporaryDirectory.appending(path: "welcome-\(UUID().uuidString)")
+    defer {
+      r.close()
+      try? FileManager.default.removeItem(at: machine)
+      CanvasView.welcomeBack = .default
+    }
+    let c = r.canvas
+    let store = CameraStore(folder: machine.appending(path: "Cameras"))
+    c.cameras = store
+    let vault = Vault(root: r.root)
+    let id = BoardID(rawValue: "sidenotes")
+    let file = try Data(contentsOf: r.file)
+    let t0 = Date(timeIntervalSince1970: 1_700_000_000)
+    let day: TimeInterval = 86_400
+    // the first opening: nothing to come back to
+    c.boardOpened(now: t0)
+    #expect(c.welcomeShown == nil && store.opened(for: vault) == [id: t0])
+    c.boardOpened(now: t0 + day)
+    #expect(c.welcomeShown == nil, "a day later")
+    c.boardOpened(now: t0 + 3 * day)
+    #expect(c.welcomeShown == "Welcome back · last opened 2 days ago · 1 open question on this board")
+    #expect(abs(c.welcomeHint.frame.midX - c.bounds.midX) <= 1 && c.welcomeHint.frame.minY == 12)
+    // kept beside the cameras, never in the board's file
+    #expect(try Data(contentsOf: r.file) == file && store.opened(for: vault)[id] == t0 + 3 * day)
+    // Show: the hint goes, the list opens
+    c.showWelcomeQuestions()
+    #expect(c.welcomeShown == nil && c.listShown)
+    await r.until("the list shows") { c.questionList.view.alphaValue == 1 }
+    c.closeQuestionList()
+    // × pressed: it goes
+    c.boardOpened(now: t0 + 6 * day)
+    let hint = c.welcomeHint
+    let x = hint.laidOut.dismiss
+    func press(_ type: NSEvent.EventType) -> NSEvent {
+      NSEvent.mouseEvent(
+        with: type, location: hint.convert(CGPoint(x: x.midX, y: x.midY), to: nil), modifierFlags: [],
+        timestamp: r.next(0.016), windowNumber: r.window.windowNumber, context: nil, eventNumber: 0, clickCount: 1,
+        pressure: 1)!
+    }
+    #expect(c.welcomeShown != nil)
+    hint.mouseDown(with: press(.leftMouseDown))
+    hint.mouseUp(with: press(.leftMouseUp))
+    #expect(c.welcomeShown == nil && !c.listShown)
+    // over a sub-board: going in and out is not coming back
+    c.crumbs = [CrumbShown(board: BoardID(rawValue: "up"), frame: cid("f"), name: "Up")]
+    c.boardOpened(now: t0 + 20 * day)
+    #expect(c.welcomeShown == nil)
+    c.crumbs = []
+    // every time, when the setting says so; another board shown clears it
+    CanvasView.welcomeBack = .always
+    c.boardOpened(now: t0 + 20 * day + 60)
+    #expect(c.welcomeShown?.contains("last opened today") == true)
+    let other = Board(id: BoardID(rawValue: "plain"), cards: [])
+    let package = r.root.appending(path: "plain.board")
+    try FileManager.default.createDirectory(at: package, withIntermediateDirectories: true)
+    try other.encoded().write(to: package.appending(path: Vault.boardFileName))
+    let otherFile = package.appending(path: Vault.boardFileName)
+    try store.keepOpened(other.id, at: t0, for: vault)
+    c.clock = { t0 + 30 * day }
+    try await c.show(
+      try BoardDocument { otherFile }, at: VaultBoard(id: other.id, title: "Plain", path: "plain.board"), in: vault,
+      theme: .warmInk)
+    // no open question there: no hint, its own time kept, the first board's left as it was
+    #expect(c.welcomeShown == nil)
+    #expect(store.opened(for: vault) == [id: t0 + 20 * day + 60, other.id: t0 + 30 * day])
+  }
+
+  /// A board with no open question shows no hint, however long ago it was opened
+  @Test func noWelcomeBackHintWithoutOpenQuestions() async throws {
+    let r = try await Rig(sidenoteBoard(), zoom: 1)
+    let machine = FileManager.default.temporaryDirectory.appending(path: "welcome-\(UUID().uuidString)")
+    defer {
+      r.close()
+      try? FileManager.default.removeItem(at: machine)
+      CanvasView.welcomeBack = .default
+    }
+    let c = r.canvas
+    c.cameras = CameraStore(folder: machine.appending(path: "Cameras"))
+    CanvasView.welcomeBack = .always
+    let t0 = Date(timeIntervalSince1970: 1_700_000_000)
+    c.boardOpened(now: t0)
+    c.boardOpened(now: t0 + 9 * 86_400)
+    #expect(c.openQuestions == 0 && c.welcomeShown == nil)
   }
 }

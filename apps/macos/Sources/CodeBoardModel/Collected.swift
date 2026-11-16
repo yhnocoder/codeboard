@@ -42,6 +42,8 @@ public struct Collected: Codable, Equatable, Sendable {
 public struct SourceLabel: Equatable, Sendable {
   public enum Icon: Sendable, Equatable {
     case paper, site
+    /// A site's own icon: a file on this Mac (the one kept with the entry) or an https address
+    case image(URL)
   }
 
   /// The short title; truncated first

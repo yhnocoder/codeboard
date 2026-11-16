@@ -218,6 +218,34 @@ import Testing
     #expect(again.reading.tabs.map(\.id) == [tab.id])
   }
 
+  /// A resource's tab, opened from its row, lists its entries and follows every tree read the shell applies: a PDF
+  /// added is a row at once, which opens the PDF's tab; renamed, the tab takes the resource's name; gone, it closes
+  @Test func aResourcesListFollowsTheTreeReadsTheShellApplies() throws {
+    let (vault, shell, r) = try vault()
+    defer { try? fm.removeItem(at: vault.root) }
+    let pdf = try outside("Field notes.pdf", "The river runs north.")
+    defer { try? fm.removeItem(at: pdf.deletingLastPathComponent()) }
+    shell.openResource(r)
+    let pane = ReadingPaneView(pane: shell.reading)
+    pane.sync()
+    let listTab = try #require(shell.reading.tabs.first?.id)
+    let list = try #require(pane.views[listTab] as? ListTabView)
+    #expect(list.rows.isEmpty && !list.empty.isHidden)
+
+    #expect(shell.addPDFs([pdf], to: r))
+    #expect(list.rows.map(\.title) == ["Field notes"] && list.rows[0].kind == "PDF" && list.empty.isHidden)
+    shell.reading.select(listTab)
+    pane.sync()
+    list.open(0)
+    #expect(shell.reading.tabs.map(\.kind) == ["list", "pdf"] && shell.reading.selected == shell.reading.tabs[1].id)
+
+    shell.rename(resource: r, to: "Field work")
+    #expect(shell.reading.tabs[0].title == "Field work" && list.rows.map(\.title) == ["Field notes"])
+    try fm.removeItem(at: vault.url(of: "Field work.resource"))
+    shell.apply(.success(try vault.tree()))
+    #expect(!shell.reading.tabs.contains { $0.id == listTab })
+  }
+
   // MARK: Annotations
 
   /// A PDF tab of the shell's reading pane in a window of its own, off the screen, "north" highlighted and clicked

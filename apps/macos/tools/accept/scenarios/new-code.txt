@@ -14,7 +14,7 @@ key esc
 wait 600
 expect new.text has x = 1
 shot kept
-move @cnote+420,420
+move @cnote+820,370
 menu
 pick New Code
 wait 600

@@ -408,7 +408,11 @@
       ],
       "areas": {
         "tabs": {
-          "sources": ["CodeBoardShell/Shell.swift", "CodeBoardShell/TabStrip.swift"],
+          "sources": [
+            "CodeBoardShell/Shell.swift",
+            "CodeBoardShell/VaultSession.swift",
+            "CodeBoardShell/TabStrip.swift"
+          ],
           "tests": [
             "ShellTests",
             "ParityMenuKeysTests/controlMinusAndCommandBracketsGoBackAndForward",
@@ -416,7 +420,11 @@
           ]
         },
         "board panes": {
-          "sources": ["CodeBoardShell/BoardPanes.swift", "CodeBoardModel/SharedCards.swift"],
+          "sources": [
+            "CodeBoardShell/BoardPanes.swift",
+            "CodeBoardShell/BoardDocuments.swift",
+            "CodeBoardModel/SharedCards.swift"
+          ],
           "tests": [
             "BoardPanesTests",
             "MissingCardTests",

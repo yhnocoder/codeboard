@@ -335,6 +335,14 @@ import Testing
     shell.openResource(papers)
     #expect(shell.reading.tabs.map(\.title) == ["Papers", "Notes"])
     #expect(shell.reading.selected == shell.reading.tabs[0].id, "the same tab")
+    // its row is marked while the pane shows its list: not the other's, and not with the pane hidden
+    #expect(shell.readingShows(papers.id) && !shell.readingShows(notes.id))
+    shell.openResource(notes)
+    #expect(shell.readingShows(notes.id) && !shell.readingShows(papers.id))
+    shell.reading.shown = false
+    #expect(!shell.readingShows(notes.id), "the pane hidden: no row marked")
+    shell.openResource(papers)
+    #expect(shell.readingShows(papers.id))
     shell.rename(resource: papers, to: "Papers 2017")
     #expect(shell.reading.tabs.map(\.title) == ["Papers 2017", "Notes"])
     try fm.removeItem(at: vault.url(of: notes.path))

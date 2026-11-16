@@ -230,6 +230,29 @@ private func tree(_ boards: [(String, String)] = [("a", "A.board"), ("b", "B.boa
     #expect(t.tabs.isEmpty && t.selected == nil)
   }
 
+  /// Two windows' shells over one session: one vault and one read of its tree for both, each its own tabs; a board gone
+  /// from a read closes its tab only where it was shown
+  @Test func shellsOnOneSessionShareTheTreeAndEachKeepsItsOwnTabs() {
+    let session = VaultSession()
+    let v = Vault(root: URL(filePath: "/v"))
+    let s = Shell(session: session)
+    let t = Shell(session: session)
+    session.open(v)
+    for w in [s, t] { w.vaultOpened(restoring: nil) }
+    session.apply(.success(tree()))
+    for w in [s, t] { w.treeChanged() }
+    #expect(s.vault?.root == v.root && t.vault?.root == v.root && s.tree == tree() && t.tree == tree())
+    s.show(id("a"))
+    s.show(id("c"), newTab: true)
+    t.show(id("b"))
+    #expect(s.tabs.map(\.board) == [id("a"), id("c")] && t.tabs.map(\.board) == [id("b")])
+    session.apply(.success(tree([("a", "A.board"), ("b", "B.board")])))
+    for w in [s, t] { w.treeChanged() }
+    #expect(s.board(id("c")) == nil && t.board(id("c")) == nil)
+    #expect(s.tabs.map(\.board) == [id("a")] && s.current?.board == id("a"))
+    #expect(t.tabs.map(\.board) == [id("b")] && t.current?.board == id("b"))
+  }
+
   @Test func importSummaryCountsBoardsCardsCopiesFailuresAndLeftOut() {
     let report = ImportReport(
       imported: [

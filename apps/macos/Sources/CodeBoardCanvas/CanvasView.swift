@@ -331,6 +331,9 @@ public final class CanvasView: NSView {
   /// How a Web card's page is read and opened (tests give their own: never the network or a browser)
   package var fetchPage: WebFetch = WebFetcher.live
   package var openURL: (URL) -> Void = { NSWorkspace.shared.open($0) }
+  /// Where a double-click opens a Web card's page, with its title when it has one (the shell: its reading pane); nil,
+  /// and with ⌘, the browser
+  public var onOpenWeb: ((URL, String?) -> Void)?
   /// Where the pointer is in the window (tests give their own: never the person's pointer); nil: the window's
   package var pointerInWindow: CGPoint?
   /// How an image card's picture at a web address is read (tests give their own: never the network), and the folder the
@@ -393,6 +396,10 @@ public final class CanvasView: NSView {
   public var onOpenBoard: ((BoardID, Arrival?) -> Void)?
   /// Over a sub-board: the breadcrumb, and the move in or out under way (CanvasCrumbs.swift)
   let crumbsBar = CrumbsBar()
+  /// Back on a board after a while with questions still open on it (CanvasQuestions.swift)
+  let welcomeHint = WelcomeHint()
+  /// The time a board is opened at (tests give their own)
+  package var clock: () -> Date = { Date() }
   /// A board to delete (a sub-board card's Delete Board…): the shell asks first; whether it went
   public var onDeleteBoard: (@MainActor (BoardID) async -> Bool)?
   /// The titles of the boards showing a shared card now, this one among them
@@ -714,8 +721,10 @@ public final class CanvasView: NSView {
       await rest()
       guard load == loads else { return }
     }
+    let other = shown?.board.id != board.id
     shown = (board, vault)
     install(scene, overviews: overviews, shadow: shadow, theme: theme, keepCamera: keepCamera)
+    if other { boardOpened(now: clock()) }
     askSourcePictures()
     if keepCamera { showCrumbs() } else { boardArrived() }
     // its pictures at web addresses: read now, or already kept from before (then drawn at once)
@@ -973,8 +982,10 @@ public final class CanvasView: NSView {
     placeMarks()
     if openPop != nil { refreshPop() }
     if listShown, !keepCamera { closeQuestionList() }
+    welcomeHint.theme = theme
     if !keepCamera {
       subPreviews = SubPreviews()
+      closeWelcome()
       closeChip()
       cancelPlacing()
       closeStickerPalette()
@@ -1163,6 +1174,7 @@ public final class CanvasView: NSView {
     guard !same else { return }
     withoutAnimation { placeBackdrop() }
     placeShelf()
+    placeWelcome()
     guard let scene, newSize.width > 0, newSize.height > 0 else { return }
     limits = ZoomLimits(view: newSize, content: scene.bounds)
     // shown before the view had a size: opened now

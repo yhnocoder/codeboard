@@ -63,6 +63,8 @@ public struct Entry: Equatable, Sendable {
   public var origin: Origin?
   public var authors: [String]?
   public var year: Int?
+  /// Where it was published (`NeurIPS 2017`), as its metadata says it
+  public var venue: String?
   /// What a page saved as a link keeps, as a Web card keeps it
   public var meta: WebMeta?
   /// Its readable forms, each kept: none for an entry saved as a link alone
@@ -74,8 +76,8 @@ public struct Entry: Equatable, Sendable {
 
   public init(
     id: EntryID, title: String, added: Double, origin: Origin? = nil, authors: [String]? = nil, year: Int? = nil,
-    meta: WebMeta? = nil, versions: [Version] = [], highlights: [Highlight] = [], sidenotes: [EntrySidenote] = [],
-    fields: [String: Value] = [:]
+    venue: String? = nil, meta: WebMeta? = nil, versions: [Version] = [], highlights: [Highlight] = [],
+    sidenotes: [EntrySidenote] = [], fields: [String: Value] = [:]
   ) {
     self.id = id
     self.title = title
@@ -83,6 +85,7 @@ public struct Entry: Equatable, Sendable {
     self.origin = origin
     self.authors = authors
     self.year = year
+    self.venue = venue
     self.meta = meta
     self.versions = versions
     self.highlights = highlights
@@ -97,8 +100,10 @@ public struct Version: Equatable, Sendable {
     /// A PDF in the entry's folder, the file there listing its blocks (without it, text by page only), and the TeX
     /// file there that the list's line numbers are of (only with a block list)
     case pdf(file: String, blocks: String? = nil, source: String? = nil)
-    /// A web page saved whole outside the vault, by its content fingerprint, and its size
-    case page(hash: String, bytes: Int)
+    /// A web page saved whole outside the vault, by its content fingerprint, and its size; the file in the entry's
+    /// folder listing its blocks as the reader cut them, once it was opened (so that a place in it can be named
+    /// without loading the page)
+    case page(hash: String, bytes: Int, blocks: String? = nil)
     /// Any other file in the entry's folder, opened as the system opens it; no places in it
     case file(String)
     /// A saved page translated block by block: the file in the entry's folder with each block's text in the
@@ -241,7 +246,7 @@ extension Resource: Codable {
 
 extension Entry: Codable {
   private enum Keys: String, CodingKey {
-    case version, id, title, added, origin, authors, year, meta, versions, highlights, sidenotes, fields
+    case version, id, title, added, origin, authors, year, venue, meta, versions, highlights, sidenotes, fields
   }
 
   public init(from decoder: any Decoder) throws {
@@ -251,7 +256,8 @@ extension Entry: Codable {
       id: try c.decode(EntryID.self, forKey: .id), title: try c.decode(String.self, forKey: .title),
       added: try c.decode(Double.self, forKey: .added), origin: try c.decodeIfPresent(Origin.self, forKey: .origin),
       authors: try c.decodeIfPresent([String].self, forKey: .authors),
-      year: try c.decodeIfPresent(Int.self, forKey: .year), meta: try c.decodeIfPresent(WebMeta.self, forKey: .meta),
+      year: try c.decodeIfPresent(Int.self, forKey: .year), venue: try c.decodeIfPresent(String.self, forKey: .venue),
+      meta: try c.decodeIfPresent(WebMeta.self, forKey: .meta),
       versions: try c.decode([Version].self, forKey: .versions),
       highlights: try c.decode([Highlight].self, forKey: .highlights),
       sidenotes: try c.decode([EntrySidenote].self, forKey: .sidenotes),
@@ -267,6 +273,7 @@ extension Entry: Codable {
     try c.encodeIfPresent(origin, forKey: .origin)
     try c.encodeIfPresent(authors, forKey: .authors)
     try c.encodeIfPresent(year, forKey: .year)
+    try c.encodeIfPresent(venue, forKey: .venue)
     try c.encodeIfPresent(meta, forKey: .meta)
     try c.encode(versions, forKey: .versions)
     try c.encode(highlights, forKey: .highlights)
@@ -373,6 +380,7 @@ extension Version.Content: Codable {
   private struct Page: Codable {
     var hash: String
     var bytes: Int
+    var blocks: String?
   }
   private struct File: Codable {
     var file: String
@@ -392,7 +400,10 @@ extension Version.Content: Codable {
       self = .pdf(file: p.file, blocks: p.blocks, source: p.source)
     case .page:
       let p = try c.decode(Page.self, forKey: .page)
-      self = .page(hash: p.hash, bytes: p.bytes)
+      if let name = p.blocks, !Vault.isFileName(name) {
+        throw DecodingError.dataCorruptedError(forKey: .page, in: c, debugDescription: "\(name) is not a file name")
+      }
+      self = .page(hash: p.hash, bytes: p.bytes, blocks: p.blocks)
     case .file:
       let name = try c.decode(File.self, forKey: .file).file
       guard Vault.isFileName(name) else {
@@ -414,7 +425,8 @@ extension Version.Content: Codable {
     switch self {
     case .pdf(let file, let blocks, let source):
       try c.encode(PDF(file: file, blocks: blocks, source: source), forKey: .pdf)
-    case .page(let hash, let bytes): try c.encode(Page(hash: hash, bytes: bytes), forKey: .page)
+    case .page(let hash, let bytes, let blocks):
+      try c.encode(Page(hash: hash, bytes: bytes, blocks: blocks), forKey: .page)
     case .file(let name): try c.encode(File(file: name), forKey: .file)
     case .translation(let name): try c.encode(File(file: name), forKey: .translation)
     }

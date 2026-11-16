@@ -1,8 +1,9 @@
 // ⌘K and ⌘F of the Mac app (page.html?palette, a web view of its own over the board): the web board's search palette
 // (ui/Palette.tsx, ui/PalettePreview.tsx), the same markup and classes, built here without Solid, for what the app
 // searches: cards and sidenotes, on all boards or this board (Tab switches). Typing asks native for the words' matches
-// (BoardSearch); ↑ ↓ move, Return goes to the card, Esc or a click outside closes. Not here: Add Function, functions,
-// files and entry points, Related by Meaning, ⌥↵, marks and feedback.
+// (BoardSearch) and, a little later, for Related by Meaning (asked again while indexing; the reranker's order, when it
+// answers, slides the rows into place); ↑ ↓ move, Return goes to the card, Esc or a click outside closes. Not here: Add
+// Function, functions, files and entry points, pictures, ⌥↵, marks and feedback.
 import type { Markdown } from "@yhnocoder/markdown";
 import { scrollIntoBox } from "@yhnocoder/markdown/ui";
 
@@ -15,17 +16,23 @@ type Item = {
   sidenote?: string;
   /** On this board's Shelf: its entry */
   shelf?: string;
-  preview: { md: string; where: string };
+  /** hit: Related by Meaning's passage that matched, marked in the preview */
+  preview: { md: string; where: string; hit?: string };
   /** The images folder its preview's images/<file> addresses are under */
   images: string;
+  /** Related by Meaning: no closer than unrelated queries come, shown as a "maybe" */
+  faint?: boolean;
 };
-type Group = Item["kind"];
+type Group = Item["kind"] | "meaning";
 type More = { kind: "more"; group: Group; n: number };
 type Row = Item | More;
 type PaletteData = { look: string; dark: boolean; here: boolean };
+/** Native's answer to pmeaning (protocol.ts MeaningResult); ranked: the reranker's order of the rows shown */
+type Meaning = { items: Item[]; left?: number; error?: string; off?: boolean; ranked?: boolean };
 
 type Posted =
   | { type: "psearch"; n: number; q: string; here: boolean }
+  | { type: "pmeaning"; n: number; q: string; here: boolean }
   | { type: "ppick"; board: string; card: string; sidenote?: string; shelf?: string }
   | { type: "pclose" };
 const post = (m: Posted) => window.webkit?.messageHandlers.note.postMessage(m);
@@ -36,9 +43,15 @@ type Deps = { mdFor: (images: string, refs: []) => Markdown; setLook: (look: str
 const GROUP_SHOWN = 6;
 /** state/timing.ts PREVIEW_PAUSE: after the first, the preview shows the row the highlight rests on */
 const PREVIEW_PAUSE = 60;
+/** state/timing.ts MEANING_PAUSE, MEANING_RETRY, RERANK_SLIDE: Related by Meaning asked this long after typing stops,
+ *  asked again this often while indexing, and its rows' slide to the reranker's order */
+const MEANING_PAUSE = 150;
+const MEANING_RETRY = 1500;
+const RERANK_SLIDE = 260;
 const GROUPS: [Group, string][] = [
   ["card", "Cards on Boards"],
   ["sidenote", "Sidenotes"],
+  ["meaning", "Related by Meaning"],
 ];
 const HIGHLIGHT = "palette-hit";
 
@@ -81,15 +94,25 @@ type Open = {
   opened: { q: string; kinds: Set<Group> };
   asked: number;
   wait?: number;
+  /** Related by Meaning's answer and what it is for */
+  meaning: Meaning & { q: string; here: boolean };
+  mAsked: number;
+  mWait?: number;
   previewWait?: number;
   previewed?: Item;
 };
 let o: Open | undefined;
 
 const trimmed = () => o?.q.trim() ?? "";
+/** Related by Meaning as shown: none for an earlier query or the other scope */
+const meaning = (): Meaning =>
+  o && o.meaning.q === trimmed() && o.meaning.here === o.here ? o.meaning : { items: [] };
+const keyOf = (it: Item) => (it.kind === "sidenote" ? `s:${it.sidenote}` : `c:${it.card}`);
 
 function groupOf(k: Group): Row[] {
   if (!o) return [];
+  // Related by Meaning is never cut short
+  if (k === "meaning") return meaning().items;
   const all = o.res.filter((r) => r.kind === k);
   const open = o.opened.q === trimmed() && o.opened.kinds.has(k);
   if (open || all.length <= GROUP_SHOWN + 1) return all;
@@ -128,13 +151,16 @@ function row(it: Row, idx: number): HTMLButtonElement {
     b.addEventListener("click", () => expand(it.group));
     return b;
   }
-  b.dataset.k = it.kind === "sidenote" ? `s:${it.sidenote}` : `c:${it.card}`;
+  b.dataset.k = keyOf(it);
   const kind = el("span", "kind");
   if (it.shelf) kind.innerHTML = svg(SHELF, 13);
   else kind.textContent = it.kind === "card" ? "▣" : "◦";
   const lb = el("span", "lb md-inline");
   rich(mdOf(it.images), lb, readable(it.label));
-  b.append(kind, lb, el("small", "", it.detail), el("span", "pmk"));
+  b.append(kind, lb);
+  if (it.faint) b.append(el("span", "maybe", "maybe"));
+  b.classList.toggle("faint", !!it.faint);
+  b.append(el("small", "", it.detail), el("span", "pmk"));
   b.addEventListener("click", () => run(it));
   return b;
 }
@@ -144,13 +170,17 @@ function drawList() {
   const s = o;
   const kids: Node[] = [];
   let idx = 0;
+  const m = meaning();
   for (const [k, title] of GROUPS) {
     const rows = groupOf(k);
-    if (!rows.length) continue;
-    kids.push(el("div", "pgh", k === "card" && s.here ? "Cards on This Board" : title));
+    if (k === "meaning") {
+      if (!rows.length && !m.left && !m.error) continue;
+      kids.push(el("div", "pgh", title, ...(m.left ? [el("span", "pnote", ` · indexing, ${m.left} left`)] : [])));
+      if (m.error) kids.push(el("div", "empty perr", m.error));
+    } else if (rows.length) kids.push(el("div", "pgh", k === "card" && s.here ? "Cards on This Board" : title));
     for (const r of rows) kids.push(row(r, idx++));
   }
-  if (!s.res.length && !s.busy) {
+  if (!s.res.length && !m.items.length && !m.error && !s.busy) {
     const q = trimmed();
     kids.push(
       el(
@@ -165,6 +195,15 @@ function drawList() {
             : "Type to search.",
       ),
     );
+    // nothing found: say that meaning was not searched, or it reads as nothing is related
+    if (m.off && q)
+      kids.push(
+        el(
+          "div",
+          "pnote poff",
+          "Related by Meaning is off: set an embedding address in Settings, under Search, to search by meaning",
+        ),
+      );
   }
   s.list.replaceChildren(...kids);
   const on = s.list.querySelector(".cand.on");
@@ -200,6 +239,24 @@ function expand(k: Group) {
   schedulePreview();
 }
 
+/** Where each card and sidenote row is now (in the list, so scrolling does not count) */
+const rowTops = (list: HTMLElement) =>
+  new Map([...list.querySelectorAll<HTMLElement>(".cand[data-k]")].map((e) => [e.dataset.k!, e.offsetTop]));
+
+/** Rows that moved slide from where they were to where they are (transform only), new ones fade in (Palette.tsx slide) */
+function slide(list: HTMLElement, was: Map<string, number>) {
+  for (const e of list.querySelectorAll<HTMLElement>(".cand[data-k]")) {
+    const from = was.get(e.dataset.k!);
+    const dy = from === undefined ? 0 : from - e.offsetTop;
+    if (dy)
+      e.animate([{ transform: `translateY(${dy}px)` }, { transform: "translateY(0)" }], {
+        duration: RERANK_SLIDE,
+        easing: "cubic-bezier(.2,.7,.2,1)",
+      });
+    else if (from === undefined) e.animate([{ opacity: 0 }, { opacity: 1 }], { duration: RERANK_SLIDE });
+  }
+}
+
 function run(it: Item) {
   post({ type: "ppick", board: it.board, card: it.card, sidenote: it.sidenote, shelf: it.shelf });
 }
@@ -220,6 +277,47 @@ function ask() {
     },
     q ? 90 : 0,
   );
+  askMeaning(false);
+}
+
+/** Related by Meaning: asked MEANING_PAUSE after typing stops, again MEANING_RETRY later while indexing */
+function askMeaning(again: boolean) {
+  if (!o) return;
+  const s = o;
+  clearTimeout(s.mWait);
+  const n = ++s.mAsked;
+  const q = trimmed();
+  const here = s.here;
+  s.mWait = window.setTimeout(
+    () => {
+      if (o !== s || n !== s.mAsked) return;
+      if (q) post({ type: "pmeaning", n, q, here });
+      else meaningAnswer(n, { items: [] });
+    },
+    again ? MEANING_RETRY : MEANING_PAUSE,
+  );
+}
+
+/** Native's answer to pmeaning n: the rows by meaning, then perhaps the reranker's order, which they slide to */
+function meaningAnswer(n: number, m: Meaning) {
+  if (!o || n !== o.mAsked) return;
+  const s = o;
+  if (m.ranked) {
+    if (!m.items.length) return;
+    const was = rowTops(s.list);
+    const r = ordered()[s.i];
+    const on = r && r.kind !== "more" ? keyOf(r) : undefined;
+    s.meaning = { ...s.meaning, items: m.items, ranked: true };
+    const at = ordered().findIndex((x) => x.kind !== "more" && keyOf(x) === on);
+    if (at >= 0) s.i = at;
+    drawList();
+    slide(s.list, was);
+    return schedulePreview();
+  }
+  s.meaning = { ...m, q: trimmed(), here: s.here };
+  drawList();
+  schedulePreview();
+  if (m.left) askMeaning(true);
 }
 
 function answer(n: number, items: Item[]) {
@@ -241,6 +339,12 @@ const bare = (s: string) =>
     .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
     .replace(/^\s*(\d+[.)]|[-*+]|#{1,6})\s+/, "")
     .replace(new RegExp(`${SKIP.source}+`, "gu"), "");
+/** Sentences, as box cuts a long paragraph */
+const sentences = (s: string) => s.split(/(?<=[。！？!?])|(?<=[.;:])\s+/u);
+/** Characters from each end of a sentence looked for in the rendered text; letters between two sentences found that
+ *  still make them one mark */
+const PROBE = 12;
+const GAP = 24;
 const wordy = (c: string | undefined) => !!c && /[\p{L}\p{N}_]/u.test(c) && !/\p{Script=Han}/u.test(c);
 
 function textMap(e: HTMLElement) {
@@ -259,22 +363,50 @@ function textMap(e: HTMLElement) {
   return { text, at };
 }
 
-/** Every place a typed word appears, widened to whole words */
-function hitRanges(e: HTMLElement, q: string): Range[] {
+/** The passage that matched (first to last few characters of each sentence), or every place a typed word appears,
+ *  widened to whole words */
+function hitRanges(e: HTMLElement, hit: string | undefined, q: string): Range[] {
   const { text, at } = textMap(e);
   const low = text.toLowerCase();
-  const range = (a: number, z: number) => {
+  const range = (a: number, z: number, close = false) => {
     const [sn, so] = at[a],
       [en, eo] = at[z];
     let s0 = so,
       e0 = eo + 1;
     while (s0 > 0 && wordy(sn.data[s0 - 1]) && wordy(sn.data[s0])) s0--;
     while (e0 < en.data.length && wordy(en.data[e0]) && wordy(en.data[e0 - 1])) e0++;
+    // and, for a passage, the marks closing it (a full stop, a call's brackets)
+    while (close && e0 < en.data.length && /[^\s\p{L}\p{N}]/u.test(en.data[e0])) e0++;
     const r = document.createRange();
     r.setStart(sn, s0);
     r.setEnd(en, e0);
     return r;
   };
+  if (hit) {
+    // sentence by sentence (PalettePreview.tsx hitRanges): sentences found next to each other are one mark
+    const spans: [number, number][] = [];
+    let from = 0;
+    for (const sen of sentences(hit)) {
+      const h = bare(sen).toLowerCase();
+      if (h.length < 4) continue;
+      const whole = low.indexOf(h, from);
+      const a = whole >= 0 ? whole : low.indexOf(h.slice(0, PROBE), from);
+      if (a < 0) continue;
+      const tail = h.slice(-PROBE);
+      const t = low.indexOf(tail, a);
+      const z =
+        whole >= 0
+          ? whole + h.length - 1
+          : t >= 0 && t - a < h.length + PROBE
+            ? t + tail.length - 1
+            : Math.min(at.length - 1, a + PROBE - 1);
+      const last = spans.at(-1);
+      if (last && a - last[1] <= GAP) last[1] = z;
+      else spans.push([a, z]);
+      from = z + 1;
+    }
+    return spans.map(([a, z]) => range(a, z, true));
+  }
   const out: Range[] = [];
   for (const w of q.toLowerCase().split(/\s+/).map(bare).filter(Boolean))
     for (let i = low.indexOf(w); i >= 0 && out.length < 50; i = low.indexOf(w, i + w.length))
@@ -316,7 +448,7 @@ function preview(it: Item | undefined) {
   o.body.innerHTML = h;
   md.hydrate(o.body, h);
   o.body.scrollTop = 0;
-  const rs = hitRanges(o.body, o.shown);
+  const rs = hitRanges(o.body, it.preview.hit, o.shown);
   mark(rs);
   const first = rs[0]?.startContainer.parentElement;
   if (first) scrollIntoBox(first, "center");
@@ -419,6 +551,8 @@ export const palette = {
       i: 0,
       opened: { q: "", kinds: new Set() },
       asked: 0,
+      meaning: { items: [], q: "", here: d.here },
+      mAsked: 0,
     };
     input.addEventListener("input", () => {
       if (!o) return;
@@ -434,9 +568,12 @@ export const palette = {
   },
   /** Native's answer to psearch n */
   results: answer,
+  /** Native's answer to pmeaning n (twice when the reranker answers too) */
+  meaning: meaningAnswer,
   clear() {
     if (!o) return;
     clearTimeout(o.wait);
+    clearTimeout(o.mWait);
     clearTimeout(o.previewWait);
     o.root.remove();
     o = undefined;
@@ -462,9 +599,18 @@ export const palette = {
       rows: [...o.list.querySelectorAll(".cand")].map((r) => ({
         label: r.querySelector(".lb")?.textContent ?? "",
         detail: r.querySelector("small")?.textContent ?? "",
+        maybe: r.classList.contains("faint") && r.querySelector(".maybe")?.textContent === "maybe",
       })),
       on: o.i,
-      empty: o.list.querySelector(".empty")?.textContent ?? null,
+      empty: o.list.querySelector(".empty:not(.perr)")?.textContent ?? null,
+      error: o.list.querySelector(".perr")?.textContent ?? null,
+      off: o.list.querySelector(".poff")?.textContent ?? null,
+      /** Rows sliding to the reranker's order */
+      sliding: [...o.list.querySelectorAll(".cand")].filter((r) => r.getAnimations().length).length,
+      /** The marks in the preview */
+      marked: [...((CSS as { highlights?: Map<string, Iterable<Range>> }).highlights?.get(HIGHLIGHT) ?? [])]
+        .map((r) => r.toString())
+        .join("|"),
       where: o.where.textContent,
       focused: document.activeElement === o.input,
     };

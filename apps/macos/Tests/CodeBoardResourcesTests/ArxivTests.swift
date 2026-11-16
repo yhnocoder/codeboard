@@ -24,6 +24,8 @@ let attentionFeed = """
       <author><name>Ashish Vaswani</name></author>
       <author><name>Noam Shazeer</name></author>
       <author><name>Niki Parmar</name></author>
+      <arxiv:journal_ref xmlns:arxiv="http://arxiv.org/schemas/atom">Advances in Neural Information
+    Processing Systems 30 (2017)</arxiv:journal_ref>
       <link href="http://arxiv.org/abs/1706.03762v7" rel="alternate" type="text/html"/>
       <link title="pdf" href="http://arxiv.org/pdf/1706.03762v7" rel="related" type="application/pdf"/>
     </entry>
@@ -76,7 +78,7 @@ final class FakeArxiv: Sendable {
         == ArxivPaper(
           id: "1706.03762", title: "Attention Is All You Need",
           authors: ["Ashish Vaswani", "Noam Shazeer", "Niki Parmar"],
-          year: 2017, latest: 7))
+          year: 2017, venue: "Advances in Neural Information Processing Systems 30 (2017)", latest: 7))
     let req = try #require(fake.asked.withLock { $0.first })
     #expect(req.url?.absoluteString == FakeArxiv.api)
     #expect(req.value(forHTTPHeaderField: "User-Agent") == "CodeBoard")
@@ -92,6 +94,8 @@ final class FakeArxiv: Sendable {
       let fake = FakeArxiv([FakeArxiv.api: Data(body.utf8)])
       await #expect(throws: ArxivError.notFound("1706.03762")) { try await fake.arxiv.paper("1706.03762") }
     }
+    // the API itself answering 404: the paper asked for is named, not the address's last part
+    await #expect(throws: ArxivError.notFound("1706.03762")) { try await FakeArxiv([:]).arxiv.paper("1706.03762") }
     let offline = Arxiv { _ in throw URLError(.notConnectedToInternet) }
     do {
       _ = try await offline.paper("1706.03762")

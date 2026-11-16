@@ -1,0 +1,23 @@
+# 地图里卡很多（48 张，PR 277）：小块也点得准，点在块之间的空隙什么都不开；开六个，三个在右边、三个在标题行
+# only: mac
+# storage: storage-sub
+zoom 1
+center @cmany:c+200,0
+wait 600
+click @cmany+52,66
+wait 700
+expect subpv = none
+click @cmany+31,52
+wait 300
+click @cmany+73,80
+wait 300
+click @cmany+116,108
+wait 300
+click @cmany+158,137
+wait 300
+click @cmany+200,165
+wait 300
+click @cmany+328,193
+wait 1500
+expect subpv = cmany open m00,m09,m18,m27,m36,m47 exp m00,m09,m18 tit m27,m36,m47 fold false cols 1
+shot six
