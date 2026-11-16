@@ -1,0 +1,164 @@
+[
+  {
+    "name": "nano-vllm/bench.py",
+    "lang": "python",
+    "source": "nano-vllm/bench.py",
+    "expected": "expected/nano-vllm/bench.py.json"
+  },
+  {
+    "name": "nano-vllm/example.py",
+    "lang": "python",
+    "source": "nano-vllm/example.py",
+    "expected": "expected/nano-vllm/example.py.json"
+  },
+  {
+    "name": "nano-vllm/nanovllm/__init__.py",
+    "lang": "python",
+    "source": "nano-vllm/nanovllm/__init__.py",
+    "expected": "expected/nano-vllm/nanovllm/__init__.py.json"
+  },
+  {
+    "name": "nano-vllm/nanovllm/config.py",
+    "lang": "python",
+    "source": "nano-vllm/nanovllm/config.py",
+    "expected": "expected/nano-vllm/nanovllm/config.py.json"
+  },
+  {
+    "name": "nano-vllm/nanovllm/engine/block_manager.py",
+    "lang": "python",
+    "source": "nano-vllm/nanovllm/engine/block_manager.py",
+    "expected": "expected/nano-vllm/nanovllm/engine/block_manager.py.json"
+  },
+  {
+    "name": "nano-vllm/nanovllm/engine/llm_engine.py",
+    "lang": "python",
+    "source": "nano-vllm/nanovllm/engine/llm_engine.py",
+    "expected": "expected/nano-vllm/nanovllm/engine/llm_engine.py.json"
+  },
+  {
+    "name": "nano-vllm/nanovllm/engine/model_runner.py",
+    "lang": "python",
+    "source": "nano-vllm/nanovllm/engine/model_runner.py",
+    "expected": "expected/nano-vllm/nanovllm/engine/model_runner.py.json"
+  },
+  {
+    "name": "nano-vllm/nanovllm/engine/scheduler.py",
+    "lang": "python",
+    "source": "nano-vllm/nanovllm/engine/scheduler.py",
+    "expected": "expected/nano-vllm/nanovllm/engine/scheduler.py.json"
+  },
+  {
+    "name": "nano-vllm/nanovllm/engine/sequence.py",
+    "lang": "python",
+    "source": "nano-vllm/nanovllm/engine/sequence.py",
+    "expected": "expected/nano-vllm/nanovllm/engine/sequence.py.json"
+  },
+  {
+    "name": "nano-vllm/nanovllm/layers/activation.py",
+    "lang": "python",
+    "source": "nano-vllm/nanovllm/layers/activation.py",
+    "expected": "expected/nano-vllm/nanovllm/layers/activation.py.json"
+  },
+  {
+    "name": "nano-vllm/nanovllm/layers/attention.py",
+    "lang": "python",
+    "source": "nano-vllm/nanovllm/layers/attention.py",
+    "expected": "expected/nano-vllm/nanovllm/layers/attention.py.json"
+  },
+  {
+    "name": "nano-vllm/nanovllm/layers/embed_head.py",
+    "lang": "python",
+    "source": "nano-vllm/nanovllm/layers/embed_head.py",
+    "expected": "expected/nano-vllm/nanovllm/layers/embed_head.py.json"
+  },
+  {
+    "name": "nano-vllm/nanovllm/layers/layernorm.py",
+    "lang": "python",
+    "source": "nano-vllm/nanovllm/layers/layernorm.py",
+    "expected": "expected/nano-vllm/nanovllm/layers/layernorm.py.json"
+  },
+  {
+    "name": "nano-vllm/nanovllm/layers/linear.py",
+    "lang": "python",
+    "source": "nano-vllm/nanovllm/layers/linear.py",
+    "expected": "expected/nano-vllm/nanovllm/layers/linear.py.json"
+  },
+  {
+    "name": "nano-vllm/nanovllm/layers/rotary_embedding.py",
+    "lang": "python",
+    "source": "nano-vllm/nanovllm/layers/rotary_embedding.py",
+    "expected": "expected/nano-vllm/nanovllm/layers/rotary_embedding.py.json"
+  },
+  {
+    "name": "nano-vllm/nanovllm/layers/sampler.py",
+    "lang": "python",
+    "source": "nano-vllm/nanovllm/layers/sampler.py",
+    "expected": "expected/nano-vllm/nanovllm/layers/sampler.py.json"
+  },
+  {
+    "name": "nano-vllm/nanovllm/llm.py",
+    "lang": "python",
+    "source": "nano-vllm/nanovllm/llm.py",
+    "expected": "expected/nano-vllm/nanovllm/llm.py.json"
+  },
+  {
+    "name": "nano-vllm/nanovllm/models/qwen3.py",
+    "lang": "python",
+    "source": "nano-vllm/nanovllm/models/qwen3.py",
+    "expected": "expected/nano-vllm/nanovllm/models/qwen3.py.json"
+  },
+  {
+    "name": "nano-vllm/nanovllm/sampling_params.py",
+    "lang": "python",
+    "source": "nano-vllm/nanovllm/sampling_params.py",
+    "expected": "expected/nano-vllm/nanovllm/sampling_params.py.json"
+  },
+  {
+    "name": "nano-vllm/nanovllm/utils/context.py",
+    "lang": "python",
+    "source": "nano-vllm/nanovllm/utils/context.py",
+    "expected": "expected/nano-vllm/nanovllm/utils/context.py.json"
+  },
+  {
+    "name": "nano-vllm/nanovllm/utils/loader.py",
+    "lang": "python",
+    "source": "nano-vllm/nanovllm/utils/loader.py",
+    "expected": "expected/nano-vllm/nanovllm/utils/loader.py.json"
+  },
+  {
+    "name": "python/edge-cases.py",
+    "lang": "python",
+    "source": "samples/python/edge-cases.py",
+    "expected": "expected/python/edge-cases.py.json"
+  },
+  {
+    "name": "python/broken.py",
+    "lang": "python",
+    "source": "samples/python/broken.py",
+    "expected": "expected/python/broken.py.json"
+  },
+  {
+    "name": "cpp/kernel.cu",
+    "lang": "cuda-cpp",
+    "source": "samples/cpp/kernel.cu",
+    "expected": "expected/cpp/kernel.cu.json"
+  },
+  {
+    "name": "cpp/ops.cpp",
+    "lang": "cpp",
+    "source": "samples/cpp/ops.cpp",
+    "expected": "expected/cpp/ops.cpp.json"
+  },
+  {
+    "name": "cpp/broken.h",
+    "lang": "c",
+    "source": "samples/cpp/broken.h",
+    "expected": "expected/cpp/broken.h.json"
+  },
+  {
+    "name": "other/main.go",
+    "lang": "go",
+    "source": "samples/other/main.go",
+    "expected": "expected/other/main.go.json"
+  }
+]

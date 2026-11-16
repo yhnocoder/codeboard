@@ -1,0 +1,541 @@
+{
+  "calls": [
+    {
+      "args": [
+        {
+          "text": "x.float()"
+        },
+        {
+          "text": "2"
+        },
+        {
+          "kw": "dim",
+          "text": "-1"
+        }
+      ],
+      "assigned": [
+        "x1",
+        "x2"
+      ],
+      "col": 19,
+      "end": 24,
+      "line": 11,
+      "loop": false,
+      "name": "chunk",
+      "recv": "torch"
+    },
+    {
+      "args": [],
+      "col": 27,
+      "end": 32,
+      "line": 11,
+      "loop": false,
+      "name": "float",
+      "recv": "x"
+    },
+    {
+      "args": [
+        {
+          "text": "x.dtype"
+        }
+      ],
+      "col": 39,
+      "end": 41,
+      "line": 14,
+      "loop": false,
+      "name": "to",
+      "recv": "torch.cat((y1, y2), dim=-1)"
+    },
+    {
+      "args": [
+        {
+          "text": "(y1, y2)"
+        },
+        {
+          "kw": "dim",
+          "text": "-1"
+        }
+      ],
+      "col": 17,
+      "end": 20,
+      "line": 14,
+      "loop": false,
+      "name": "cat",
+      "recv": "torch"
+    },
+    {
+      "args": [],
+      "col": 16,
+      "end": 24,
+      "line": 26,
+      "loop": false,
+      "name": "__init__",
+      "recv": "super()"
+    },
+    {
+      "args": [
+        {
+          "text": "0"
+        },
+        {
+          "name": "rotary_dim",
+          "text": "rotary_dim"
+        },
+        {
+          "text": "2"
+        },
+        {
+          "kw": "dtype",
+          "text": "torch.float"
+        }
+      ],
+      "col": 39,
+      "end": 45,
+      "line": 29,
+      "loop": false,
+      "name": "arange",
+      "recv": "torch"
+    },
+    {
+      "args": [
+        {
+          "name": "max_position_embeddings",
+          "text": "max_position_embeddings"
+        },
+        {
+          "kw": "dtype",
+          "text": "torch.float"
+        }
+      ],
+      "assigned": [
+        "t"
+      ],
+      "col": 18,
+      "end": 24,
+      "line": 30,
+      "loop": false,
+      "name": "arange",
+      "recv": "torch"
+    },
+    {
+      "args": [
+        {
+          "text": "\"i,j -> ij\""
+        },
+        {
+          "name": "t",
+          "text": "t"
+        },
+        {
+          "name": "inv_freq",
+          "text": "inv_freq"
+        }
+      ],
+      "assigned": [
+        "freqs"
+      ],
+      "col": 22,
+      "end": 28,
+      "line": 31,
+      "loop": false,
+      "name": "einsum",
+      "recv": "torch"
+    },
+    {
+      "args": [],
+      "assigned": [
+        "cos"
+      ],
+      "col": 20,
+      "end": 23,
+      "line": 32,
+      "loop": false,
+      "name": "cos",
+      "recv": "freqs"
+    },
+    {
+      "args": [],
+      "assigned": [
+        "sin"
+      ],
+      "col": 20,
+      "end": 23,
+      "line": 33,
+      "loop": false,
+      "name": "sin",
+      "recv": "freqs"
+    },
+    {
+      "args": [
+        {
+          "text": "1"
+        }
+      ],
+      "assigned": [
+        "cache"
+      ],
+      "col": 46,
+      "end": 56,
+      "line": 34,
+      "loop": false,
+      "name": "unsqueeze_",
+      "recv": "torch.cat((cos, sin), dim=-1)"
+    },
+    {
+      "args": [
+        {
+          "text": "(cos, sin)"
+        },
+        {
+          "kw": "dim",
+          "text": "-1"
+        }
+      ],
+      "assigned": [
+        "cache"
+      ],
+      "col": 22,
+      "end": 25,
+      "line": 34,
+      "loop": false,
+      "name": "cat",
+      "recv": "torch"
+    },
+    {
+      "args": [
+        {
+          "text": "\"cos_sin_cache\""
+        },
+        {
+          "name": "cache",
+          "text": "cache"
+        },
+        {
+          "kw": "persistent",
+          "text": "False"
+        }
+      ],
+      "col": 13,
+      "end": 28,
+      "line": 35,
+      "loop": false,
+      "name": "register_buffer",
+      "recv": "self"
+    },
+    {
+      "args": [
+        {
+          "text": "2"
+        },
+        {
+          "kw": "dim",
+          "text": "-1"
+        }
+      ],
+      "assigned": [
+        "cos",
+        "sin"
+      ],
+      "col": 27,
+      "end": 32,
+      "line": 45,
+      "loop": false,
+      "name": "chunk",
+      "recv": "cos_sin"
+    },
+    {
+      "args": [
+        {
+          "name": "query",
+          "text": "query"
+        },
+        {
+          "name": "cos",
+          "text": "cos"
+        },
+        {
+          "name": "sin",
+          "text": "sin"
+        }
+      ],
+      "assigned": [
+        "query"
+      ],
+      "col": 16,
+      "end": 32,
+      "line": 46,
+      "loop": false,
+      "name": "apply_rotary_emb"
+    },
+    {
+      "args": [
+        {
+          "name": "key",
+          "text": "key"
+        },
+        {
+          "name": "cos",
+          "text": "cos"
+        },
+        {
+          "name": "sin",
+          "text": "sin"
+        }
+      ],
+      "assigned": [
+        "key"
+      ],
+      "col": 14,
+      "end": 30,
+      "line": 47,
+      "loop": false,
+      "name": "apply_rotary_emb"
+    },
+    {
+      "args": [
+        {
+          "text": "1"
+        }
+      ],
+      "col": 1,
+      "end": 10,
+      "line": 51,
+      "loop": false,
+      "name": "lru_cache"
+    },
+    {
+      "args": [
+        {
+          "name": "head_size",
+          "text": "head_size"
+        },
+        {
+          "name": "rotary_dim",
+          "text": "rotary_dim"
+        },
+        {
+          "name": "max_position",
+          "text": "max_position"
+        },
+        {
+          "name": "base",
+          "text": "base"
+        }
+      ],
+      "assigned": [
+        "rotary_emb"
+      ],
+      "col": 17,
+      "end": 32,
+      "line": 58,
+      "loop": false,
+      "name": "RotaryEmbedding"
+    }
+  ],
+  "flags": [
+    0,
+    0,
+    0,
+    1,
+    1,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    1,
+    1,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    1,
+    1,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    1
+  ],
+  "imports": [
+    {
+      "from": true,
+      "line": 1,
+      "module": "functools",
+      "name": "lru_cache"
+    },
+    {
+      "line": 2,
+      "module": "torch",
+      "name": "torch"
+    },
+    {
+      "from": true,
+      "line": 3,
+      "module": "torch",
+      "name": "nn"
+    }
+  ],
+  "lang": "python",
+  "mainBlocks": [],
+  "symbols": [
+    {
+      "defLine": 6,
+      "end": 14,
+      "kind": "def",
+      "name": "apply_rotary_emb",
+      "params": [
+        {
+          "kind": "pos",
+          "name": "x"
+        },
+        {
+          "kind": "pos",
+          "name": "cos"
+        },
+        {
+          "kind": "pos",
+          "name": "sin"
+        }
+      ],
+      "qual": "apply_rotary_emb",
+      "sig": "def apply_rotary_emb( x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor, ) -> torch.Tensor",
+      "start": 6
+    },
+    {
+      "defLine": 17,
+      "end": 48,
+      "kind": "class",
+      "name": "RotaryEmbedding",
+      "params": [],
+      "qual": "RotaryEmbedding",
+      "sig": "class RotaryEmbedding(nn.Module)",
+      "start": 17
+    },
+    {
+      "defLine": 19,
+      "end": 35,
+      "kind": "def",
+      "name": "__init__",
+      "params": [
+        {
+          "kind": "self",
+          "name": "self"
+        },
+        {
+          "kind": "pos",
+          "name": "head_size"
+        },
+        {
+          "kind": "pos",
+          "name": "rotary_dim"
+        },
+        {
+          "kind": "pos",
+          "name": "max_position_embeddings"
+        },
+        {
+          "kind": "pos",
+          "name": "base"
+        }
+      ],
+      "parent": "RotaryEmbedding",
+      "qual": "RotaryEmbedding.__init__",
+      "sig": "def __init__( self, head_size: int, rotary_dim: int, max_position_embeddings: int, base: float, ) -> None",
+      "start": 19
+    },
+    {
+      "defLine": 38,
+      "end": 48,
+      "kind": "def",
+      "name": "forward",
+      "params": [
+        {
+          "kind": "self",
+          "name": "self"
+        },
+        {
+          "kind": "pos",
+          "name": "positions"
+        },
+        {
+          "kind": "pos",
+          "name": "query"
+        },
+        {
+          "kind": "pos",
+          "name": "key"
+        }
+      ],
+      "parent": "RotaryEmbedding",
+      "qual": "RotaryEmbedding.forward",
+      "sig": "def forward( self, positions: torch.Tensor, query: torch.Tensor, key: torch.Tensor, ) -> tuple[torch.Tensor, torch.Tensor]",
+      "start": 37
+    },
+    {
+      "defLine": 52,
+      "end": 59,
+      "kind": "def",
+      "name": "get_rope",
+      "params": [
+        {
+          "kind": "pos",
+          "name": "head_size"
+        },
+        {
+          "kind": "pos",
+          "name": "rotary_dim"
+        },
+        {
+          "kind": "pos",
+          "name": "max_position"
+        },
+        {
+          "kind": "pos",
+          "name": "base"
+        }
+      ],
+      "qual": "get_rope",
+      "sig": "def get_rope( head_size: int, rotary_dim: int, max_position: int, base: float, )",
+      "start": 51
+    }
+  ],
+  "trailing": {}
+}
