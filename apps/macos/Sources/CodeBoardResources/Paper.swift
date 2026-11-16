@@ -152,6 +152,21 @@ public struct Paper: Sendable {
     return holding.min { area($0) < area($1) }
   }
 
+  /// How far a block's frame stands off its rects: tongtu's are tight to the glyphs, and a frame drawn on them covers
+  /// the first and last letters
+  public static let frameOutset: Double = 4
+
+  /// A block's frame on page `page` (from 1): its rects and its captions' there together, `frameOutset` around, within
+  /// `box` (the page's); what is framed when it is clicked and what its picture shows. Nil when it has none there
+  public func frame(_ b: BlockList.Block, on page: Int, within box: CGRect) -> CGRect? {
+    let captions = list.blocks.filter { $0.parent == b.id && $0.kind == "caption" }
+    guard let r = ([b] + captions).compactMap({ $0.union(on: page) }).reduce(nil, { $0?.union($1) ?? $1 }) else {
+      return nil
+    }
+    let out = r.insetBy(dx: -Self.frameOutset, dy: -Self.frameOutset).intersection(box)
+    return out.isNull || out.isEmpty ? nil : out
+  }
+
   /// Where a link to `point` of page `page` goes: the block that holds it, else the nearest below it on the page
   public func target(of point: CGPoint, page: Int) -> BlockList.Block? {
     if let b = block(at: point, page: page) { return b }

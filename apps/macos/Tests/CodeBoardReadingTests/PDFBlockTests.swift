@@ -149,9 +149,18 @@ import Testing
     #expect(
       !t.regionBar.isHidden
         && t.regionBar.buttons.map { $0.accessibilityIdentifier() } == ["ui-selectionadd", "ui-selectioncopy"])
+    // framed (and collected) standing off its glyphs, so the frame's line is on none of them
     let fig = try #require(p.anchorBlock(t, "BLK-1"))
     let c = try #require(t.collecting())
-    #expect(c.body == .image(alt: nil, width: fig.width, height: fig.height))
+    guard case .image(alt: nil, width: let width, height: let height) = c.body else {
+      Issue.record("not a picture: \(c.body)")
+      return
+    }
+    #expect(abs(width - fig.width - 8) < 0.01 && abs(height - fig.height - 8) < 0.01)
+    let page = try #require(t.pdf.document?.page(at: 0))
+    let union = try #require(t.paper?.block("BLK-1")?.union(on: 1))
+    let framed = t.convert(t.regionFrame.frame, to: t.pdf)
+    #expect(t.pdf.convert(framed, to: page).insetBy(dx: 2, dy: 2).contains(union))
     #expect(c.source == p.anchor("BLK-1") && c.label == "图 1" && c.title == "Rivers and Mills: A Study of Banks")
     // the formula: its LaTeX
     #expect(t.clickObject(at: try at(t, 1, "E = mc2")))
@@ -243,8 +252,11 @@ import Testing
     #expect(s.sourceLabel(p.anchor("BLK-2"))?.number == "表 1")
     #expect(s.sourceLabel(p.anchor("PAR-2-0"))?.number == "§ 1")
     #expect(s.mathPreamble(for: p.anchor("BLK-0")) == "\\newcommand{\\R}{\\mathbb{R}}")
+    // the picture a figure is collected as is its frame: with its caption, standing off its glyphs
     let size = try #require(s.blockSize(p.anchor("BLK-1")))
-    #expect(size.width > 0 && size.height > 0)
+    let paper = try #require(Paper.read(p.entry.versions[0].content, in: p.v.vault.url(of: p.path)))
+    let union = try #require(paper.block("BLK-1")?.union(on: 1))
+    #expect(abs(size.width - union.width - 8) < 0.01 && abs(size.height - union.height - 8) < 0.01)
     let image = try #require(await s.blockImage(p.anchor("BLK-1"), pixelWidth: 200))
     #expect(image.width == 200)
   }

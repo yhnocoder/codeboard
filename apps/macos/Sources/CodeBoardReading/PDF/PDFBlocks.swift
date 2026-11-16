@@ -180,9 +180,11 @@ extension PDFTabView {
     return objectFrame(b).map { (b, $0.0, $0.1) }
   }
 
-  /// An object's first page and its rects there together
+  /// An object's first page and its frame there (Paper.frame: with its caption, standing off its glyphs)
   func objectFrame(_ b: BlockList.Block) -> (PDFPage, CGRect)? {
-    guard let n = b.firstPage, let page = pdf.document?.page(at: n - 1), let r = b.union(on: n) else { return nil }
+    guard let paper, let n = b.firstPage, let page = pdf.document?.page(at: n - 1),
+      let r = paper.frame(b, on: n, within: page.bounds(for: .cropBox))
+    else { return nil }
     return (page, r)
   }
 

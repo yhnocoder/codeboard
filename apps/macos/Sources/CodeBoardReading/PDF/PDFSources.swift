@@ -73,14 +73,14 @@ import PDFKit
   }
 
   /// The page a page block is on and its region (in the page's space, from its crop box's bottom left; the whole box
-  /// without a rect); a listed block's first page and its rects there together
+  /// without a rect); a listed block's first page and its frame there (Paper.frame, as framed when it is clicked)
   private func region(_ a: SourceAnchor) -> (page: PDFPage, rect: CGRect)? {
     guard let found = pane.locate(.entry(a.entry, version: a.place.version), scanning: false),
       let doc = document(found.url)
     else { return nil }
     if case .id(let id) = a.place.block {
-      guard let b = paper(a)?.block(id), let n = b.firstPage, let r = b.union(on: n), n <= doc.pageCount,
-        let page = doc.page(at: n - 1)
+      guard let paper = paper(a), let b = paper.block(id), let n = b.firstPage, n <= doc.pageCount,
+        let page = doc.page(at: n - 1), let r = paper.frame(b, on: n, within: page.bounds(for: .cropBox))
       else { return nil }
       return (page, r)
     }

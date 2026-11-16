@@ -247,6 +247,27 @@ func samplePaper(source: String? = paperTeX) throws -> Paper {
     #expect(f.hasPrefix("\\begin{aligned}\n\\min") && f.hasSuffix("\\end{aligned}") && !f.contains("subequations"))
   }
 
+  @Test func anObjectsFrameHoldsItsCaptionAndStandsOffItsGlyphsWithinThePage() {
+    let blocks = [
+      BlockList.Block(
+        id: "T", kind: "table", firstLine: 1, lastLine: 3,
+        rects: [BlockList.Rect(page: 2, x0: 49, y0: 600, x1: 300, y1: 700)]),
+      // a caption listed apart from its table, above it
+      BlockList.Block(
+        id: "C", kind: "caption", parent: "T", firstLine: 2, lastLine: 2,
+        rects: [BlockList.Rect(page: 2, x0: 60, y0: 710, x1: 290, y1: 720)]),
+      // at the page's edges
+      BlockList.Block(
+        id: "F", kind: "figure", firstLine: 4, lastLine: 5,
+        rects: [BlockList.Rect(page: 2, x0: 1, y0: 100, x1: 611, y1: 200)]),
+    ]
+    let p = Paper(list: BlockList(blocks: blocks), source: nil)
+    let page = CGRect(x: 0, y: 0, width: 612, height: 792)
+    #expect(p.frame(p.block("T")!, on: 2, within: page) == CGRect(x: 45, y: 596, width: 259, height: 128))
+    #expect(p.frame(p.block("F")!, on: 2, within: page) == CGRect(x: 0, y: 96, width: 612, height: 108))
+    #expect(p.frame(p.block("T")!, on: 1, within: page) == nil)
+  }
+
   @Test func aPointsBlockIsFoundAmongItsPagesOnly() {
     // 30 pages of 12 blocks each, a rect a block
     let blocks = (1...30).flatMap { page in
