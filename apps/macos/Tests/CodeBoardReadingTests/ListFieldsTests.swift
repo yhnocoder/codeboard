@@ -146,7 +146,7 @@ private func resource(_ fields: String) throws -> Resource {
       list.valueMenu(list.fields.first { $0.type == .select }!, at: k).items.map(\.title) == [
         "Draft", "", "New Option…", "Rename “Draft”…", "Clear",
       ])
-    #expect(list.valueMenu(f[.board]!, at: k).items.map(\.title) == ["Alpha", "", "Clear"])
+    #expect(list.valueMenu(f[.board]!, at: k).items.map(\.title) == ["Alpha", "", "Open Board", "Clear"])
 
     #expect(try list.commit("", of: f[.text]!.id, at: k) && (value(.text)) == nil)
     #expect(try list.set(nil, of: f[.select]!.id, at: k) && (value(.select)) == nil)
@@ -283,5 +283,35 @@ private func resource(_ fields: String) throws -> Resource {
     #expect(list.set(.text("b-gone"), of: b.id, at: v.paperPath))
     #expect(try cell(list, b, try row(list, "Tidal mills")).line.stringValue == "Not found")
     #expect(try v.vault.entry(at: v.paperPath).fields[b.id] == .text("b-gone"))
+  }
+
+  /// A board value's Open Board and ⌘-click show its board through the pane; with no value, or a board that is gone,
+  /// Open Board cannot be chosen and a ⌘-click is not taken
+  @Test func openBoardShowsTheBoardTheValueNames() async throws {
+    let v = try ListVault()
+    defer { v.remove() }
+    try v.vault.newBoard(in: "", title: "Alpha", board: Board(id: BoardID(rawValue: "b-a")))
+    try await v.treeRead()
+    let (_, list) = try await v.openList()
+    var opened: [BoardID] = []
+    v.pane.onOpenBoard = { opened.append($0) }
+    let b = try #require(list.addField(.board))
+    let k = v.paperPath
+    func openItem() throws -> NSMenuItem {
+      try #require(list.valueMenu(b, at: k).items.first { $0.title == "Open Board" })
+    }
+    let column = try #require(list.table.tableColumns.firstIndex { $0.identifier.rawValue == "field:" + b.id })
+
+    #expect(try !openItem().isEnabled && !list.commandClick(row: try row(list, "Tidal mills"), column: column))
+    #expect(list.set(.text("b-gone"), of: b.id, at: k))
+    #expect(try !openItem().isEnabled && !list.commandClick(row: try row(list, "Tidal mills"), column: column))
+    #expect(list.set(.text("b-a"), of: b.id, at: k))
+    let menu = list.valueMenu(b, at: k)
+    let i = menu.indexOfItem(withTitle: "Open Board")
+    #expect(i >= 0 && menu.items[i].isEnabled)
+    menu.performActionForItem(at: i)
+    #expect(opened == [BoardID(rawValue: "b-a")])
+    #expect(list.commandClick(row: try row(list, "Tidal mills"), column: column))
+    #expect(opened == [BoardID(rawValue: "b-a"), BoardID(rawValue: "b-a")])
   }
 }

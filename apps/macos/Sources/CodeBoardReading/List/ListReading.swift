@@ -255,6 +255,7 @@ final class ListTabView: NSView, ReadingLookFollower, NSTableViewDataSource, NST
     table.delegate = self
     table.onOpen = { [weak self] in self?.open($0) }
     table.onEdit = { [weak self] in self?.edit(row: $0, column: $1, click: $2) ?? false }
+    table.onCommandClick = { [weak self] in self?.commandClick(row: $0, column: $1) ?? false }
     header.onMenu = { [weak self] in self?.headerMenu($0) }
     table.onDelete = { [weak self] in self?.delete(nil) }
     table.menu = NSMenu()

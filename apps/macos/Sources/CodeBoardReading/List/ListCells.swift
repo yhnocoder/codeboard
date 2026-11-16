@@ -8,6 +8,8 @@ final class ListTable: NSTableView {
   var onOpen: (Int) -> Void = { _ in }
   var onDelete: () -> Void = {}
   var onEdit: (_ row: Int, _ column: Int, _ click: Bool) -> Bool = { _, _, _ in false }
+  /// A ⌘-click on a cell, taken (true) before it changes the selection
+  var onCommandClick: (_ row: Int, _ column: Int) -> Bool = { _, _ in false }
   /// The column of the last click on a row
   private(set) var lastColumn = -1
 
@@ -28,6 +30,8 @@ final class ListTable: NSTableView {
       if !onEdit(row, col, false) { onOpen(row) }
       return
     }
+    let flags = event.modifierFlags.intersection([.command, .shift, .option, .control])
+    if event.clickCount == 1, flags == .command, row >= 0, col >= 0, onCommandClick(row, col) { return }
     super.mouseDown(with: event)
     // a plain click let go in its cell, not a drag or a selection extended
     let plain = event.modifierFlags.intersection([.command, .shift, .option, .control]).isEmpty

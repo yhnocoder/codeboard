@@ -6,10 +6,10 @@ import CodeBoardResources
 // at the header's end adds one, named for its kind and renamed at once; a field's header menu renames or deletes it
 // (its values stay in the entries' files, not shown). A text, number or date value is typed over its cell (a
 // double-click, or Return in the column last clicked; Esc cancels, Return or leaving commits), a checkbox toggles on a
-// click, a select or board value is chosen from a menu its cell shows on a click. A value changed writes that one
-// entry's file (a file that is an entry alone becomes an entry first, ListDrag's `promoted`) and that row alone is read
-// again; a field or an option changed writes the resource file and the list is read again. No undo, as the list's
-// other edits
+// click, a select or board value is chosen from a menu its cell shows on a click (a board's ⌘-click, or Open Board in
+// that menu, shows the board in this window). A value changed writes that one entry's file (a file that is an entry
+// alone becomes an entry first, ListDrag's `promoted`) and that row alone is read again; a field or an option changed
+// writes the resource file and the list is read again. No undo, as the list's other edits
 
 extension ListColumn {
   static let addID = "+field"
@@ -283,7 +283,7 @@ extension ListTabView {
   }
 
   /// The menu a select or board cell shows: the options (a dot of each's colour) or the boards in tree order, the one
-  /// chosen checked; a select's New Option… and Rename of the one chosen; Clear
+  /// chosen checked; a select's New Option… and Rename of the one chosen; a board's Open Board; Clear
   func valueMenu(_ f: Resource.Field, at key: String) -> NSMenu {
     let m = NSMenu()
     let now = rows.first { $0.key == key }?.fields[f.id]
@@ -316,11 +316,31 @@ extension ListTabView {
           })
       }
     }
+    if f.type == .board {
+      let board = openable(now)
+      let open = ListMenuItem("Open Board") { [weak self] in if let board { self?.context.pane.onOpenBoard?(board) } }
+      open.isEnabled = board != nil
+      m.addItem(open)
+    }
     let clear = ListMenuItem("Clear") { [weak self] in self?.set(nil, of: f.id, at: key) }
     clear.isEnabled = now != nil
     m.autoenablesItems = false
     m.addItem(clear)
     return m
+  }
+
+  /// The board a board field's value names, when it is one there is
+  private func openable(_ v: Entry.Value?) -> BoardID? {
+    v?.text.flatMap { id in boardList.first { $0.id.rawValue == id }?.id }
+  }
+
+  /// A ⌘-click on a cell (ListTable.onCommandClick): a board field's board shown, when there is one; false: not taken
+  func commandClick(row: Int, column: Int) -> Bool {
+    guard let f = field(at: column), f.type == .board, shown.indices.contains(row),
+      let board = openable(shown[row].fields[f.id])
+    else { return false }
+    context.pane.onOpenBoard?(board)
+    return true
   }
 
   private static func dot(_ color: NSColor) -> NSImage {

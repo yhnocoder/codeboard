@@ -86,6 +86,8 @@ public struct ReadingTab: Codable, Equatable, Identifiable, Sendable {
   @ObservationIgnored public var pasteboard = NSPasteboard.general
   /// A passage taken to the board (Add to Board, ⌥↵)
   @ObservationIgnored public var onCollect: ((Collected) -> Void)?
+  /// A board to show, in this pane's window (a board field's Open Board)
+  @ObservationIgnored public var onOpenBoard: ((BoardID) -> Void)?
   /// This machine's data of the app, never in the vault: each kind has a folder in it (ReadingContext.dataFolder)
   @ObservationIgnored public var machineFolder: URL?
   /// arXiv, where a paper's newer versions come from; tests give one that answers without the network
