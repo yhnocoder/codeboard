@@ -40,6 +40,14 @@ mkdir -p "$app/Contents/Resources"
 cp -R web/dist "$app/Contents/Resources/NotePage"
 cp -R .build-markdown "$app/Contents/Resources/Assets"
 cp -R "$bin/better-swift-markdown_MarkdownUI.bundle" "$app/Contents/Resources/"
+# box, the index service behind Related by Meaning, beside the executable where the app looks for it
+if command -v cargo >/dev/null 2>&1; then
+  cargo build --release -p box --manifest-path ../../packages/box/Cargo.toml
+  cp ../../packages/box/target/release/box "$app/Contents/MacOS/box"
+  codesign --force --sign - "$app/Contents/MacOS/box"
+else
+  echo "cargo not found: built without the box service, so Related by Meaning works only while VS Code's service is running (install Rust: https://rustup.rs)"
+fi
 plutil -lint -s "$app/Contents/Info.plist"
 codesign --force --sign - "$app"
 echo "built $(pwd)/$app"
