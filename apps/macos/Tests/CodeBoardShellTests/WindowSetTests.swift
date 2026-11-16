@@ -243,4 +243,131 @@ import Testing
     ctx.closePDF()
     return data as Data
   }
+
+  // MARK: Board tabs between windows
+
+  /// The first window with a second tab, entered from A into B (its crumbs and history), drawn, a card selected there
+  /// and its camera moved; every window counted on screen
+  func withTabOnB(_ set: WindowSet, _ first: WindowSet.Entry) async throws -> (Tab, CanvasView) {
+    set.onScreen = { _ in true }
+    set.focus = { _ in }
+    set.tabDrag.showPicture = { _ in }
+    first.shell.show(a, newTab: true)
+    first.shell.enter(b, from: CardID(rawValue: "f"), camera: nil)
+    set.sync()
+    let tab = try #require(first.shell.current)
+    let c = try #require(canvas(first))
+    await until("B drawn") { c.document?.id == b && c.scene != nil }
+    c.document?.select([.card(k)])
+    c.camera = Camera(origin: CGPoint(x: 40, y: 30), zoom: 1.5)
+    return (tab, c)
+  }
+
+  @Test func aBoardTabMovedToAnotherWindowArrivesWholeWithItsOwnPaneAndTheLastOneLeavingClosesItsWindow() async throws {
+    let (set, first, second, vault) = try twoWindows()
+    defer { try? FileManager.default.removeItem(at: vault.root) }
+    let (tab, c) = try await withTabOnB(set, first)
+    let pane = try #require(first.panes.panes[tab.id])
+    let doc = try #require(set.documents.open[b])
+    let stay = first.shell.tabs[0].id
+    #expect(tab.crumbs.map(\.board) == [a] && tab.back.map(\.board) == [a])
+
+    await set.move(tab.id, from: first, to: second, at: 0)
+    #expect(second.shell.tabs.first == tab && second.shell.selected == tab.id, "its board, history and crumbs")
+    #expect(second.panes.panes[tab.id] === pane && pane.canvas === c && pane.superview === second.panes)
+    #expect(c.document?.document === doc && set.documents.open[b] === doc)
+    #expect(c.document?.selection == [.card(k)] && c.camera == Camera(origin: CGPoint(x: 40, y: 30), zoom: 1.5))
+    #expect(first.shell.tabs.map(\.id) == [stay] && first.shell.selected == stay && first.panes.panes[tab.id] == nil)
+    #expect(second.panes.shownCanvas === c)
+
+    // its last board tab gone and no reading tab: the window closes
+    await set.move(stay, from: first, to: second, at: 9)
+    #expect(set.all.map(\.window) == [second.window] && second.shell.tabs.last?.id == stay)
+  }
+
+  @Test func aTabMovedToANewWindowKeepsItsPaneAndAWindowWithReadingTabsStays() async throws {
+    let (set, first, second, vault) = try twoWindows()
+    defer { try? FileManager.default.removeItem(at: vault.root) }
+    let (tab, c) = try await withTabOnB(set, first)
+    let frame = CGRect(x: 300, y: 200, width: 900, height: 640)
+    let made = try #require(await set.moveToNewWindow(tab.id, from: first, frame: frame))
+    #expect(set.all.count == 3 && made.window.frame == frame && made.shell.tabs == [tab])
+    #expect(made.panes.panes[tab.id]?.canvas === c && c.document?.selection == [.card(k)])
+    #expect(made.shell.reading.tabs.isEmpty && made.shell.sidebarShown == first.shell.sidebarShown)
+    // a window's only tab stays where it is
+    #expect(await set.moveToNewWindow(tab.id, from: made, frame: frame) == nil && set.all.count == 3)
+
+    // the second window's only board tab moved away, its reading pane holding a tab: it stays, with no board tab
+    second.shell.openWeb(nil)
+    let only = try #require(second.shell.selected)
+    await set.move(only, from: second, to: made, at: 1)
+    #expect(set.all.count == 3 && second.shell.tabs.isEmpty && made.shell.tabs.map(\.id) == [tab.id, only])
+
+    // quitting right after: each window as it is now
+    let name = "WindowSetTests-\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: name))
+    defer { defaults.removePersistentDomain(forName: name) }
+    set.save(in: defaults)
+    #expect(WindowSet.saved(in: defaults).map(\.shell.tabs.count) == [1, 0, 2])
+  }
+
+  @Test func whatIsBeingWrittenInAMovedTabIsKeptAsOneStep() async throws {
+    let (set, first, second, vault) = try twoWindows()
+    defer { try? FileManager.default.removeItem(at: vault.root) }
+    let (tab, c) = try await withTabOnB(set, first)
+    c.beginEditing(k)
+    await until("the editor ready") { c.editing?.ready == true }
+    c.editing?.writer?.insertText("More ", replacementRange: NSRange(location: NSNotFound, length: 0))
+    await set.move(tab.id, from: first, to: second, at: 0)
+    let doc = try #require(set.documents.open[b])
+    #expect(!c.isEditing && doc.undoName == "Edit Note" && doc.board.card(k)?.writing?.contains("More") == true)
+  }
+
+  @Test func aTabDraggedPastItsRowOntoAnotherWindowsRowMovesThereAndEscPutsItBack() async throws {
+    let (set, first, second, vault) = try twoWindows()
+    defer { try? FileManager.default.removeItem(at: vault.root) }
+    let (tab, _) = try await withTabOnB(set, first)
+    first.window.setFrame(CGRect(x: 100, y: 100, width: 1000, height: 700), display: false)
+    second.window.setFrame(CGRect(x: 1200, y: 100, width: 1000, height: 700), display: false)
+    for e in [first, second] { e.window.contentView?.layoutSubtreeIfNeeded() }
+    let row1 = try #require(set.tabRow(of: first))
+    let row2 = try #require(set.tabRow(of: second))
+    let drag = set.tabDrag!
+    let grab = CGPoint(x: 10, y: 6)
+    let atTab = CGPoint(x: row1.minX + ShellTheme.stripPadding + TabItem.width(of: "A") + 12, y: row1.midY)
+
+    // along the row, and a little below it: still the row's to reorder
+    #expect(!drag.dragged(tab.id, title: "B", at: atTab, grab: grab))
+    #expect(!drag.dragged(tab.id, title: "B", at: CGPoint(x: atTab.x + 30, y: row1.minY - 8), grab: grab))
+    // past the threshold: out of the row; over the other row, the place it would go is marked there
+    #expect(drag.dragged(tab.id, title: "B", at: CGPoint(x: atTab.x, y: row1.minY - 60), grab: grab))
+    let over = CGPoint(x: row2.minX + ShellTheme.stripPadding + 2, y: row2.midY)
+    #expect(drag.dragged(tab.id, title: "B", at: over, grab: grab) && second.shell.tabDrop == 0)
+    // Esc: back where it was, the mark gone, and letting go there does nothing
+    drag.cancel()
+    #expect(second.shell.tabDrop == nil)
+    drag.dropped(tab.id, at: over)
+    #expect(first.shell.tabs.contains { $0.id == tab.id } && second.shell.tabs.count == 1)
+
+    // again, let go on the other row: it moves there, first
+    _ = drag.dragged(tab.id, title: "B", at: atTab, grab: grab)
+    _ = drag.dragged(tab.id, title: "B", at: CGPoint(x: atTab.x, y: row1.minY - 60), grab: grab)
+    _ = drag.dragged(tab.id, title: "B", at: over, grab: grab)
+    drag.dropped(tab.id, at: over)
+    await until("moved") { second.shell.tabs.first?.id == tab.id }
+    #expect(
+      second.shell.selected == tab.id && second.shell.tabDrop == nil && !first.shell.tabs.contains { $0.id == tab.id })
+
+    // and let go where no row is, from a window with two tabs: a window of its own
+    second.shell.show(b, newTab: true)
+    set.sync()
+    let other = try #require(second.shell.selected)
+    let start = CGPoint(x: row2.minX + 40, y: row2.midY)
+    _ = drag.dragged(other, title: "B", at: start, grab: grab)
+    _ = drag.dragged(other, title: "B", at: CGPoint(x: start.x, y: row2.minY - 300), grab: grab)
+    drag.dropped(other, at: CGPoint(x: start.x + 100, y: row2.minY - 300))
+    await until("a window of its own") { set.all.contains { $0.shell.tabs.map(\.id) == [other] } }
+    let made = try #require(set.all.first { $0.shell.tabs.map(\.id) == [other] })
+    #expect(made.window.frame.size == second.window.frame.size)
+  }
 }

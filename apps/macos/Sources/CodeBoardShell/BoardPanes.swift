@@ -200,54 +200,7 @@ import CodeBoardReading
     }
     for tab in shell.tabs {
       let pane = panes[tab.id] ?? Pane(notes: notes, display: display)
-      if panes[tab.id] == nil {
-        panes[tab.id] = pane
-        pane.frame = bounds
-        pane.autoresizingMask = [.width, .height]
-        pane.isHidden = true
-        pane.onReady = { [weak self] in self?.reveal() }
-        pane.canvas.summarySwitch = summarySwitch
-        pane.canvas.summaryWriter = summaryWriter
-        pane.canvas.cameras = cameras
-        pane.canvas.picturesFolder = pictures
-        pane.canvas.sources = shell.sources
-        pane.canvas.onOpenWeb = { [weak self] url, _ in self?.openWeb(url) }
-        pane.onOpenBoard = { [weak self] in self?.shell.show($0) }
-        pane.arriveElsewhere = { [weak self] in self?.arriveElsewhere?($0, $1) ?? false }
-        pane.canvas.onEnterBoard = { [weak self, weak pane] e in
-          if let c = e.reveal { pane?.arriving(.card(c)) }
-          self?.shell.enter(e.board, from: e.frame, camera: e.camera, through: e.deeper.map { ($0.frame, $0.board) })
-        }
-        pane.canvas.onLeaveBoard = { [weak self] in self?.shell.leave(to: $0) }
-        // a sub-board card's Delete Board…: asked as main asks (host handlers.ts deleteBoardAsked), then as the
-        // sidebar's Delete, to the Trash
-        pane.canvas.onDeleteBoard = { [weak self, weak pane] id in
-          guard let self, let vault = shell.vault, let b = shell.tree?.allBoards.first(where: { $0.id == id })
-          else { return false }
-          let n = (try? vault.board(at: b.path).cards.count) ?? 0
-          guard await confirm(Self.deleteQuestion(b.title, cards: n), pane?.window) else { return false }
-          return shell.trash(b.path)
-        }
-        pane.canvas.boardsShowing = { [weak self] id in self?.boardDocuments.boardsShowing(id).map(\.title) ?? [] }
-        pane.canvas.onDeleteEverywhere = { [weak self, weak pane] id, title, here in
-          guard let self, let at = pane?.document?.id else { return nil }
-          let boards = boardDocuments.boardsShowing(id)
-          guard await confirm(Self.deleteEverywhereQuestion(title, boards: boards.map(\.title)), pane?.window)
-          else { return nil }
-          here()
-          for b in boards where b.id != at { boardDocuments.remove(id, from: b) }
-          shell.trash("\(Vault.appDataFolder)/\(Vault.sharedFolder)/\(id.rawValue).json")
-          return boards.count
-        }
-        pane.canvas.onVaultChanged = { [weak self] in self?.onVaultChanged?() }
-        pane.canvas.onSetSeal = { [weak self] in self?.setSeal($0, $1, done: $2) }
-        pane.canvas.shareOnBoard = { [weak self] in self?.boardDocuments.share($0, $1) }
-        pane.canvas.onVaultDrop = { [weak self, weak pane] path, p in
-          guard let self, let id = pane?.document?.id else { return }
-          self.vaultDrop(path, at: p, on: id)
-        }
-        addSubview(pane)
-      }
+      if panes[tab.id] == nil { adopt(pane, for: tab.id) }
       let theme = shell.look
       pane.canvas.crumbs = tab.crumbs.map {
         CrumbShown(board: $0.board, frame: $0.frame, name: shell.board($0.board)?.title ?? "Board")
@@ -267,6 +220,65 @@ import CodeBoardReading
       }
     }
     reveal()
+  }
+
+  /// A pane for tab `id` here: a new one, or one handed over from another window's panes as it is (`handOver`), its
+  /// canvas, camera, selection and seat kept, wired to this window
+  func adopt(_ pane: Pane, for id: Tab.ID) {
+    panes[id] = pane
+    pane.frame = bounds
+    pane.autoresizingMask = [.width, .height]
+    pane.isHidden = true
+    pane.onReady = { [weak self] in self?.reveal() }
+    pane.canvas.summarySwitch = summarySwitch
+    pane.canvas.summaryWriter = summaryWriter
+    pane.canvas.cameras = cameras
+    pane.canvas.picturesFolder = pictures
+    pane.canvas.sources = shell.sources
+    pane.canvas.onOpenWeb = { [weak self] url, _ in self?.openWeb(url) }
+    pane.onOpenBoard = { [weak self] in self?.shell.show($0) }
+    pane.arriveElsewhere = { [weak self] in self?.arriveElsewhere?($0, $1) ?? false }
+    pane.canvas.onEnterBoard = { [weak self, weak pane] e in
+      if let c = e.reveal { pane?.arriving(.card(c)) }
+      self?.shell.enter(e.board, from: e.frame, camera: e.camera, through: e.deeper.map { ($0.frame, $0.board) })
+    }
+    pane.canvas.onLeaveBoard = { [weak self] in self?.shell.leave(to: $0) }
+    // a sub-board card's Delete Board…: asked as main asks (host handlers.ts deleteBoardAsked), then as the
+    // sidebar's Delete, to the Trash
+    pane.canvas.onDeleteBoard = { [weak self, weak pane] id in
+      guard let self, let vault = shell.vault, let b = shell.tree?.allBoards.first(where: { $0.id == id })
+      else { return false }
+      let n = (try? vault.board(at: b.path).cards.count) ?? 0
+      guard await confirm(Self.deleteQuestion(b.title, cards: n), pane?.window) else { return false }
+      return shell.trash(b.path)
+    }
+    pane.canvas.boardsShowing = { [weak self] id in self?.boardDocuments.boardsShowing(id).map(\.title) ?? [] }
+    pane.canvas.onDeleteEverywhere = { [weak self, weak pane] id, title, here in
+      guard let self, let at = pane?.document?.id else { return nil }
+      let boards = boardDocuments.boardsShowing(id)
+      guard await confirm(Self.deleteEverywhereQuestion(title, boards: boards.map(\.title)), pane?.window)
+      else { return nil }
+      here()
+      for b in boards where b.id != at { boardDocuments.remove(id, from: b) }
+      shell.trash("\(Vault.appDataFolder)/\(Vault.sharedFolder)/\(id.rawValue).json")
+      return boards.count
+    }
+    pane.canvas.onVaultChanged = { [weak self] in self?.onVaultChanged?() }
+    pane.canvas.onSetSeal = { [weak self] in self?.setSeal($0, $1, done: $2) }
+    pane.canvas.shareOnBoard = { [weak self] in self?.boardDocuments.share($0, $1) }
+    pane.canvas.onVaultDrop = { [weak self, weak pane] path, p in
+      guard let self, let id = pane?.document?.id else { return }
+      self.vaultDrop(path, at: p, on: id)
+    }
+    addSubview(pane)
+  }
+
+  /// Tab `id`'s pane taken out of this window, as it is, for another window's panes (`adopt`); nil when it has none
+  func handOver(_ id: Tab.ID) -> Pane? {
+    guard let pane = panes.removeValue(forKey: id) else { return nil }
+    pane.removeFromSuperview()
+    if front == id { front = nil }
+    return pane
   }
 
   /// Writes every board with changes not yet saved (quitting, another vault); returns the boards whose changes could
