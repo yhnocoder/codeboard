@@ -25,19 +25,20 @@ class WebGlass: NSView {
     layer?.shadowColor = CGColor(gray: 0, alpha: 1)
     layer?.shadowRadius = 10
     layer?.shadowOffset = CGSize(width: 0, height: -5)
-    // its own cursor, not the one the page under it set
-    addTrackingArea(
-      NSTrackingArea(rect: .zero, options: [.cursorUpdate, .activeInActiveApp, .inVisibleRect], owner: self))
     restyle()
   }
 
   @available(*, unavailable)
   required init?(coder: NSCoder) { fatalError("WebGlass is not loaded from nibs") }
 
-  override func cursorUpdate(with event: NSEvent) { cursor(at: convert(event.locationInWindow, from: nil)).set() }
+  /// Its own cursor, the arrow, not the one the page under it set: as cursor rects, which WebKit leaves alone while
+  /// the pointer is in one (a tracking area's cursor it sets over again at the page's next move under the glass). The
+  /// address being edited has its text cursor in its own
+  var cursorRects: [(CGRect, NSCursor)] { [(bounds, .arrow)] }
 
-  /// The cursor at a point of the glass
-  func cursor(at point: CGPoint) -> NSCursor { .arrow }
+  override func resetCursorRects() {
+    for (r, c) in cursorRects { addCursorRect(r, cursor: c) }
+  }
 
   override func layout() {
     super.layout()
@@ -80,11 +81,6 @@ final class WebBar: WebGlass {
 
   /// What the save button says now
   private var state = Save.off("")
-
-  /// The text cursor over the address while it is edited, else the arrow
-  override func cursor(at point: CGPoint) -> NSCursor {
-    address.isEditing && address.frame.contains(content.convert(point, from: self)) ? .iBeam : .arrow
-  }
 
   /// Where the address starts: after back and forward, 6 from them
   static func addressX(_ look: ReadingBarLook) -> CGFloat { 4 + 2 * look.button.width + 2 + 6 }

@@ -88,7 +88,7 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
     if self.scripts != nil {
       userScripts.addScriptMessageHandler(saving, contentWorld: WebReading.scriptWorld, name: "shiyi")
     }
-    web = PageWebView(frame: .zero, configuration: config)
+    web = WKWebView(frame: .zero, configuration: config)
     bar = WebBar(look: context.bar)
     suggestions = WebSuggestions(look: context.bar)
     editOnShow = page == .online(nil) && handed == nil
@@ -571,21 +571,6 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
     default: return false
     }
     return true
-  }
-}
-
-/// The page's web view, which leaves the pointer to what floats over it (the bar, the suggestions): a move over them
-/// does not reach the page, which would set its own cursor (a text cursor over its text) over theirs
-final class PageWebView: WKWebView {
-  override func mouseMoved(with event: NSEvent) {
-    if !covered(at: event.locationInWindow) { super.mouseMoved(with: event) }
-  }
-
-  /// Something shown floats over this point of the window
-  func covered(at point: CGPoint) -> Bool {
-    guard let up = superview else { return false }
-    let p = up.convert(point, from: nil)
-    return up.subviews.contains { $0 !== self && !$0.isHidden && $0.frame.contains(p) }
   }
 }
 
