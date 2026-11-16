@@ -10,7 +10,12 @@ let package = Package(
     .package(url: "https://github.com/yhnocoder/better-swift-markdown", branch: "main")
   ],
   targets: [
-    .target(name: "CodeBoardModel", dependencies: [.product(name: "CodeCore", package: "better-swift-markdown")]),
+    // what the app says happened inside it while a bug report records (Diag.event); Foundation and Synchronization only,
+    // below everything
+    .target(name: "CodeBoardDiagnostics"),
+    .target(
+      name: "CodeBoardModel",
+      dependencies: ["CodeBoardDiagnostics", .product(name: "CodeCore", package: "better-swift-markdown")]),
     .target(name: "CodeBoardNotes", dependencies: ["CodeBoardModel"]),
     // the board's looks (Warm Ink, Ink Wash, light and dark) as the Markdown component's themes, and its fonts
     .target(
@@ -22,7 +27,7 @@ let package = Package(
     .target(
       name: "CodeBoardCanvas",
       dependencies: [
-        "CodeBoardModel", "CodeBoardNotes", "CodeBoardMarkdownLooks",
+        "CodeBoardModel", "CodeBoardNotes", "CodeBoardMarkdownLooks", "CodeBoardDiagnostics",
         .product(name: "TreeSitterHighlight", package: "better-swift-markdown"),
         .product(name: "TestGuard", package: "better-swift-markdown"),
         .product(name: "MarkdownCore", package: "better-swift-markdown"),
@@ -31,7 +36,10 @@ let package = Package(
       ]),
     .target(
       name: "CodeBoardShell",
-      dependencies: ["CodeBoardModel", "CodeBoardCanvas", "CodeBoardNotes", "CodeBoardReading", "CodeBoardResources"]),
+      dependencies: [
+        "CodeBoardModel", "CodeBoardCanvas", "CodeBoardNotes", "CodeBoardReading", "CodeBoardResources",
+        "CodeBoardDiagnostics",
+      ]),
     .executableTarget(name: "CodeBoard", dependencies: ["CodeBoardShell"]),
     .executableTarget(
       name: "CanvasBench",
@@ -110,12 +118,12 @@ let package = Package(
     .testTarget(
       name: "CodeBoardShellTests",
       dependencies: [
-        "CodeBoardShell", "CodeBoardCanvas", "CodeBoardNotes",
+        "CodeBoardShell", "CodeBoardCanvas", "CodeBoardNotes", "CodeBoardModel", "CodeBoardDiagnostics",
         .product(name: "TestGuard", package: "better-swift-markdown"),
       ]),
     // the reading pane beside the board and what its tabs show (PDF/, Web/, List/, Shared/); AppKit, PDFKit, the model
     // and a resource's files, below the shell
-    .target(name: "CodeBoardReading", dependencies: ["CodeBoardModel", "CodeBoardResources"]),
+    .target(name: "CodeBoardReading", dependencies: ["CodeBoardModel", "CodeBoardResources", "CodeBoardDiagnostics"]),
     .testTarget(
       name: "CodeBoardReadingTests", dependencies: ["CodeBoardReading", "CodeBoardModel", "CodeBoardResources"]),
     .testTarget(

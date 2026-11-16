@@ -1,4 +1,5 @@
 import AppKit
+import CodeBoardDiagnostics
 import CodeBoardModel
 
 // The board's keys (the web board's keymap.ts KEYMAP, in its order: the first row that matches and applies takes the
@@ -326,6 +327,7 @@ extension CanvasView {
 
   /// ⌘= / ⌘+, ⌘-, ⌘1: the zoom times `f` about the middle of the view, eased (camera.ts zoomAt)
   func zoom(by f: CGFloat) {
+    Diag.event("zoom.key", ["by": "\(f)"])
     var c = zoomTarget
     let mid = CGPoint(x: bounds.midX, y: bounds.midY)
     c.zoom(to: limits.clamp(c.zoom * f), at: mid)

@@ -1,3 +1,4 @@
+import CodeBoardDiagnostics
 import Foundation
 
 /// One open board: the board as edited, its undo history and selection, saving by itself and taking in what another
@@ -33,7 +34,9 @@ import Foundation
   public var selection: Set<Item> = []
   public private(set) var history = History()
   /// Why the file on disk cannot be read now; saving waits while it is set
-  public private(set) var problem: String?
+  public private(set) var problem: String? {
+    didSet { if let problem, problem != oldValue { Diag.event("error", ["where": "save", "what": problem]) } }
+  }
 
   /// How long after the last change it is written
   public static let saveDelay = Duration.milliseconds(300)
@@ -153,6 +156,7 @@ import Foundation
     } else {
       history.record(name, from: board, to: b, selection: (before, now), epoch: derived)
     }
+    Diag.event("edit", ["name": name])
     board = b
     selection = now
     changed(.edit)
@@ -287,6 +291,7 @@ import Foundation
     var b = board
     let epoch = history.undoSteps.last?.epoch ?? derived
     guard let sel = history.undo(&b) else { return }
+    Diag.event("undo", ["name": history.redoSteps.last?.name ?? ""])
     replayDerived(after: epoch, on: &b)
     board = b
     selection = sel.filter { b.has($0) }
@@ -297,6 +302,7 @@ import Foundation
     var b = board
     let epoch = history.redoSteps.last?.epoch ?? derived
     guard let sel = history.redo(&b) else { return }
+    Diag.event("redo", ["name": history.undoSteps.last?.name ?? ""])
     replayDerived(after: epoch, on: &b)
     board = b
     selection = sel.filter { b.has($0) }

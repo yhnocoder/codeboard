@@ -15,6 +15,7 @@ b1/b1-open.txt
 b1/b1-pinch.txt
 badge-chevron-iw.txt
 badge-chevron.txt
+bug-report.txt
 click-edit.txt
 dbl-repeat.txt
 dbl-selected.txt

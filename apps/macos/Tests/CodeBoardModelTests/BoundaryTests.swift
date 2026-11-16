@@ -3,7 +3,8 @@ import Testing
 
 // The model (board files, the vault, the legacy importer) must stay usable without any UI, so it imports Foundation only,
 // the code component's rules, which import Foundation only themselves (the better-swift-markdown package's
-// PackageBoundaryTests), and CoreGraphics for the picture type a source gives the board (not a UI framework).
+// PackageBoundaryTests), CoreGraphics for the picture type a source gives the board (not a UI framework), and
+// CodeBoardDiagnostics, which imports Foundation and the standard library's Synchronization only.
 @Test func modelImportsOnlyFoundation() throws {
   let sources = URL(filePath: #filePath).deletingLastPathComponent().appending(path: "../../Sources/CodeBoardModel")
   let files = try #require(FileManager.default.enumerator(at: sources, includingPropertiesForKeys: nil))
@@ -13,7 +14,7 @@ import Testing
     .anchorsMatchLineEndings()
   for file in files {
     for match in try String(contentsOf: file, encoding: .utf8).matches(of: importLine)
-    where !["Foundation", "CodeCore", "CoreGraphics"].contains(match.1) {
+    where !["Foundation", "CodeCore", "CoreGraphics", "CodeBoardDiagnostics"].contains(match.1) {
       Issue.record("\(file.lastPathComponent) imports \(match.1)")
     }
   }

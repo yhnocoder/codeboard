@@ -1,4 +1,5 @@
 import AppKit
+import CodeBoardDiagnostics
 import CodeBoardModel
 import QuartzCore
 
@@ -77,6 +78,7 @@ extension CanvasView {
   /// A short line over the bottom of the board, gone after 2.6 s: Warm Ink's dark pill, Ink Wash's sheet of paper with a
   /// small seal before its text (styles.css .toast, themes.css)
   func toast(_ text: String) {
+    Diag.event("toast", ["text": text])
     toastText = text
     toastShown += 1
     let n = toastShown

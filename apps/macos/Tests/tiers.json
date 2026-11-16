@@ -453,6 +453,10 @@
           "sources": ["CodeBoardCanvas/CanvasShortcuts.swift", "CodeBoardCanvas/CanvasKeys.swift"],
           "tests": ["FullWindowKeysTests", "ParityMenuKeysTests"]
         },
+        "bug reports": {
+          "sources": ["CodeBoardShell/BugReport"],
+          "tests": ["BugReportTests"]
+        },
         "summary writing": {
           "sources": [
             "CodeBoardShell/SummaryAI.swift",

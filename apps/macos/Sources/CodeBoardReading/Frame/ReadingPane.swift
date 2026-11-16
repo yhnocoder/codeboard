@@ -1,4 +1,5 @@
 import AppKit
+import CodeBoardDiagnostics
 import CodeBoardModel
 import CodeBoardResources
 import Observation
@@ -120,6 +121,7 @@ public struct ReadingTab: Codable, Equatable, Identifiable, Sendable {
   @discardableResult public func open(
     _ title: String, key: String? = nil, kind: String = "", payload: [String: String] = [:]
   ) -> ReadingTab.ID {
+    Diag.event("reading.open", payload.merging(["kind": kind, "key": key ?? "", "title": title]) { a, _ in a })
     shown = true
     if let key, let tab = tabs.first(where: { $0.key == key }) {
       selected = tab.id
@@ -132,7 +134,11 @@ public struct ReadingTab: Codable, Equatable, Identifiable, Sendable {
   }
 
   public func select(_ tab: ReadingTab.ID) {
-    if tabs.contains(where: { $0.id == tab }) { selected = tab }
+    if let t = tabs.first(where: { $0.id == tab }) {
+      Diag.event(
+        "reading.select", t.payload.merging(["kind": t.kind, "key": t.key ?? "", "title": t.title]) { a, _ in a })
+      selected = tab
+    }
   }
 
   /// The next tab to the right (or left, by -1), wrapping around
