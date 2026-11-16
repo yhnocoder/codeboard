@@ -1,5 +1,6 @@
 # 选中一个词，⌘K 打开链接框，输入地址，再点 Note 里别处：链接写回 Markdown（不点链接本身）
 # storage: storage-tasks
+# mac: demo
 zoom 1
 center @ntask"值"
 dbl @ntask"Last line"

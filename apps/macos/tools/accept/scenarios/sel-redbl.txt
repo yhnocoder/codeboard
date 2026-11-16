@@ -6,14 +6,14 @@ dbl @cnote+150,90
 wait 600
 dbl @cnote+60,60
 wait 400
-expect sel = "vocabulary" 16-26
-dbl @cnote+60,75
+expect sel.around = "The [vocabulary] maps ea"
+dbl @cnote+30,75
 wait 400
-expect sel = "." 53-54
+expect sel.around = "rd to a [number]."
 # 先单击收起选中（格式条也收起），再三击
 click @cnote+200,75
 wait 400
 tri @cnote+60,75
 wait 400
-expect sel = "The vocabulary maps each word to a number." 12-54
+expect sel.around = "[The vocabulary maps each word to a number.]"
 key esc

@@ -1,5 +1,6 @@
 # 选中一个词，点选择工具条最后的批注按钮，写一句批注，再点别处：批注写回 Markdown（{字|批注}）
 # storage: storage-tasks
+# mac: demo
 zoom 1
 center @ntask"值"
 dbl @ntask"Last line"

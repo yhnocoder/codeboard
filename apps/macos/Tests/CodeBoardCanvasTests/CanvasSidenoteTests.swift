@@ -896,3 +896,28 @@ extension CanvasSidenoteTests {
     }
   }
 }
+
+extension CanvasSidenoteTests {
+  /// A popup closed on one canvas is that canvas's next one; another canvas's popup is its own, so a closing on one
+  /// board leaves what another board's popup shows as it is (#244: the web popup's shared web views)
+  @Test func aPopupClosedOnOneCanvasLeavesAnotherCanvasesPopupAsItShows() async throws {
+    let r = try await Rig(sidenoteBoard(), zoom: 1)
+    let other = try await Rig(sidenoteBoard(), zoom: 1, alongside: r)
+    defer {
+      other.close()
+      r.close()
+    }
+    let at = PopAt.lines(Lines(card: cid("c1"), segment: s1, range: 12...13))
+    r.canvas.openPop(at)
+    await opened(r, at)
+    let first = r.canvas.sidenotePop
+    r.canvas.openPop(nil)
+    other.canvas.openPop(at)
+    let pop = other.canvas.sidenotePop
+    #expect(pop !== first, "another canvas's popup is its own")
+    await opened(other, at)
+    await r.canvas.popTask?.value
+    #expect(pop.view.alphaValue == 1 && other.canvas.popShown == at)
+    #expect(pop.order.count == 2, "what it shows kept: \(pop.order)")
+  }
+}
