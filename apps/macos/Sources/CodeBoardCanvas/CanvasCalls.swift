@@ -29,12 +29,51 @@ public struct CallSpan: Equatable, Sendable {
   }
 }
 
+/// A definition to pick in a picker: its row (label, detail) and where it is, as the shell gave it; base: the base
+/// class's own method among implementations; lib: the package of one outside the repository
+public struct CallChoice: Equatable, Sendable {
+  public var label: String
+  public var detail: String
+  public var path: String
+  public var line: Int
+  public var qual: String?
+  public var lib: String?
+  public var base: Bool
+
+  public init(
+    label: String, detail: String, path: String, line: Int, qual: String? = nil, lib: String? = nil, base: Bool = false
+  ) {
+    self.label = label
+    self.detail = detail
+    self.path = path
+    self.line = line
+    self.qual = qual
+    self.lib = lib
+    self.base = base
+  }
+}
+
+/// What a call expands into (the host's expand answer): the definition's card (its one segment, a template
+/// instance's title); definitions or a dispatched method's implementations to pick from (base: the class whose method
+/// it is); why there is none (name: what to search by, nil: nothing to search); said: the shell has shown what is
+/// missing on this Mac to read it (its popover at the call)
+public enum CallAnswer: Equatable, Sendable {
+  case card(Segment, title: String?)
+  case pick([CallChoice])
+  case impls([CallChoice], base: String)
+  case none(String, name: String?)
+  case said
+}
+
 /// What the board asks the shell about the calls on its code cards
 @MainActor public protocol CallHost: AnyObject {
   /// The calls on a segment's lines; nil while not known, or when its source is not here (no marks)
   func calls(_ s: Segment) -> [CallSpan]?
   /// Told when calls it had not known come: the board asks again
   var onCallsChanged: (() -> Void)? { get set }
+  /// A call clicked: what it expands into; `pick`: one of an earlier answer's choices. `at`: the call's name in
+  /// `canvas` (view points), where what is missing to read it is said
+  func expand(_ s: Segment, call: CallSpan, pick: CallChoice?, at: CGRect, on canvas: CanvasView) async -> CallAnswer
 }
 
 /// A call under the pointer: on which card, segment and line, and where it is drawn (board units)

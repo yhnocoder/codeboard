@@ -96,8 +96,8 @@
       ],
       "areas": {
         "calls": {
-          "sources": ["CodeBoardCanvas/CanvasCalls.swift"],
-          "tests": ["CanvasCallsTests"]
+          "sources": ["CodeBoardCanvas/CanvasCalls.swift", "CodeBoardCanvas/CanvasExpand.swift"],
+          "tests": ["CanvasCallsTests", "CallPlaceTests"]
         },
         "arrows": {
           "sources": [

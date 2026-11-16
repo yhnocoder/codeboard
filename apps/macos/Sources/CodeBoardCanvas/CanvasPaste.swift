@@ -252,20 +252,26 @@ extension CanvasView {
   /// A new card added in one step and selected, in the Section its rect (`size` at where it is put) covers by more than
   /// a third (settleHome); `reveal`: brought into view when it is not, as main's addCards does (a new Note, Text, Box or
   /// Link List is not: newWriting, newLinkList)
-  func settle(_ id: CardID, _ size: CGSize, _ name: String, reveal: Bool = false, _ add: (inout Board) -> Void) {
-    settle([(id, size)], name, reveal: reveal, add)
+  func settle(
+    _ id: CardID, _ size: CGSize, _ name: String, reveal: Bool = false, keepSection: Bool = false,
+    _ add: (inout Board) -> Void
+  ) {
+    settle([(id, size)], name, reveal: reveal, keepSection: keepSection, add)
   }
 
-  /// Several new cards so, in the one step, all of them selected (several rows of a list dropped at once)
+  /// Several new cards so, in the one step, all of them selected (several rows of a list dropped at once).
+  /// `keepSection`: a card `add` put in a Section stays in it (a call's card goes in its caller's)
   func settle(
-    _ cards: [(id: CardID, size: CGSize)], _ name: String, reveal: Bool = false, _ add: (inout Board) -> Void
+    _ cards: [(id: CardID, size: CGSize)], _ name: String, reveal: Bool = false, keepSection: Bool = false,
+    _ add: (inout Board) -> Void
   ) {
     guard let doc = document else { return }
     let frames = Dictionary((scene?.frames ?? []).map { ($0.id, $0.rect) }, uniquingKeysWith: { a, _ in a })
     doc.edit(name, selection: Set(cards.map { Item.card($0.id) })) { b in
       add(&b)
       for (id, size) in cards {
-        guard let i = b.cards.firstIndex(where: { $0.id == id }) else { continue }
+        guard let i = b.cards.firstIndex(where: { $0.id == id }), !keepSection || b.cards[i].section == nil
+        else { continue }
         let r = CGRect(x: b.cards[i].x, y: b.cards[i].y, width: size.width, height: size.height)
         b.cards[i].section = home(of: r, frames: frames)
       }

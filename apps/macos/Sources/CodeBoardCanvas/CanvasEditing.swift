@@ -1105,7 +1105,7 @@ extension CanvasView {
       NSCursor.crosshair.set()
     } else if let (_, edge) = hitHandle(v) {
       resizeCursor(edge).set()
-    } else if arrow != nil || footAt(bp) != nil {
+    } else if arrow != nil || footAt(bp) != nil || hoverCall(at: bp) {
       NSCursor.pointingHand.set()
     } else if hoveredRow?.grip == true {
       // .lgrip: cursor grab
@@ -1118,6 +1118,7 @@ extension CanvasView {
 
   public override func mouseExited(with e: NSEvent) {
     pointerInWindow = nil
+    _ = hoverCall(at: CGPoint(x: CGFloat.infinity, y: .infinity))
     hoverChip(at: CGPoint(x: CGFloat.infinity, y: .infinity))
     hoverAlignBar(nil)
     hoverHead(nil)
@@ -1309,6 +1310,7 @@ extension CanvasView {
     // code card's file name, whose double-click's second press is no rename of the title
     sourcePress = e.clickCount == 1 ? footAt(p) : nil
     codePathPress = e.clickCount == 1 ? codePathAt(p) : nil
+    callPress = e.clickCount == 1 && callHost != nil ? callAt(p) : nil
     if e.clickCount >= 2, codePathAt(p) != nil { return }
     if let peek = refPeek,
       !(refPress.map { peek.key == refKey(.card($0.card, boardRect($0.box, on: $0.card)), $0.box) } ?? false)
@@ -1417,6 +1419,15 @@ extension CanvasView {
     let p = camera.board(v)
     switch g.kind {
     case .press(let item, let toggle, let was, _):
+      if let c = callPress {
+        // a call pulled 6 out of its line: an arrow from it (gesture.ts CALL_DRAG_SLOP)
+        guard hypot(v.x - g.startView.x, v.y - g.startView.y) >= 6 else { return }
+        callPress = nil
+        let from = Endpoint(card: c.card, segment: c.segment.id, line: c.call.line)
+        g.kind = .connect(Connect(fixed: from, moving: .to, pointer: g.start, call: c))
+        gesture = g
+        return mouseDragged(with: e)
+      }
       guard hypot(v.x - g.startView.x, v.y - g.startView.y) >= dragSlop else { return }
       // the one card selected, dragged on its body: its text is selected, the card stays (interact.ts: solo, inBody);
       // on its source it moves
@@ -1584,6 +1595,9 @@ extension CanvasView {
       } else if let id = codePathPress {
         codePathPress = nil
         openCodePath(id)
+      } else if let c = callPress {
+        callPress = nil
+        expandCall(c)
       } else if case .card(let id)? = item, was, !toggle, doc.selection == [.card(id)] {
         clickEdit(id, at: g.start)
       }

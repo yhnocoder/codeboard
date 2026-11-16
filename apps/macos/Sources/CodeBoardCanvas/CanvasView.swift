@@ -380,6 +380,12 @@ public final class CanvasView: NSView {
   public var onOpenCode: ((Segment, CGRect) -> Void)?
   /// A press on a code card's file name, which opens it when let go where it was pressed
   var codePathPress: CardID?
+  /// A press on a call on a code card's line: expanded when let go where it was pressed, dragged out as an arrow
+  var callPress: CallAt?
+  /// The calls being expanded now (card, segment, line and column): pressed again meanwhile, nothing more is asked
+  var callsAsked: Set<String> = []
+  /// The call under the pointer, tinted (styles.css .call:hover)
+  let callTint = CALayer()
   /// What the shell's version checks found of the board's segments (none: as pinned, or not checked); its header shows
   /// them on each code card (CodeHead.tsx .rev). Changed cards are drawn again in one refresh, their code not laid out
   /// again

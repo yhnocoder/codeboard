@@ -798,7 +798,8 @@ extension CanvasView {
     return out
   }
 
-  private func viewRect(_ r: CGRect) -> CGRect {
+  /// A rect of the board in this view
+  func viewRect(_ r: CGRect) -> CGRect {
     let a = camera.view(r.origin)
     let b = camera.view(CGPoint(x: r.maxX, y: r.maxY))
     return CGRect(x: a.x, y: a.y, width: b.x - a.x, height: b.y - a.y)

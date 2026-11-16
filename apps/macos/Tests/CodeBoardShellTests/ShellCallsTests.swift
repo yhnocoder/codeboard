@@ -260,6 +260,38 @@ private let scheduler = """
   }
 }
 
+extension ShellCallsTests {
+  @Test func aClickGivesTheBoardTheDefinitionsCardOrSaysWhatIsMissingAtTheCall() async throws {
+    let (data, r, head) = try engineRepository()
+    defer { try? FileManager.default.removeItem(atPath: data) }
+    try scheduler.write(toFile: r + "/scheduler.py", atomically: true, encoding: .utf8)
+    try git(r, "add", "-A")
+    try git(r, "commit", "-qm", "scheduler")
+    let now = try git(r, "rev-parse", "HEAD")
+    let repositories = RepositoriesModel(
+      folder: URL(filePath: data + "/data"), runner: ProcessGitRunner(), defaults: nil)
+    let code = ShellCode(git: GitCache(), board: { nil })
+    code.repositories = repositories
+    let marks = ShellCallMarks(code)
+    let canvas = CanvasView(frame: CGRect(x: 0, y: 0, width: 800, height: 600), noteCache: URL(filePath: data + "/n"))
+    let s = step("s1", .git(repository: nil, commit: now, path: "engine.py", uncommitted: false, checkout: r))
+    let at = CGRect(x: 10, y: 10, width: 60, height: 18)
+    // its folder not added: said at the call, nothing for the board to do
+    #expect(await marks.expand(s, call: schedule, pick: nil, at: at, on: canvas) == .said)
+    await repositories.addFolder(r)
+    guard case .card(let seg, let title) = await marks.expand(s, call: schedule, pick: nil, at: at, on: canvas) else {
+      Issue.record("no card")
+      return
+    }
+    #expect(seg.symbol == Symbol(name: "Scheduler.schedule", kind: .function) && title == nil)
+    guard case .git(_, let commit, let path, false, _)? = seg.source else {
+      Issue.record("\(String(describing: seg.source))")
+      return
+    }
+    #expect(commit == now && path == "scheduler.py" && head != now)
+  }
+}
+
 /// A shell that knows no calls, the segments it is asked of kept
 @MainActor private final class AskedCalls: CallHost {
   var onCallsChanged: (() -> Void)?
@@ -267,6 +299,9 @@ private let scheduler = """
   func calls(_ s: Segment) -> [CallSpan]? {
     asked.insert(s.id)
     return nil
+  }
+  func expand(_ s: Segment, call: CallSpan, pick: CallChoice?, at: CGRect, on canvas: CanvasView) async -> CallAnswer {
+    .said
   }
 }
 

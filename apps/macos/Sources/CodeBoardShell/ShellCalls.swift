@@ -210,6 +210,58 @@ extension ShellCode {
     return nil
   }
 
+  /// A call clicked (CallHost): the shell's answer in the board's terms. What the card's file is missing on this Mac
+  /// is said at the call as its file name says it (with what it offers); a fetch of its commit too, while it lasts.
+  /// Found, what the segment got while its file was not here is forgotten
+  func expand(_ s: Segment, call: CallSpan, pick: CallChoice?, at r: CGRect, on canvas: CanvasView) async
+    -> CallAnswer
+  {
+    guard let code else { return .said }
+    let shown = Shown()
+    let say: @MainActor @Sendable (ShellCode.Missing?) -> Void = { [weak code, weak canvas] m in
+      guard let m else { return shown.pop?.say(nil) ?? () }
+      if shown.pop == nil {
+        let p = SourcePopover(at: r, of: canvas)
+        p.model = code?.repositories
+        p.take = { [weak code, weak p] offer, lightweight in
+          guard let code, let p else { return }
+          Task { await code.take(offer, lightweight: lightweight, for: s, say: p.say) }
+        }
+        shown.pop = p
+      }
+      shown.pop?.say(m)
+    }
+    let p = pick.map { ExpandPick(path: $0.path, line: $0.line, qual: $0.qual) }
+    let got = await code.expand(s, line: call.line, col: call.col, name: call.name, recv: call.recv, pick: p, say: say)
+    if case .missing(let m) = got {
+      say(m)
+      return .said
+    }
+    if shown.pop != nil { say(nil) }
+    forgetMissing(s)
+    switch got {
+    case .card(let seg, _, _, let title, _): return .card(seg, title: title)
+    case .pick(let ps):
+      return .pick(ps.map { CallChoice(label: $0.label, detail: $0.detail, path: $0.path, line: $0.line) })
+    case .impls(let ps, let base):
+      return .impls(
+        ps.map {
+          CallChoice(
+            label: $0.label, detail: $0.detail, path: $0.path, line: $0.line, qual: $0.qual, lib: $0.lib, base: $0.base)
+        }, base: base)
+    case .none(let why, let name): return .none(why, name: name)
+    case .missing: return .said
+    }
+  }
+
+  /// A segment's file found by a click (its commit fetched meanwhile, say): what it got while not here goes
+  private func forgetMissing(_ s: Segment) {
+    let gone = known.filter { $0.key.id == s.id && $0.value.calls == nil }.map(\.key)
+    guard !gone.isEmpty else { return }
+    for k in gone { known[k] = nil }
+    onCallsChanged?()
+  }
+
   /// Those asked in the turn just ended, together; the board told once they have all come
   private func ask() async {
     guard let code else { return }
@@ -259,4 +311,9 @@ extension ShellCode {
       }
     }
   }
+}
+
+/// The popover a click on a call has shown, if any
+@MainActor private final class Shown {
+  var pop: SourcePopover?
 }

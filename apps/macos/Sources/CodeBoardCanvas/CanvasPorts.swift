@@ -32,6 +32,8 @@ struct Connect {
   /// What it would join now
   var target: Endpoint?
   var pointer: CGPoint
+  /// A call dragged out of its line (CanvasExpand.swift): it aims at whole cards, and is linked or expanded
+  var call: CallAt?
 }
 
 /// How far below the zoom the web board's Simplify Below default hides the line ports
@@ -203,6 +205,7 @@ extension CanvasView {
   /// fixed end's own place
   func connectTarget(_ c: Connect, at p: CGPoint) -> Endpoint? {
     guard let id = hitCard(p) else { return nil }
+    if c.call != nil { return id == c.fixed.card ? nil : Endpoint(card: id) }
     let e = codeLine(at: p, of: id)?.end ?? Endpoint(card: id)
     // a card to itself only from one of its lines to another
     if id == c.fixed.card && (e.line == nil || c.fixed.line == nil || e.line == c.fixed.line) { return nil }
@@ -306,6 +309,7 @@ extension CanvasView {
       }
     }
     defer { drawChrome() }
+    if let call = c.call { return dropCall(call, on: c.target?.card, at: c.pointer) }
     guard let doc = document, let t = c.target else { return }
     if let id = c.arrow {
       var b = doc.board
