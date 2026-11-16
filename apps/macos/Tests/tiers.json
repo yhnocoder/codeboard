@@ -169,6 +169,7 @@
             "CodeBoardCanvas/CanvasPaste.swift",
             "CodeBoardCanvas/CanvasPasteChip.swift",
             "CodeBoardCanvas/CanvasCollect.swift",
+            "CodeBoardCanvas/CanvasCardsOut.swift",
             "CodeBoardModel/Clip.swift"
           ],
           "tests": [
@@ -427,11 +428,15 @@
             "CodeBoardShell/BoardPanes.swift",
             "CodeBoardShell/BoardDocuments.swift",
             "CodeBoardShell/WindowSet.swift",
+            "CodeBoardShell/ScreenPlaces.swift",
+            "CodeBoardShell/CardDrag.swift",
+            "CodeBoardCanvas/CanvasCardsOut.swift",
             "CodeBoardModel/SharedCards.swift"
           ],
           "tests": [
             "BoardPanesTests",
             "WindowSetTests",
+            "ScreenPlacesTests",
             "MissingCardTests",
             "FullWindowDeleteEverywhereTests",
             "aQuestionBeforeDeletingTakesAPressToGoAhead"

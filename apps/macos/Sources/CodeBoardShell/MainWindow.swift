@@ -7,10 +7,10 @@ import UniformTypeIdentifiers
 /// The D2 window: sidebar on the window's own warm-grey ground, the board and the reading pane as floating rounded
 /// panels, each with its tabs in its top bar. Traffic lights, the sidebar toggle, back / forward and both panels' tabs
 /// share one title line, whichever is shown. Its panes are on the app's `documents` (nil: a table of their own);
-/// `frameName` is where its frame is kept (the first window's: "main"; nil: by WindowSet, with its state)
+/// `frameName`: a frame kept under that name, read once (WindowSet keeps every window's frame with its state)
 @MainActor func makeMainWindow(
   shell: Shell, repositories: RepositoriesModel? = nil, documents: BoardDocuments? = nil,
-  frameName: String? = "main"
+  frameName: String? = nil
 ) -> (NSWindow, BoardPanes) {
   let window = BoardWindow(
     contentRect: NSRect(x: 0, y: 0, width: 1200, height: 800),
@@ -35,7 +35,7 @@ import UniformTypeIdentifiers
     shell.reading.commitOf = { [weak repositories] in await repositories?.head(of: $0) }
     // code taken to this window's board, ⌘-click's definitions
     shell.reading.codeHost = repositories.git.map {
-      ShellCode(git: $0, board: { [weak root] in root?.panes.frontBoard })
+      ShellCode(git: $0, board: { [weak root] in root?.panes.addBoard })
     }
     track { [weak shell, weak repositories] in
       let f = shell?.reading.currentCode
@@ -52,8 +52,9 @@ import UniformTypeIdentifiers
     panel.prompt = "Add"
     return await panel.beginSheetModal(for: window) == .OK ? panel.urls : []
   }
+  // the model is the app's: the question goes on the window that asked, the one with the keys
   repositories?.askFolder = { [weak window] in
-    guard let window else { return nil }
+    guard let window = NSApp.keyWindow.flatMap({ $0 is BoardWindow ? $0 : nil }) ?? window else { return nil }
     let panel = NSOpenPanel()
     panel.canChooseFiles = false
     panel.canChooseDirectories = true
@@ -72,10 +73,7 @@ import UniformTypeIdentifiers
       })
     if let s = sheet?.window { window.beginSheet(s) }
   }
-  if let frameName {
-    if !window.setFrameUsingName(frameName) { window.center() }
-    window.setFrameAutosaveName(frameName)
-  }
+  if let frameName, !window.setFrameUsingName(frameName) { window.center() }
   return (window, panes)
 }
 

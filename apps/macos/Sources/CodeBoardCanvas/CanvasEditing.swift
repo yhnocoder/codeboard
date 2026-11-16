@@ -1453,6 +1453,7 @@ extension CanvasView {
       gesture = g
       mouseDragged(with: e)
     case .move(var m):
+      if dragOut(m, g, e) { return }
       aimMerge(&m, at: p, alt: e.modifierFlags.contains(.option))
       dragMove(
         &m, to: v, from: g, at: e.timestamp,
@@ -1594,7 +1595,9 @@ extension CanvasView {
     case .move(let m):
       armShelf(nil)
       mergeHold?.cancel()
-      if overShelf(convert(e.locationInWindow, from: nil)) {
+      if cardsOut != nil {
+        dropOut(m, e)
+      } else if overShelf(convert(e.locationInWindow, from: nil)) {
         // let go on the Shelf's button or panel: onto the Shelf, not moved
         gesture = nil
         clearDrop()
@@ -2311,7 +2314,7 @@ extension CanvasView {
     }
     guard let doc = document, gesture == nil, let here = shown?.board.id,
       let data = pasteboard.data(forType: NSPasteboard.PasteboardType(Clip.pasteboardType)),
-      var clip = try? Clip(decoding: data), !clip.isEmpty
+      let clip = try? Clip(decoding: data), !clip.isEmpty
     else { return }
     if let c = cutClip, c.board == here, c.data == data {
       let back = c.clip.cards.allSatisfy { doc.board.card($0.id) == nil }
@@ -2333,6 +2336,14 @@ extension CanvasView {
       let n = place(clip, dx: dx, dy: dy, name: "Paste").count
       return toast(n > 1 ? "Pasted \(n) copies" : "Pasted a copy")
     }
+    pasteShared(clip, from: from, dx: dx, dy: dy, asCopy: asCopy)
+  }
+
+  /// Cards copied on board `from` put here moved by `dx`, `dy`: shared by both boards (`asCopy`: copies of their own),
+  /// one step, selected; already all here, they are selected and shown
+  func pasteShared(_ clip: Clip, from: BoardID, dx: Double, dy: Double, asCopy: Bool = false) {
+    guard let doc = document else { return }
+    var clip = clip
     let other = shareOnBoard?(from, asCopy ? [] : Set(clip.cards.map(\.id)))
     guard !asCopy, let other else {
       let n = place(clip, dx: dx, dy: dy, name: "Paste").count

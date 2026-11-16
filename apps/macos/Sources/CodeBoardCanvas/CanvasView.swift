@@ -456,6 +456,12 @@ public final class CanvasView: NSView {
   /// gives the ids they have there now (old → new) and its title; nil: that board cannot take it now (they come as
   /// copies). With no cards it only gives the title
   public var shareOnBoard: ((BoardID, Set<CardID>) -> (ids: [CardID: CardID], title: String)?)?
+  /// Where a card drag's pointer out of the view goes (the app's windows); nil: it stays the view's drag
+  public weak var cardDragging: CardDragging?
+  /// The cards of a drag while its pointer is out of the view
+  public internal(set) var cardsOut: CardsOut?
+  /// Where cards from another window would land
+  var cardsDropLayer: CAShapeLayer?
   /// The Copy ✓ | Reference chip under copies just made (CanvasPasteChip.swift)
   var pasteChip: PasteChip?
   var chipTimer: Task<Void, Never>?
@@ -1193,13 +1199,48 @@ public final class CanvasView: NSView {
     if motion.isResting { arrive() }
   }
 
+  /// On screen: in a window, neither it nor a view it is in hidden. Only then does it draw
+  var onScreen: Bool { window != nil && !isHiddenOrHasHiddenAncestor && !miniaturized }
+  /// Its window in the Dock: nothing is drawn until it is back, then what is in view once
+  var miniaturized = false
+  /// The backing scale the items were last planned for at rest
+  var restBacking: CGFloat?
+  /// How long the window must stay put on a screen of another scale before the board is drawn again for it
+  package var backingDelay = Duration.milliseconds(250)
+  var backingSettle: Task<Void, Never>?
+
+  /// On a screen of another scale (dragged across two, it changes back and forth): nothing now, one redraw once the
+  /// window has stopped moving there
   public override func viewDidChangeBackingProperties() {
     super.viewDidChangeBackingProperties()
-    if motion.isResting && scene != nil { arrive() }
+    backingChanged()
   }
 
-  /// On screen: in a window, neither it nor a view it is in hidden. Only then does it draw
-  var onScreen: Bool { window != nil && !isHiddenOrHasHiddenAncestor }
+  func backingChanged() {
+    backingSettle?.cancel()
+    let delay = backingDelay
+    backingSettle = Task { [weak self] in
+      try? await Task.sleep(for: delay)
+      guard let self, !Task.isCancelled else { return }
+      backingSettle = nil
+      if scene != nil, restBacking != backing, motion.isResting { arrive() }
+    }
+  }
+
+  @objc private func windowMoved() {
+    if backingSettle != nil { backingChanged() }
+  }
+
+  @objc private func windowMiniaturized() {
+    miniaturized = true
+    cancelRedraws()
+    link?.isPaused = true
+  }
+
+  @objc private func windowDeminiaturized() {
+    miniaturized = false
+    if scene != nil, motion.isResting { arrive() } else { wake() }
+  }
 
   /// Hidden (its tab is not the one shown): what it was drawing is dropped, what it has stays
   public override func viewDidHide() {
@@ -1216,9 +1257,17 @@ public final class CanvasView: NSView {
   public override func viewDidMoveToWindow() {
     super.viewDidMoveToWindow()
     // Space let go while another window had the keys: its key up never comes here
-    NotificationCenter.default.removeObserver(self, name: NSWindow.didResignKeyNotification, object: nil)
-    NotificationCenter.default.addObserver(
-      self, selector: #selector(windowResignedKey), name: NSWindow.didResignKeyNotification, object: window)
+    let center = NotificationCenter.default
+    for (name, action) in [
+      (NSWindow.didResignKeyNotification, #selector(windowResignedKey)),
+      (NSWindow.didMoveNotification, #selector(windowMoved)),
+      (NSWindow.didMiniaturizeNotification, #selector(windowMiniaturized)),
+      (NSWindow.didDeminiaturizeNotification, #selector(windowDeminiaturized)),
+    ] {
+      center.removeObserver(self, name: name, object: nil)
+      center.addObserver(self, selector: action, name: name, object: window)
+    }
+    miniaturized = window?.isMiniaturized == true
     link?.invalidate()
     link = nil
     watchWheel()
@@ -1424,6 +1473,7 @@ public final class CanvasView: NSView {
     if scene != nil, onScreen { settleOnPixels() }
     keepCamera()
     guard scene != nil, onScreen else { return }
+    restBacking = backing
     CanvasView.clock += 1
     shownAt = CanvasView.clock
     let others = CanvasView.all.allObjects.filter { $0 !== self }
