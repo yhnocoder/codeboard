@@ -79,6 +79,34 @@ import Testing
     }
   }
 
+  /// A double-click on a Web card opens its page in a web tab of the reading pane, never the browser
+  @Test func aWebCardDoubleClickedOpensAWebReadingTab() async throws {
+    let fm = FileManager.default
+    let root = fm.temporaryDirectory.appending(path: "panes-\(UUID().uuidString)")
+    defer { try? fm.removeItem(at: root) }
+    try fm.createDirectory(at: root, withIntermediateDirectories: true)
+    let vault = Vault(root: root)
+    let id = BoardID(rawValue: "w")
+    let web = WebCard(url: "http://127.0.0.1:9/harbour", meta: WebMeta(title: "Harbour", fetchedAt: 1))
+    let card = Card(id: CardID(rawValue: "c"), x: 0, y: 0, width: 420, content: .own(CardContent(body: .web(web))))
+    try vault.newBoard(in: "", title: "Links", board: Board(id: id, cards: [card]))
+    let shell = Shell()
+    shell.open(vault, restoring: nil)
+    shell.apply(.success(try vault.tree()))
+    let panes = BoardPanes(shell: shell)
+    panes.frame = CGRect(x: 0, y: 0, width: 1000, height: 700)
+    shell.show(id)
+    panes.sync()
+    let tab = try #require(shell.selected)
+    let pane = try #require(panes.panes[tab])
+    var browser: [URL] = []
+    pane.canvas.openURL = { browser.append($0) }
+    await until("the board shown") { pane.canvas.scene != nil && pane.document?.id == id }
+    pane.canvas.doubleClick(at: CGPoint(x: 210, y: 20))
+    #expect(browser.isEmpty && shell.reading.shown)
+    #expect(shell.reading.tabs.map(\.kind) == ["web"] && shell.reading.tabs[0].payload == ["url": web.url])
+  }
+
   @Test func aSubBoardCardOpensItsBoardInTheTabAndBackReturnsWhereTheViewWas() async throws {
     let fm = FileManager.default
     let root = fm.temporaryDirectory.appending(path: "panes-\(UUID().uuidString)")

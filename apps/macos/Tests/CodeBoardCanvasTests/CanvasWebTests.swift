@@ -457,4 +457,36 @@ func webBoard() -> Board {
     r.send(r.mouse(.leftMouseUp, sideTitle))
     #expect(r.doc.undoName == "Merge into Link List" && r.doc.board.card(cid("banner")) == nil)
   }
+
+  /// A double-click on a Web card opens its page where the shell says (its reading pane), with its title; with ⌘, and
+  /// with nowhere said, in the browser. A Link List's row still opens in the browser
+  @Test func aDoubleClickOpensAWebCardWhereTheShellSaysAndCommandInTheBrowser() async throws {
+    let r = try await Rig(webBoard(), zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    var browser: [URL] = []
+    c.openURL = { browser.append($0) }
+    func doubleClick(_ p: CGPoint, _ flags: NSEvent.ModifierFlags = []) {
+      for n in [1, 2] {
+        r.send(r.mouse(.leftMouseDown, p, flags, clicks: n))
+        r.send(r.mouse(.leftMouseUp, p, flags, clicks: n))
+      }
+    }
+    let page = URL(string: "https://www.example.org/posts/auto")!
+    doubleClick(r.centre("auto"))
+    #expect(browser == [page], "nowhere said: the browser, as before")
+
+    var pane: [(URL, String?)] = []
+    c.onOpenWeb = { pane.append(($0, $1)) }
+    doubleClick(r.centre("auto"))
+    #expect(pane.map(\.0) == [page] && pane.first?.1 == "Scheduling requests in batches" && browser == [page])
+    doubleClick(r.centre("never"))
+    #expect(pane.last?.0 == URL(string: "https://www.example.org/posts/never") && pane.last?.1 == nil)
+    doubleClick(r.centre("auto"), .command)
+    #expect(browser == [page, page] && pane.count == 2, "⌘: the browser")
+    let row = try #require(c.linksAt(cid("list")))
+    let first = row.2.rows[0].rect
+    doubleClick(CGPoint(x: row.1.minX + first.midX, y: row.1.minY + first.midY))
+    #expect(browser.last == URL(string: "https://a.org/one") && pane.count == 2)
+  }
 }
