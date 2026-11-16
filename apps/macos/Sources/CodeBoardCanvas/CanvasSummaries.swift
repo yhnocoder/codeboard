@@ -68,13 +68,27 @@ extension CanvasView {
     let pad = CGFloat(draft.padding)
     let cut = CGFloat(draft.cut)
     var texts: [SummaryKey: SummaryColumnText] = [:]
+    let resolver = RefResolver(board, package: package, vault: vault)
     for it in input.items {
       let sum = board.summary(for: it.key)
       let loose = { if case .card = it.key { true } else { it.group } }()
-      texts[it.key] = SummaryColumnText(
+      var t = SummaryColumnText(
         title: it.title, kick: it.kick, code: it.code.map { .init(name: $0.name, at: $0.at) },
         text: (it.text ?? "").isEmpty ? nil : it.text, head: it.head?.level, loose: loose,
         stale: sum != nil && board.summaryPending(it.key, contents: contents))
+      // its [[refs]] with their targets' names now (main's hydrate paints them so)
+      for m in (it.title + "\n" + (it.text ?? "")).matches(of: /\[\[([^\[\]\n]+?)\]\]/) {
+        let inner = String(m.output.1)
+        let (label, target) = RefResolver.split(inner)
+        guard !label.isEmpty, t.refs[inner] == nil else { continue }
+        t.refs[inner] =
+          switch resolver.resolve(label, target: target) {
+          case .found(let title, _)?: .init(name: title.isEmpty ? label : title, found: true)
+          case .broken(_, let title, _)?: .init(name: title.isEmpty ? label : title, found: false)
+          case nil: .init(name: label, found: false)
+          }
+      }
+      texts[it.key] = t
     }
     let lookID = theme.id.rawValue + (theme.dark ? "-dark" : "")
     var measured: [SummaryKey: SumMeasure] = [:]

@@ -324,6 +324,44 @@ final class FakeWriter: SummaryWriter, @unchecked Sendable {
     #expect(w.asked.count == 2)
   }
 
+  /// Summaries.tsx rich: a title's and a body's [[refs]] show their targets' names now (one that finds nothing its
+  /// label, in ink-3), a ==mark== is marked; the editor has both as written, and keeps them
+  @Test func refsShowTheirTargetsNamesMarksAreMarkedAndTheEditorKeepsBothAsWritten() async throws {
+    var b = summaryBoard()
+    let k = SummaryKey.card(cid("loose"))
+    let text = "从 [[旧名#^a2]] 讲起，==重点==在 [[无此卡]]。"
+    _ = b.putSummary(Summary(text: text, at: 1, sig: b.summarySig(k) ?? "", input: b.summaryInput(k)), for: k)
+    b.sections[1].title = "流与 [[旧的#^b1]]"
+    let r = try await Rig(b, zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    let col = try column(r, k)
+    #expect(col.text.refs["旧名#^a2"] == .init(name: "bank 冲突", found: true))
+    #expect(col.text.refs["无此卡"] == .init(name: "无此卡", found: false))
+    #expect(try column(r, sec2).text.refs["旧的#^b1"] == .init(name: "流和事件", found: true))
+    let look = SummaryLook(c.theme)
+    let s = SummaryArt.bodyString(text, look: look, font: 60, refs: col.text.refs)
+    let ns = s.string as NSString
+    #expect(s.string == "从 bank 冲突 讲起，重点在 无此卡。")
+    var marked = NSRange()
+    #expect(s.attribute(SummaryArt.markKey, at: ns.range(of: "重点").location, effectiveRange: &marked) != nil)
+    #expect(marked == ns.range(of: "重点"))
+    func color(_ word: String) -> CGColor? {
+      s.attribute(.foregroundColor, at: ns.range(of: word).location, effectiveRange: nil).map { $0 as! CGColor }
+    }
+    #expect(color("bank") == look.link && color("无此卡") == look.ink3 && color("讲起") == look.grey)
+    #expect(s.attribute(SummaryArt.refKey, at: ns.range(of: "bank").location, effectiveRange: nil) != nil)
+    // written as it is stored, and kept so
+    atSummaries(r)
+    let at = try column(r, k)
+    r.click(CGPoint(x: at.rect.minX + 2 * CGFloat(c.summaryLayout!.padding), y: at.rect.minY + at.bodyTop + 30))
+    let ed = try #require(c.summaryEditor)
+    #expect(ed.string == "从 [[旧名#^a2]] 讲起，==重点==在 [[无此卡]]。" && ed.markdown() == text)
+    ed.insertText("补", replacementRange: NSRange(location: ed.string.utf16.count, length: 0))
+    ed.onEnd?(true)
+    #expect(r.doc.board.summary(for: k)?.text == text + "补")
+  }
+
   /// imageai.ts aiFailed: a failed ↻ says why, per cause, and the text stays as it was
   @Test func aFailedRewriteSaysWhyInAToast() async throws {
     let r = try await Rig(summaryBoard(), zoom: 1)
