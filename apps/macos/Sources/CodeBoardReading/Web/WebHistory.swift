@@ -28,6 +28,16 @@ enum WebAddress {
     return host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
   }
 
+  /// What a suggestion shows of an address: without its scheme and www., with its path, query and port; a bare host
+  /// without the slash after it
+  static func withPath(_ url: URL) -> String {
+    var s = url.absoluteString
+    for p in ["https://", "http://"] where s.lowercased().hasPrefix(p) { s.removeFirst(p.count) }
+    if s.lowercased().hasPrefix("www.") { s.removeFirst(4) }
+    if s.hasSuffix("/"), s.firstIndex(of: "/") == s.index(before: s.endIndex) { s.removeLast() }
+    return s
+  }
+
   private static func isIPv4(_ host: String) -> Bool {
     let parts = host.split(separator: ".", omittingEmptySubsequences: false)
     return parts.count == 4 && parts.allSatisfy { UInt8($0) != nil }

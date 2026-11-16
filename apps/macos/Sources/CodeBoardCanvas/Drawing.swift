@@ -271,7 +271,9 @@ enum Drawing: Sendable {
         if got?.decoded == true { decodes += 1 }
         if let img = p.still ?? got?.image {
           ctx.interpolationQuality = .high
-          ctx.translateBy(x: 0, y: size.height)
+          // turned over about the picture's own area, not the card: with a description or a source under it, the
+          // card's height would put the picture that much lower, cut at the bottom
+          ctx.translateBy(x: 0, y: r.maxY)
           ctx.scaleBy(x: 1, y: -1)
           ctx.draw(img, in: r)
         } else {

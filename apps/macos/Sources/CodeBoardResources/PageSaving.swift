@@ -13,10 +13,10 @@ extension Vault {
   }
 
   /// `item` in the resource at `resource`, in the entry of its address, made when there is none: a link gives the
-  /// entry its title, a page adds a version unless one has its hash already. Nothing is written when nothing
-  /// changes. The entry's path
+  /// entry its title, a page adds a version unless one has its hash already; `meta`, what was read of the page, takes
+  /// the place of what the entry had. Nothing is written when nothing changes. The entry's path
   @discardableResult
-  public func save(_ item: SavedItem, in resource: String) throws -> String {
+  public func save(_ item: SavedItem, in resource: String, meta: WebMeta? = nil) throws -> String {
     let address = Vault.pageAddress(item.url)
     let found = try items(in: resource).lazy.compactMap { i -> (entry: Entry, path: String)? in
       guard case .entry(let e, let path) = i, case .web(let url) = e.origin, Vault.pageAddress(url) == address else {
@@ -29,6 +29,7 @@ extension Vault {
       ?? Entry(
         id: EntryID(rawValue: Board.newID("e")), title: item.title, added: Double(item.savedAt),
         origin: .web(address))
+    if let meta { entry.meta = meta }
     switch item.kind {
     case .link:
       entry.title = item.title

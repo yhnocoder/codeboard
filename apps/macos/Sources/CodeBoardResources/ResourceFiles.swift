@@ -82,12 +82,46 @@ extension Vault {
   }
 
   /// A new entry folder in the resource at `resource`, named for its title (` 2`, ` 3`… when taken), with its entry
-  /// file alone; its path
+  /// file and `files` (by name) in it, made whole under a hidden name and renamed into place; its path
   @discardableResult
-  public func newEntry(_ entry: Entry, in resource: String) throws -> String {
+  public func newEntry(_ entry: Entry, in resource: String, with files: [String: Data] = [:]) throws -> String {
     let path = Vault.join(resource, freeName(in: resource, Vault.folderName(for: entry.title), extension: nil))
-    try writePackage(entry.encoded(), named: Vault.entryFileName, at: path)
+    guard !files.isEmpty else {
+      try writePackage(entry.encoded(), named: Vault.entryFileName, at: path)
+      return path
+    }
+    // the files laid out beside it first; the package is a copy of them (a clone on APFS)
+    let staged = url(of: resource).appending(path: ".files-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: staged) }
+    do {
+      try FileManager.default.createDirectory(at: staged, withIntermediateDirectories: false)
+      for (name, data) in files { try data.write(to: staged.appending(path: name)) }
+    } catch {
+      throw VaultError.unwritable(url(of: path), error.localizedDescription)
+    }
+    try writePackage(entry.encoded(), named: Vault.entryFileName, at: path, copying: staged)
     return path
+  }
+
+  /// `data` put in the entry folder at `path` as `name`, or as `<name>-2.<ext>`, `-3`… when that is taken, so it stays
+  /// a plain file name: written under a hidden name, then one rename, never over anything. The name it got
+  public func addEntryFile(_ data: Data, named name: String, to path: String) throws -> String {
+    let folder = url(of: path)
+    let hidden = folder.appending(path: ".\(name).new-\(UUID().uuidString)")
+    do { try data.write(to: hidden) } catch { throw VaultError.unwritable(folder, error.localizedDescription) }
+    defer { try? FileManager.default.removeItem(at: hidden) }
+    let ext = (name as NSString).pathExtension
+    let base = ext.isEmpty ? name : String(name.dropLast(ext.count + 1))
+    for n in 1...999 {
+      let free = n == 1 ? name : ext.isEmpty ? "\(base)-\(n)" : "\(base)-\(n).\(ext)"
+      do {
+        try Vault.rename(hidden, to: folder.appending(path: free))
+        return free
+      } catch VaultError.exists {
+        continue
+      }
+    }
+    throw VaultError.exists(folder.appending(path: name))
   }
 
   /// A file that is an entry alone given a folder of its own, named as the file without its extension, with `entry`

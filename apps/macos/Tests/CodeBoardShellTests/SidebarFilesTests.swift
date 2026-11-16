@@ -1,5 +1,6 @@
 import AppKit
 import CodeBoardModel
+import CodeBoardReading
 import Foundation
 import TestGuard
 import Testing
@@ -279,9 +280,9 @@ import Testing
     let menu = shell.menu(resource: r)
     #expect(
       menu.map { $0?.title ?? "-" } == [
-        "Add PDF…", "-", "Rename", "Move to", "-", "Reveal in Finder", "Copy Path", "-", "Delete",
+        "Add PDF…", "Add arXiv Paper…", "-", "Rename", "Move to", "-", "Reveal in Finder", "Copy Path", "-", "Delete",
       ])
-    menu[6]?.run()
+    menu[7]?.run()
     #expect(
       pb.string(forType: .string)
         == vault.url(of: r.path).appending(path: Vault.resourceFileName).path(percentEncoded: false))
@@ -290,7 +291,7 @@ import Testing
     #expect(pb.string(forType: .string) == broken.appending(path: Vault.resourceFileName).path(percentEncoded: false))
 
     // renamed in place
-    menu[2]?.run()
+    menu[3]?.run()
     #expect(shell.renaming == .resource(r.id))
     shell.renaming = nil
     shell.rename(resource: r, to: "Papers 2017")
@@ -329,6 +330,7 @@ import Testing
     #expect(!shell.reading.shown)
     shell.openResource(papers)
     #expect(shell.reading.shown && shell.reading.tabs.map(\.title) == ["Papers"])
+    #expect(shell.reading.tabs[0].kind == "list" && shell.reading.tabs[0].payload == ["resource": "r1"])
     shell.openResource(notes)
     shell.openResource(papers)
     #expect(shell.reading.tabs.map(\.title) == ["Papers", "Notes"])
@@ -338,6 +340,24 @@ import Testing
     try fm.removeItem(at: vault.url(of: notes.path))
     shell.apply(Result { try vault.tree() })
     #expect(shell.reading.tabs.map(\.title) == ["Papers 2017"] && shell.reading.shown)
+  }
+
+  /// A resource's tab hears every read of the tree through its kind's follow, keeping the resource's name
+  @Test func aResourcesTabsKindFollowsEveryTreeRead() throws {
+    let (vault, shell, _) = try vault()
+    defer { try? fm.removeItem(at: vault.root) }
+    try resource(vault, "Papers.resource", id: "r1")
+    var heard: [String] = []
+    ReadingKinds.register(
+      "test-resource-follow",
+      follow: { tab, _ in
+        heard.append(tab.title)
+        return "not this"
+      }, make: { _ in NSView() })
+    shell.reading.open("Papers", key: "resource:r1", kind: "test-resource-follow")
+    shell.apply(Result { try vault.tree() })
+    shell.apply(Result { try vault.tree() })
+    #expect(heard == ["Papers", "Papers"] && shell.reading.tabs.map(\.title) == ["Papers"])
   }
 
   /// New Resource, beside New Board and New Folder: a package with its resource file and no entries, its row with 0,

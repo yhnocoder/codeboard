@@ -438,7 +438,8 @@
             "DeleteTests",
             "OpeningWritesNothingTests",
             "WritingWhenClosingTests",
-            "ShellPDFTests/addPDFCopiesTheFileUnderAFreeNameAndOpensItsTab"
+            "ShellPDFTests/addPDFCopiesTheFileUnderAFreeNameAndOpensItsTab",
+            "ShellPDFTests/addArxivPaperMakesAnEntryOpensItAndTheSameIdAgainOpensThatEntry"
           ]
         },
         "search": {
@@ -482,6 +483,10 @@
           "sources": ["CodeBoardShell/ImportAlert.swift", "CodeBoardCanvas/CanvasDiagnostics.swift"],
           "tests": ["FullWindowSheetTests"]
         },
+        "web": {
+          "sources": ["CodeBoardShell/ShellWeb.swift", "CodeBoardReading/Web"],
+          "tests": ["ShellWebTests"]
+        },
         "reading pane": {
           "sources": [
             "CodeBoardShell/MainWindow.swift",
@@ -498,7 +503,8 @@
       "changed": "files",
       "important": [
         "ReadingPaneTests/tabsOpenSwitchAndCloseAndTheSameKeyGoesToItsTab",
-        "PDFPlaceTests/aSelectionAcrossPagesIsOnePlacePerPageAndComesBackWhole"
+        "PDFPlaceTests/aSelectionAcrossPagesIsOnePlacePerPageAndComesBackWhole",
+        "PDFVersionTests/aSegmentShowsItsVersionInTheSameTabAndATranslationKeepsThePage"
       ],
       "areas": {
         "reading: frame": {
@@ -507,11 +513,19 @@
         },
         "reading: pdf": {
           "sources": ["CodeBoardReading/PDF", "CodeBoardResources"],
-          "tests": ["PDFPlaceTests", "PDFTabTests", "PDFSourceTests", "PDFAnnotationTests"]
+          "tests": ["PDFPlaceTests", "PDFTabTests", "PDFSourceTests", "PDFAnnotationTests", "PDFVersionTests", "PDFBlockTests"]
         },
         "reading: web": {
           "sources": ["CodeBoardReading/Web"],
-          "tests": ["WebBarVisibilityTests", "WebAddressTests", "WebHistoryTests", "WebPageTests", "WebSiteDataTests"]
+          "tests": [
+            "WebBarVisibilityTests",
+            "WebAddressTests",
+            "WebHistoryTests",
+            "WebPageTests",
+            "WebSiteDataTests",
+            "WebSavingTests",
+            "WebSavedPageTests"
+          ]
         },
         "reading: list": {
           "sources": ["CodeBoardReading/List"],

@@ -195,6 +195,9 @@ private func withDefaults(_ body: (UserDefaults, String) throws -> Void) rethrow
       w.onKeyChange = { hasKey.append($0) }
       #expect(w.switchControl.selectedSegment == 0)
       #expect(w.keyField.stringValue == "" && w.keyStatus.stringValue == "")
+      // no key: no line under it, and no gap where it would be
+      @MainActor func statusRowShown() -> Bool { w.grid.cell(for: w.keyStatus)?.row?.isHidden == false }
+      #expect(!statusRowShown())
 
       w.switchControl.selectedSegment = 1
       w.switchControl.sendAction(w.switchControl.action, to: w.switchControl.target)
@@ -206,7 +209,7 @@ private func withDefaults(_ body: (UserDefaults, String) throws -> Void) rethrow
       #expect(keys.key() == "sk-secret")
       #expect(hasKey == [true])
       // shown as a stand-in, never the key; committing it unchanged keeps the key
-      #expect(w.keyField.stringValue == SettingsWindow.saved && w.keyStatus.stringValue == "已保存")
+      #expect(w.keyField.stringValue == SettingsWindow.saved && w.keyStatus.stringValue == "已保存" && statusRowShown())
       w.commitKey(nil)
       #expect(keys.key() == "sk-secret" && hasKey == [true])
       let stored = try #require(d.persistentDomain(forName: name))
@@ -221,7 +224,37 @@ private func withDefaults(_ body: (UserDefaults, String) throws -> Void) rethrow
       w.keyField.stringValue = ""
       w.commitKey(nil)
       #expect(keys.key() == nil && hasKey == [true, true, false])
-      #expect(w.keyStatus.stringValue == "")
+      #expect(w.keyStatus.stringValue == "" && !statusRowShown())
+    }
+  }
+
+  /// Where tongtu is, however long its path: one line as wide as the fields, cut in its middle; the window keeps its
+  /// width
+  @MainActor @Test func theSettingsWindowSaysWhichTongtuInOneLineThatDoesNotWidenIt() throws {
+    _ = NSApplication.shared
+    let fm = FileManager.default
+    let dir = fm.temporaryDirectory.appending(path: "tongtu-" + String(repeating: "a-long-folder-name-", count: 8))
+    try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+    defer { try? fm.removeItem(at: dir) }
+    let exe = dir.appending(path: "tongtu")
+    try Data("#!/bin/sh\n".utf8).write(to: exe)
+    try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: exe.path)
+    withDefaults { d, _ in
+      let w = SettingsWindow(settings: AISettings(defaults: d), keys: MemoryKeyStore())
+      w.window.setFrameOrigin(CGPoint(x: -30000, y: -30000))
+      w.window.level = .underDesktop
+      w.window.orderFrontRegardless()
+      defer { w.window.close() }
+      w.window.layoutIfNeeded()
+      let width = w.window.frame.width
+      w.tongtuField.stringValue = exe.path
+      w.commitTongtu(nil)
+      w.window.layoutIfNeeded()
+      #expect(w.tongtuStatus.stringValue == "使用 \(exe.path)" && w.tongtuStatus.toolTip == exe.path)
+      #expect(w.window.frame.width == width && width < 600)
+      func drawnWidth(_ v: NSView) -> CGFloat { v.alignmentRect(forFrame: v.frame).width }
+      #expect(drawnWidth(w.tongtuStatus) == drawnWidth(w.tongtuField))
+      #expect(w.tongtuStatus.lineBreakMode == .byTruncatingMiddle && w.tongtuStatus.usesSingleLineMode)
     }
   }
 

@@ -94,12 +94,16 @@ public struct Entry: Equatable, Sendable {
 /// One readable form of an entry: a paper's v1, its v2, a translation of either, one saving of a web page
 public struct Version: Equatable, Sendable {
   public enum Content: Equatable, Sendable {
-    /// A PDF in the entry's folder, and the file there listing its blocks; without it, text by page only
-    case pdf(file: String, blocks: String? = nil)
+    /// A PDF in the entry's folder, the file there listing its blocks (without it, text by page only), and the TeX
+    /// file there that the list's line numbers are of (only with a block list)
+    case pdf(file: String, blocks: String? = nil, source: String? = nil)
     /// A web page saved whole outside the vault, by its content fingerprint, and its size
     case page(hash: String, bytes: Int)
     /// Any other file in the entry's folder, opened as the system opens it; no places in it
     case file(String)
+    /// A saved page translated block by block: the file in the entry's folder with each block's text in the
+    /// version's `language`, by the ids of the blocks of the page version it is `of`
+    case translation(file: String)
   }
 
   public var id: VersionID
@@ -185,6 +189,11 @@ extension Entry {
     for v in versions {
       if let of = v.of, of == v.id || !versionIDs.contains(of) {
         return "version \(v.id.rawValue): no other version \(of.rawValue) to translate"
+      }
+      if case .translation = v.content {
+        let page = versions.first { $0.id == v.of }.map { if case .page = $0.content { true } else { false } }
+        guard page == true else { return "version \(v.id.rawValue): a translation is of a saved page" }
+        guard v.language != nil else { return "version \(v.id.rawValue): a translation without its language" }
       }
     }
     var ids = Set<String>()
@@ -354,11 +363,12 @@ extension Version: Codable {
 
 extension Version.Content: Codable {
   private enum Keys: String, CodingKey {
-    case pdf, page, file
+    case pdf, page, file, translation
   }
   private struct PDF: Codable {
     var file: String
     var blocks: String?
+    var source: String?
   }
   private struct Page: Codable {
     var hash: String
@@ -373,10 +383,13 @@ extension Version.Content: Codable {
     switch try theCase(of: c) {
     case .pdf:
       let p = try c.decode(PDF.self, forKey: .pdf)
-      for name in [p.file] + (p.blocks.map { [$0] } ?? []) where !Vault.isFileName(name) {
+      for name in [p.file] + [p.blocks, p.source].compactMap({ $0 }) where !Vault.isFileName(name) {
         throw DecodingError.dataCorruptedError(forKey: .pdf, in: c, debugDescription: "\(name) is not a file name")
       }
-      self = .pdf(file: p.file, blocks: p.blocks)
+      if p.source != nil, p.blocks == nil {
+        throw DecodingError.dataCorruptedError(forKey: .pdf, in: c, debugDescription: "a source without a block list")
+      }
+      self = .pdf(file: p.file, blocks: p.blocks, source: p.source)
     case .page:
       let p = try c.decode(Page.self, forKey: .page)
       self = .page(hash: p.hash, bytes: p.bytes)
@@ -386,15 +399,24 @@ extension Version.Content: Codable {
         throw DecodingError.dataCorruptedError(forKey: .file, in: c, debugDescription: "\(name) is not a file name")
       }
       self = .file(name)
+    case .translation:
+      let name = try c.decode(File.self, forKey: .translation).file
+      guard Vault.isFileName(name) else {
+        throw DecodingError.dataCorruptedError(
+          forKey: .translation, in: c, debugDescription: "\(name) is not a file name")
+      }
+      self = .translation(file: name)
     }
   }
 
   public func encode(to encoder: any Encoder) throws {
     var c = encoder.container(keyedBy: Keys.self)
     switch self {
-    case .pdf(let file, let blocks): try c.encode(PDF(file: file, blocks: blocks), forKey: .pdf)
+    case .pdf(let file, let blocks, let source):
+      try c.encode(PDF(file: file, blocks: blocks, source: source), forKey: .pdf)
     case .page(let hash, let bytes): try c.encode(Page(hash: hash, bytes: bytes), forKey: .page)
     case .file(let name): try c.encode(File(file: name), forKey: .file)
+    case .translation(let name): try c.encode(File(file: name), forKey: .translation)
     }
   }
 }

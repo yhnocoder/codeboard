@@ -29,9 +29,10 @@ import Testing
     }
   }
 
+  /// ⌘L is File ▸ Open Location…, as in a browser
   @Test func lockIsCommandShiftL() {
     #expect(actions("l", [.command, .shift]) == [#selector(CanvasView.lock(_:))])
-    #expect(actions("l", .command).isEmpty)
+    #expect(actions("l", .command) == [NSSelectorFromString("openLocation:")])
   }
 
   /// ⌃- and ⌃⇧- go back and forward (keymap.ts navBack, navForward), as ⌘[ and ⌘] do
