@@ -305,6 +305,8 @@ public final class CanvasView: NSView {
   /// The glyph picked in the palette, following the pointer (its ghost, in the view's units) until a click
   package var placing: Sticker.Glyph?
   let stickerGhost = CALayer()
+  /// A card collected from a reading pane, in hand while its drag is over the board (CanvasCollect.swift)
+  var inHand: InHand?
   package var stickerPalette: StickerPalette?
   /// The Shelf: its button, its panel, the entry shown large, the pictures drawn of each entry, what flies in, the
   /// outline of where a hovered entry returns and of one dragged out (board units)
@@ -510,7 +512,7 @@ public final class CanvasView: NSView {
     // a Note's [[reference]] points at a card
     MarkdownEditing.referenceTitle = "Link to Card"
     CanvasView.all.add(self)
-    registerForDraggedTypes([.string, .fileURL])
+    registerForDraggedTypes([.string, .fileURL, CanvasView.collectedType])
     // layer-hosting: the canvas owns its layer tree, y-down like the board
     let root = CALayer()
     root.isGeometryFlipped = true

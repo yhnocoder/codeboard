@@ -222,13 +222,11 @@ extension CanvasView {
     }
   }
 
-  /// Asks the provider for a block's picture at least `pixels` wide (a power of two from 128, DecodeCache's levels),
-  /// unless one as wide is held or asked for; the board is drawn again with it once it comes. A picture the provider
+  /// Asks the provider for a block's picture at least `pixels` wide (at its `level`), unless one as wide is held or asked for; the board is drawn again with it once it comes. A picture the provider
   /// has none of is asked again only once it says its sources changed
   func askSourcePicture(_ a: SourceAnchor, pixels: Int) {
     guard let provider = sources else { return }
-    var level = 128
-    while level < pixels { level *= 2 }
+    let level = SourcePictures.level(pixels)
     let key = SourcePictures.Key(anchor: Scene.key(a), width: level)
     guard !sourcePictures.holds(key), sourcePictures.asked.insert(key).inserted else { return }
     Task { [weak self] in
@@ -275,6 +273,13 @@ struct SourcePictures {
   private var lru = ByteLRU<Key>(cap: 64 << 20)
   private var images: [Key: CGImage] = [:]
   var asked: Set<Key> = []
+
+  /// The width a picture at least `pixels` wide is asked at: a power of two from 128, DecodeCache's levels
+  static func level(_ pixels: Int) -> Int {
+    var l = 128
+    while l < pixels { l *= 2 }
+    return l
+  }
 
   /// Whether one at least as wide as `k` is held
   func holds(_ k: Key) -> Bool { images.keys.contains { $0.anchor == k.anchor && $0.width >= k.width } }

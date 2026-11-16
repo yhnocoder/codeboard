@@ -163,6 +163,7 @@
           "sources": [
             "CodeBoardCanvas/CanvasPaste.swift",
             "CodeBoardCanvas/CanvasPasteChip.swift",
+            "CodeBoardCanvas/CanvasCollect.swift",
             "CodeBoardModel/Clip.swift"
           ],
           "tests": [
