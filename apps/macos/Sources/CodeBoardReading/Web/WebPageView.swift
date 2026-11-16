@@ -9,12 +9,15 @@ import os
 /// the same view, under the app's own scheme with its scripts off, until the tab goes to an address, and translated
 /// there block by block, its translations kept beside its entry. A selection gets the reading pane's selection bar
 /// (Add to Board, Copy), ⌥↵ and dragging it out take it to the board; on a page online the page is saved as a link
-/// first (WebSelection.swift). The tab follows what it shows (its title, what it saves, how a saved page is shown), so
-/// that a session restored opens it again
+/// first (WebSelection.swift). In body view the body can be corrected, part by part, and kept as the site's rule in
+/// the vault. The tab follows what it shows (its title, what it saves, how a saved page is shown), so that a session
+/// restored opens it again
 final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUIDelegate, ReadingLookFollower {
   let web: PageWebView
   let bar: WebBar
   private(set) var selectionBar: SelectionBar!
+  /// The picture of the page being dragged now, as the page's script last said
+  var draggedImage: WebImage?
   /// What is selected now, as the page's script last said
   private(set) var selection: WebSelection?
   /// The page's scroll as it last said
@@ -74,6 +77,9 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
   private var translationFailure: String?
   /// The translations' writes, each after the one before
   private var writing: Task<Void, Never>?
+  /// The reader can be asked to correct the body (`pick`); none before it has read the page
+  private(set) var readerPicks: Bool?
+  /// Why the vault's rule for the site could not be read: the page is read without it
   /// The views of open web tabs
   private static var live: [ReadingTab.ID: Weak] = [:]
   /// What reveal is waiting for a saved page's reader to show, by tab: a block and its characters
@@ -125,6 +131,8 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
     selecting = WKUserScript(
       source: WebReading.selectionScript, injectionTime: .atDocumentStart, forMainFrameOnly: true,
       in: WebReading.selectionWorld)
+    let dragged = ImageRelay()
+    userScripts.add(dragged, contentWorld: WebReading.selectionWorld, name: "image")
     self.scripts = WebScripts(scripts)
     let saving = SavingRelay()
     if self.scripts != nil {
@@ -139,6 +147,7 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
     relay.owner = self
     saving.owner = self
     selected.owner = self
+    dragged.owner = self
     web.allowsBackForwardNavigationGestures = true
     web.navigationDelegate = self
     web.uiDelegate = self
@@ -158,6 +167,7 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
     addSubview(selectionBar)
     web.onKey = { [weak self] in self?.collectKey($0) ?? false }
     web.dragsSelection = { [weak self] in self?.dragsSelection(at: $0) }
+    web.dragsImage = { [weak self] in self?.draggedImage != nil && self?.context.pane.vault != nil }
     web.collecting = { [weak self] in self?.collecting() }
     suggestions.isHidden = true
     suggestions.onChoose = { [weak self] url in self?.go(to: url) }
@@ -171,6 +181,11 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
     bar.save.action = #selector(saveClicked(_:))
     bar.extract.target = self
     bar.extract.action = #selector(extractChosen(_:))
+    bar.extract.onRepress = { [weak self] i in if i == 0 { self?.bodyClicked() } }
+    bar.pickCancel.target = self
+    bar.pickCancel.action = #selector(cancelPicking(_:))
+    bar.pickDone.target = self
+    bar.pickDone.action = #selector(pickDone(_:))
     bar.translate.target = self
     bar.translate.action = #selector(translateChosen(_:))
     bar.translate.selectedSegment = WebReading.Language.allCases.firstIndex(of: language) ?? 0
@@ -362,6 +377,7 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
       } else {
         "Body view is for saved pages"
       }
+    showBodyTip()
     showTranslation()
   }
 
@@ -392,6 +408,10 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
     userScripts.removeAllUserScripts()
     userScripts.addUserScript(scroll)
     if !saved { userScripts.addUserScript(selecting) }
+    userScripts.addUserScript(
+      WKUserScript(
+        source: WebReading.imageScript, injectionTime: .atDocumentStart, forMainFrameOnly: true,
+        in: WebReading.selectionWorld))
     for s in (saved ? scripts?.saved : scripts?.online) ?? [] { userScripts.addUserScript(s) }
   }
 
@@ -403,6 +423,8 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
   func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
     stopTranslating()
     selected(nil)
+    showPicking(nil)
+    readerPicks = nil
   }
 
   func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
@@ -417,27 +439,134 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
 
   /// A saved page loaded: the reader given its site's rule files, in the mode chosen, then asked for its blocks
   private func read() {
-    guard case .saved(_, let address, _) = page, scripts != nil, let store else { return }
+    guard case .saved(_, let address, _) = page, scripts != nil, store != nil else { return }
     let url = web.url
     Task {
-      let files = ((try? await store.rules(forHost: address.host() ?? "")) ?? []).compactMap {
+      let files = await ruleFiles(forHost: address.host() ?? "").compactMap {
         try? JSONSerialization.jsonObject(with: $0)
       }
       guard web.url == url else { return }
-      _ = try? await web.callAsyncJavaScript(
-        "return await shiyiReader.apply({files, url, mode})",
+      let picks = try? await web.callAsyncJavaScript(
+        """
+        await shiyiReader.apply({files, url, mode})
+        return typeof shiyiReader.pick == "function"
+        """,
         arguments: ["files": files, "url": address.absoluteString, "mode": readerMode],
         contentWorld: WebReading.scriptWorld)
       guard web.url == url else { return }
+      readerPicks = picks as? Bool == true
+      showBodyTip()
       await readBlocks()
       revealPending()
     }
   }
 
+  /// The rule files of a site as the saving service gives them, the user's own first
+  private func ruleFiles(forHost host: String) async -> [Data] {
+    (try? await store?.rules(forHost: host)) ?? []
+  }
+
   @objc func extractChosen(_ sender: Any?) {
     guard onSaved, scripts != nil else { return }
+    showBodyTip()
     web.callAsyncJavaScript(
       "return await shiyiReader.setMode(mode)", arguments: ["mode": readerMode], in: nil, in: WebReading.scriptWorld)
+  }
+
+  // MARK: Correcting the body
+
+  /// The body button, chosen, says it can correct the body, or why the site's own rule was left out
+  private func showBodyTip() {
+    guard bar.extract.isEnabled, bar.extract.selectedSegment == 0 else { return }
+    bar.extract.buttons[0].toolTip = "Body. Click again to correct what counts as the body"
+  }
+
+  /// The body button pressed while body view is shown: what it can do besides
+  private func bodyClicked() {
+    let b = bar.extract.buttons[0]
+    bodyMenu().popUp(positioning: nil, at: CGPoint(x: 0, y: b.bounds.height + 4), in: b)
+  }
+
+  func bodyMenu() -> NSMenu {
+    let menu = NSMenu()
+    menu.autoenablesItems = false
+    let item = NSMenuItem(title: "Correct the Body…", action: #selector(startPicking(_:)), keyEquivalent: "")
+    item.target = self
+    item.isEnabled = pickingOff == nil
+    item.toolTip = pickingOff
+    menu.addItem(item)
+    return menu
+  }
+
+  /// Why the body cannot be corrected here; none: it can
+  private var pickingOff: String? {
+    if !onSaved || readerMode != "body" { return "The body is corrected in body view of a saved page" }
+    if context.pane.vault == nil { return "A correction is kept in the vault: open one first" }
+    guard let readerPicks else { return "The page is being read" }
+    if !readerPicks {
+      return "Correcting the body needs newer page scripts of the saving service than those on this Mac"
+    }
+    return nil
+  }
+
+  private func showPicking(_ p: WebBar.Picking?) {
+    guard p != bar.picking else { return }
+    bar.show(picking: p)
+    handle(.editing(p != nil))
+  }
+
+  /// The reader told to let parts be picked: it outlines what is under the pointer, and a click leaves a part out of
+  /// the body or takes it back
+  @objc func startPicking(_ sender: Any?) {
+    guard pickingOff == nil, bar.picking == nil else { return }
+    showPicking(WebBar.Picking())
+    web.callAsyncJavaScript("shiyiReader.pick(true)", in: nil, in: WebReading.scriptWorld)
+  }
+
+  /// The reader said how picking is: left by Escape on the page, it is cancelled
+  func pickerSaid(_ m: [String: Any]) {
+    guard var p = bar.picking else { return }
+    if m["picking"] as? Bool == false { return endPicking() }
+    p.changed = m["changed"] as? Bool ?? p.changed
+    showPicking(p)
+  }
+
+  /// The reader's rule file, with what was picked, handed to the saving service as it is, which keeps it as the site's
+  /// rule, and the page read again with it; nothing is kept when nothing changed. One that cannot be kept says why on
+  /// the bar, picking going on
+  @objc func pickDone(_ sender: Any?) {
+    guard let p = bar.picking, let store else { return }
+    guard p.changed else { return endPicking() }
+    let url = web.url
+    Task {
+      do {
+        let r = try await web.callAsyncJavaScript("return shiyiReader.ruleFile()", contentWorld: WebReading.scriptWorld)
+        guard web.url == url, bar.picking != nil else { return }
+        guard let d = r as? [String: Any], let domain = d["domain"] as? String, let rules = d["rules"],
+          JSONSerialization.isValidJSONObject(rules)
+        else {
+          throw CocoaError(.fileWriteUnknown, userInfo: [NSLocalizedDescriptionKey: "the page scripts gave no rule"])
+        }
+        try await store.putRule(domain: domain, try JSONSerialization.data(withJSONObject: rules))
+        guard web.url == url, bar.picking != nil else { return }
+        endPicking()
+      } catch {
+        showPicking(
+          WebBar.Picking(changed: p.changed, failure: "The correction could not be kept: \(error.localizedDescription)")
+        )
+      }
+    }
+  }
+
+  /// Picking left without keeping anything: the page read again with the rules as they are
+  @objc func cancelPicking(_ sender: Any?) {
+    if bar.picking != nil { endPicking() }
+  }
+
+  private func endPicking() {
+    showPicking(nil)
+    web.callAsyncJavaScript("shiyiReader.pick(false)", in: nil, in: WebReading.scriptWorld)
+    read()
   }
 
   /// The page in the history: a visit when it has loaded, its title when that comes (often after it has loaded)
@@ -715,6 +844,15 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
   /// selection in a translation, the whole original block); on a page online, the page's entry, the page saved as a
   /// link first when it is not saved. The heading before it is the source line's lighter part
   func collecting() -> Collected? {
+    if let i = draggedImage {
+      let entry: Entry?
+      if case .saved(let hash, _, _) = page { entry = savedVersion(hash)?.1 } else { entry = linkEntry() }
+      guard let entry else { return nil }
+      return Collected(
+        body: .picture(url: i.url, alt: i.alt, width: i.width, height: i.height),
+        source: SourceAnchor(entry: entry.id), title: web.title.flatMap { $0.isEmpty ? nil : $0 } ?? entry.title,
+        label: "")
+    }
     guard let s = selection else { return nil }
     let label = s.heading ?? ""
     if case .saved(let hash, _, let title) = page {
@@ -809,9 +947,10 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
     return menu
   }
 
-  /// Escape stops a saving under way; with none it goes on up the chain (NSView has no cancelOperation of its own to
-  /// call: super would throw)
+  /// Escape leaves correcting the body, or stops a saving under way; with neither it goes on up the chain (NSView has
+  /// no cancelOperation of its own to call: super would throw)
   override func cancelOperation(_ sender: Any?) {
+    if bar.picking != nil { return endPicking() }
     guard let capture else {
       nextResponder?.doCommand(by: #selector(NSResponder.cancelOperation(_:)))
       return
@@ -865,7 +1004,7 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
       defer { if self.capture === capture { self.capture = nil } }
       do {
         async let jar = cookies.allCookies()
-        let files = (try? await store.rules(forHost: url.host() ?? "")) ?? []
+        let files = await ruleFiles(forHost: url.host() ?? "")
         let (file, script) = try await capture.run(files: files, cookies: await jar)
         defer { try? FileManager.default.removeItem(at: file) }
         let meta = WebMeta(script: script, title: title)

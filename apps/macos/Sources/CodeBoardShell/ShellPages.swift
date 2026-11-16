@@ -49,6 +49,15 @@ struct ShiyiStore: PageStore {
     try await said { try await client.rules(forHost: host).map { try JSONEncoder().encode($0) } }
   }
 
+  func putRule(domain: String, _ rules: Data) async throws {
+    let rules = try JSONDecoder().decode(JSON.self, from: rules)
+    _ = try await said { try await client.putRule(domain: domain, rules) }
+  }
+
+  func setVault(_ folder: URL?) async throws {
+    _ = try await said { try await client.putSettings(vault: folder.map { .set($0.path) } ?? .remove) }
+  }
+
   /// The service's errors as the save button says them, after "could not be saved: "
   struct Failure: LocalizedError {
     var error: ShiyiError
@@ -101,6 +110,10 @@ extension Shell {
     let watermark = machine.appending(path: "Web/page-watermark.json")
     Task {
       defer { pagesImporting = false }
+      // the service keeps the user's site rules in this vault from now on
+      let folder = vault.root.appending(path: Vault.appDataFolder, directoryHint: .isDirectory)
+      try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+      try? await store.setVault(folder.standardizedFileURL)
       await Self.importPages(from: store, into: vault, watermark: watermark)
     }
   }
