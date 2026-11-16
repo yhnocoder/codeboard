@@ -165,6 +165,7 @@ public struct ShellState: Codable, Equatable, Sendable {
     // in a test process: no menu, alert or panel ever comes up
     TestGuard.install()
     ReadingKinds.registerBuiltIn()
+    WebReading.register(saving: Self.webSaving, scripts: Self.webScripts)
     sources = ReadingSources(pane: reading)
     reading.onCollect = { [weak self] in self?.collect($0) }
   }

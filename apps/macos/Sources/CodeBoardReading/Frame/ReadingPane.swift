@@ -160,13 +160,13 @@ public struct ReadingTab: Codable, Equatable, Identifiable, Sendable {
     }
   }
 
-  /// A tab's view changed what it shows: its title, what it saves, the key it is gone to by; nil leaves each as it is.
-  /// Its view stays
+  /// A tab's view changed what it shows: its title, what it saves, the key it is gone to by; nil leaves each as it is,
+  /// and an empty key clears the tab's. Its view stays
   public func update(_ tab: ReadingTab.ID, title: String? = nil, payload: [String: String]? = nil, key: String? = nil) {
     guard let i = tabs.firstIndex(where: { $0.id == tab }) else { return }
     if let title, title != tabs[i].title { tabs[i].title = title }
     if let payload, payload != tabs[i].payload { tabs[i].payload = payload }
-    if let key, key != tabs[i].key { tabs[i].key = key }
+    if let key, (key.isEmpty ? nil : key) != tabs[i].key { tabs[i].key = key.isEmpty ? nil : key }
   }
 
   public func move(_ tab: ReadingTab.ID, to index: Int) {

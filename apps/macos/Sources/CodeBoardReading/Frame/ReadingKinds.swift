@@ -37,9 +37,14 @@ import CodeBoardModel
     return follow(tab, pane)
   }
 
+  /// What `ReadingContext.open` hands the tab it opens, until that tab's view is made
+  fileprivate static var handing: (tab: ReadingTab.ID, value: Any)?
+
   /// The view a tab shows, made once when it opens and kept while it is open
   static func view(for tab: ReadingTab, in paneView: ReadingPaneView) -> NSView {
-    kinds[tab.kind]?.make(ReadingContext(tab: tab.id, kind: tab.kind, pane: paneView.pane, paneView: paneView))
+    let handed = handing.flatMap { $0.tab == tab.id ? $0.value : nil }
+    return kinds[tab.kind]?.make(
+      ReadingContext(tab: tab.id, kind: tab.kind, pane: paneView.pane, paneView: paneView, handed: handed))
       ?? NSView()
   }
 }
@@ -56,6 +61,9 @@ import CodeBoardModel
   public let kind: String
   public let pane: ReadingPane
   weak var paneView: ReadingPaneView?
+  /// What the tab that opened this one handed it (`open`'s `handing`); nil for every other way a tab is made. Never
+  /// saved
+  public let handed: Any?
 
   /// What the tab saves now
   public var payload: [String: String] { pane.tabs.first { $0.id == tab }?.payload ?? [:] }
@@ -70,7 +78,8 @@ import CodeBoardModel
     pane.machineFolder?.appending(path: kind.prefix(1).uppercased() + kind.dropFirst(), directoryHint: .isDirectory)
   }
 
-  /// The tab follows what it shows: its title, what it saves, the key it is gone to by; nil leaves each as it is
+  /// The tab follows what it shows: its title, what it saves, the key it is gone to by; nil leaves each as it is, and
+  /// an empty key clears the tab's
   public func update(title: String? = nil, payload: [String: String]? = nil, key: String? = nil) {
     pane.update(tab, title: title, payload: payload, key: key)
   }
@@ -79,10 +88,15 @@ import CodeBoardModel
   public func collect(_ c: Collected) { pane.onCollect?(c) }
 
   /// Another tab of a kind after the current one, selected (`ReadingPane.open`), and its view, made now; not from
-  /// within a kind's `make`
+  /// within a kind's `make`. `handing`: what its view is made with, its context's `handed` (what WebKit hands over for
+  /// a page's new window); a tab already open for `key` is gone to and given nothing
   @discardableResult
-  public func open(_ title: String, kind: String, payload: [String: String] = [:], key: String? = nil) -> NSView? {
+  public func open(
+    _ title: String, kind: String, payload: [String: String] = [:], key: String? = nil, handing: Any? = nil
+  ) -> NSView? {
     let id = pane.open(title, key: key, kind: kind, payload: payload)
+    ReadingKinds.handing = handing.map { (id, $0) }
+    defer { ReadingKinds.handing = nil }
     paneView?.sync()
     return paneView?.views[id]
   }

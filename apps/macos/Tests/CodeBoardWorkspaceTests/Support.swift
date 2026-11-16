@@ -30,15 +30,17 @@ func withNano<T>(_ body: (String) async throws -> T) async throws -> T {
   }
 }
 
-/// A folder as the host's test workspace has it: editors' unsaved texts are set by the test, and the listings counted
-/// (the index must not walk the workspace on every click)
+/// A folder as the host's test workspace has it: editors' unsaved texts are set by the test, the listings counted
+/// (the index must not walk the workspace on every click), the language server a fake one and the log kept
 final class TestWorkspace: CodeWorkspace {
   let folder: FolderWorkspace
-  private let state = Mutex((finds: 0, unsaved: [String: String]()))
+  let fake = FakeLanguage()
+  private let state = Mutex((finds: 0, unsaved: [String: String](), logs: [String]()))
 
   init(_ root: String) { folder = FolderWorkspace(root: root) }
 
   var root: String { folder.root }
+  var roots: [String] { folder.roots }
   var finds: Int { state.withLock { $0.finds } }
   func setUnsaved(_ abs: String, _ text: String?) { state.withLock { $0.unsaved[abs] = text } }
 
@@ -55,7 +57,16 @@ final class TestWorkspace: CodeWorkspace {
   }
 
   func openLanguage(_ abs: String) -> String? { nil }
-  func log(_ level: LogLevel, _ text: String) {}
+  var language: any CodeLanguage { fake }
+  func log(_ level: LogLevel, _ text: String) { state.withLock { $0.logs.append("\(level) \(text)") } }
+
+  /// The lines logged since the last call, as "level text"
+  func takeLogs() -> [String] {
+    state.withLock { s in
+      defer { s.logs = [] }
+      return s.logs
+    }
+  }
 }
 
 /// A host's pieces for one index
@@ -170,6 +181,9 @@ final class TestClock: Clock, Sendable {
     }
     for s in due { s.wake.resume() }
   }
+
+  /// How many sleeps wait on the clock now
+  var sleeping: Int { state.withLock { $0.sleepers.count } }
 
   /// Returns once n sleeps wait on the clock
   func untilSleeping(_ n: Int) async {
