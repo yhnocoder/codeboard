@@ -110,6 +110,7 @@ jobs:
   macos:
     uses: ./.github/workflows/macos.yml
     with: { everything: true }
+    secrets: { SHIYI_READ_TOKEN: "${{ secrets.SHIYI_READ_TOKEN }}" }
 
   repeat:
     needs: harness
