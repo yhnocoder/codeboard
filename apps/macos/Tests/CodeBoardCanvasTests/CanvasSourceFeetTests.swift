@@ -1,5 +1,7 @@
 import AppKit
 import CodeBoardModel
+import IOSurface
+import MarkdownUI
 import Testing
 
 @testable import CodeBoardCanvas
@@ -12,6 +14,8 @@ import Testing
 @MainActor final class FakeSources: SourceProvider {
   var labels: [String: SourceLabel] = [:]
   var sizes: [String: CGSize] = [:]
+  /// The papers' macros, by entry
+  var preambles: [String: String] = [:]
   var revealed: [SourceAnchor] = []
   /// The blocks' pictures asked for (entry, width), each answered with `picture` once let go
   var asked: [(entry: String, width: Int)] = []
@@ -29,7 +33,7 @@ import Testing
     return picture
   }
   func reveal(_ a: SourceAnchor) { revealed.append(a) }
-  func mathPreamble(for a: SourceAnchor) -> String? { nil }
+  func mathPreamble(for a: SourceAnchor) -> String? { preambles[a.entry.rawValue] }
   func questions(in entry: EntryID?) -> [EntryQuestion] {
     entryQuestions.filter { entry == nil || $0.anchor.entry == entry }
   }
@@ -339,6 +343,128 @@ extension CanvasRemoteImageTests {
       fake.onSourcesChanged?()
       await r.until("asked again") { fake.asked.count > asked }
       fake.letGo()
+    }
+
+    // MARK: a collected Note's formulas typeset with its paper's macros
+
+    static let macro = "\\newcommand{\\R}{\\mathbb{R}}"
+    static let withMacro = "Let $x \\in \\R^n$."
+    static let spelled = "Let $x \\in \\mathbb{R}^n$."
+
+    func formula(_ id: String, x: Double, _ text: String, source: SourceAnchor?) -> Card {
+      Card(
+        id: cid(id), x: x, y: 100, width: 300, content: .own(CardContent(source: source, body: .note(Note(text: text))))
+      )
+    }
+
+    /// e1's paper defines \R; n2 and n4 use it without (no source; a paper with no macros), n3 spells it out
+    func macroBoard(_ name: String) -> Board {
+      Board(
+        id: BoardID(rawValue: name),
+        cards: [
+          formula("n1", x: 100, Self.withMacro, source: anchor("e1")),
+          formula("n2", x: 500, Self.withMacro, source: nil),
+          formula("n3", x: 900, Self.spelled, source: nil),
+          formula("n4", x: 1300, Self.withMacro, source: anchor("e2")),
+        ])
+    }
+
+    func drawn(_ r: Rig, _ id: String) -> Drawing.Note? {
+      guard let i = r.canvas.index(of: .card(cid(id))), case .note(let n) = r.canvas.scene?.items[i].drawing else {
+        return nil
+      }
+      return n
+    }
+
+    /// A Note's text as the canvas draws it at rest, its pixels
+    func shot(_ r: Rig, _ id: String) async throws -> [UInt8] {
+      let it = try #require(r.canvas.index(of: .card(cid(id))).flatMap { r.canvas.scene?.items[$0] })
+      let s = try #require(
+        await CanvasView.picture(it, scale: 2, theme: r.canvas.currentTheme, display: r.canvas.display, priority: 1))
+      return bytes(s.surface)
+    }
+
+    func bytes(_ s: IOSurface) -> [UInt8] {
+      s.lock(options: .readOnly, seed: nil)
+      defer { s.unlock(options: .readOnly, seed: nil) }
+      var out: [UInt8] = []
+      for y in 0..<s.height {
+        out += UnsafeRawBufferPointer(start: s.baseAddress + y * s.bytesPerRow, count: s.width * 4)
+      }
+      return out
+    }
+
+    @Test func aCollectedNotesFormulasAreTypesetWithItsPapersMacros() async throws {
+      let fake = FakeSources()
+      fake.preambles["e1"] = Self.macro
+      let r = try await Rig(macroBoard("macros"), zoom: 1, sources: fake)
+      defer { r.close() }
+      #expect(drawn(r, "n1")?.preamble == Self.macro)
+      #expect(drawn(r, "n2")?.preamble == "" && drawn(r, "n4")?.preamble == "", "none without a source or macros")
+      // without the paper's definition \R is a macro the engine does not know
+      let engines = try MarkdownAssets.engines()
+      guard case .error = engines.typeset("\\R", display: false, preamble: "") else {
+        Issue.record("\\R known without a preamble")
+        return
+      }
+      let collected = try await shot(r, "n1")
+      #expect(collected == (try await shot(r, "n3")), "drawn as \\mathbb{R} is")
+      let bare = try await shot(r, "n2")
+      #expect(bare != collected, "unknown without the paper's macros")
+      #expect((try await shot(r, "n4")) == bare, "a paper without macros: as without a source")
+      // measured with them too, as tall as the one spelled out
+      #expect(r.canvas.measured[cid("n1")]?.preamble == Self.macro && r.canvas.measured[cid("n2")]?.preamble == "")
+      #expect(r.canvas.measured[cid("n1")]?.size.size == r.canvas.measured[cid("n3")]?.size.size)
+    }
+
+    @Test func whenThePapersMacrosChangeOnlyItsNotesAreLaidOutAndDrawnAgain() async throws {
+      let fake = FakeSources()
+      fake.preambles["e1"] = Self.macro
+      let r = try await Rig(macroBoard("macros-change"), zoom: 1, sources: fake)
+      defer { r.close() }
+      let before = try await shot(r, "n1")
+      let changed = "\\newcommand{\\R}{\\mathcal{R}}"
+      fake.preambles["e1"] = changed
+      fake.onSourcesChanged?()
+      await r.until("drawn again") { drawn(r, "n1")?.preamble == changed }
+      let reused = try #require(r.canvas.scene?.reused)
+      #expect(!reused.contains(cid("n1")) && reused.isSuperset(of: [cid("n2"), cid("n3"), cid("n4")]))
+      #expect(r.canvas.measured[cid("n1")]?.preamble == changed, "measured again")
+      #expect((try await shot(r, "n1")) != before)
+    }
+
+    /// The editor's layout drawn
+    func pixels(_ l: BlockLayout) throws -> [UInt8] {
+      let (w, h) = (Int(ceil(l.size.width)), Int(ceil(l.size.height)))
+      let ctx = try #require(
+        CGContext(
+          data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4, space: CGColorSpaceCreateDeviceRGB(),
+          bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+      l.draw(in: ctx, scale: 1, clip: CGRect(x: 0, y: 0, width: w, height: h)) { _ in nil }
+      let data = try #require(ctx.data)
+      return Array(UnsafeRawBufferPointer(start: data, count: w * h * 4))
+    }
+
+    @Test func theEditorOfACollectedNoteTypesetsWithItsPapersMacros() async throws {
+      let fake = FakeSources()
+      fake.preambles["e1"] = Self.macro
+      let r = try await Rig(macroBoard("macros-editor"), zoom: 1, sources: fake)
+      defer { r.close() }
+      // what is typed is laid out by the editor's own resources: the paragraph with the formula laid out again
+      func written(_ id: String) async throws -> [UInt8] {
+        r.canvas.beginEditing(cid(id))
+        await r.until("writing") { r.canvas.editing?.writer != nil && r.canvas.editing?.ready == true }
+        await r.type(" ok")
+        return try pixels(try #require(r.canvas.writerView?.core.layout))
+      }
+      let collected = try await written("n1")
+      await r.canvas.endEditing()
+      let spelled = try await written("n3")
+      await r.canvas.endEditing()
+      let bare = try await written("n2")
+      await r.canvas.endEditing()
+      #expect(collected == spelled, "\\R typed with the paper's macro as \\mathbb{R}")
+      #expect(collected != bare)
     }
   }
 }

@@ -500,8 +500,8 @@
           "tests": ["RepositoriesBlockTests"]
         },
         "web": {
-          "sources": ["CodeBoardShell/ShellWeb.swift", "CodeBoardReading/Web"],
-          "tests": ["ShellWebTests"]
+          "sources": ["CodeBoardShell/ShellWeb.swift", "CodeBoardShell/ShellPages.swift", "CodeBoardReading/Web"],
+          "tests": ["ShellWebTests", "PageStoreChoiceTests", "ShiyiStoreTests", "ShiyiWebTabTests"]
         },
         "reading pane": {
           "sources": [

@@ -43,7 +43,7 @@ public final class CanvasView: NSView {
   let display: NativeNotes
   var theme = Theme.warmInk
   /// The board shown, to show again in another theme
-  var shown: (board: VaultBoard, vault: Vault)?
+  package var shown: (board: VaultBoard, vault: Vault)?
   /// What is drawn; every change of it (a card added, gone, moved or resized, a Section folded, an undo, another
   /// board) has what is under a resting pointer hovered again on the next frame
   var scene: Scene? {
@@ -119,7 +119,7 @@ public final class CanvasView: NSView {
     get { levels.mode }
     set { levels.mode = newValue }
   }
-  var camera = Camera(origin: .zero, zoom: 1)
+  package var camera = Camera(origin: .zero, zoom: 1)
   /// The camera the world was last put on device pixels at, at rest (`settleOnPixels`)
   var settledAt: Camera?
   /// Where the next board shown is shown from (back to a board: where it was), instead of all of it in view
@@ -185,12 +185,12 @@ public final class CanvasView: NSView {
   // MARK: Editing state (CanvasEditing.swift)
 
   /// The open board this canvas edits; nil: it only shows a board read from the vault
-  var document: BoardDocument?
+  package var document: BoardDocument?
   var stopObserving: (() -> Void)?
   /// The board the scene was made from
   var shownBoard: Board?
   /// What the Note renderer measured, by card, with what it measured: a later scene measures only what changed
-  var measured: [CardID: (note: NoteBody, width: Double, size: NoteMetrics)] = [:]
+  var measured: [CardID: (note: NoteBody, width: Double, preamble: String, size: NoteMetrics)] = [:]
   /// What the Note renderer measured of each Always Show sidenote in a code card, and for what
   var measuredInline: [SidenoteID: (note: NoteBody, width: Double, size: NoteMetrics)] = [:]
   /// The pointer or key gesture under way; while one runs nothing is redrawn or swapped
@@ -648,7 +648,7 @@ public final class CanvasView: NSView {
     let work = Task.detached(priority: .userInitiated) {
       let package = vault.url(of: board.path)
       let b = try open ?? vault.board(at: board.path)
-      let measures = Scene.measures(b, package: package, vault: vault)
+      let measures = Scene.measures(b, package: package, vault: vault, sources: sources)
       let sizes = await CanvasView.measure(measures, theme: theme, display: display)
       display.prepare(
         CanvasView.inView(measures, of: b, sizes: sizes, camera: opensAt, size: size, theme: theme, backing: backing))
@@ -711,7 +711,7 @@ public final class CanvasView: NSView {
     guard load == loads else { return }
     shownBoard = b
     measured = [:]
-    for m in measures { if let size = sizes[m.card] { measured[m.card] = (m.note, m.width, size) } }
+    for m in measures { if let size = sizes[m.card] { measured[m.card] = (m.note, m.width, m.preamble, size) } }
     measuredInline = [:]
     for m in inlines {
       if let id = m.sidenote, let size = inline[id] { measuredInline[id] = (m.note, m.width, size) }
@@ -758,7 +758,7 @@ public final class CanvasView: NSView {
       guard r.intersects(view) else { return nil }
       let request = NoteSizeRequest(
         note: m.note, width: m.width, folder: m.folder, look: theme.id.rawValue, dark: theme.dark, refs: m.refs,
-        hideHead: m.hideHead)
+        hideHead: m.hideHead, preamble: m.preamble)
       // its bitmap's size without the shadow's bleed: only a Note too big for the zoom's scale is capped by it
       let scale = Levels.scale(zoom, backing: backing, size: r.size)
       return (hypot(r.midX - mid.x, r.midY - mid.y), (request, stored[m.card], Double(scale)))
@@ -794,7 +794,7 @@ public final class CanvasView: NSView {
     let requests = ms.map {
       NoteSizeRequest(
         note: $0.note, width: $0.width, folder: $0.folder, look: theme.id.rawValue, dark: theme.dark, refs: $0.refs,
-        hideHead: $0.hideHead)
+        hideHead: $0.hideHead, preamble: $0.preamble)
     }
     // before any picture: the board waits for these
     let sizes = try? await display.metrics(of: requests, priority: 1)
@@ -1613,11 +1613,11 @@ public final class CanvasView: NSView {
       guard let priority else {
         return await display.cached(
           of: n.content, width: item.rect.width, height: n.height, folder: n.folder, scale: scale, look: look,
-          dark: theme.dark, refs: n.refs, hideHead: n.hideHead)
+          dark: theme.dark, refs: n.refs, hideHead: n.hideHead, preamble: n.preamble)
       }
       return try? await display.snapshot(
         of: n.content, width: item.rect.width, height: n.height, folder: n.folder, scale: scale, look: look,
-        dark: theme.dark, refs: n.refs, hideHead: n.hideHead, priority: priority)
+        dark: theme.dark, refs: n.refs, hideHead: n.hideHead, preamble: n.preamble, priority: priority)
     case .image(let p):
       guard p.svg, let url = p.url else { return nil }
       let width = Int((item.rect.width * scale).rounded(.up))
@@ -1632,11 +1632,11 @@ public final class CanvasView: NSView {
         if let priority {
           snap = try? await display.snapshot(
             of: .inline(n.text), width: n.frame.width, height: nil, folder: n.folder, scale: scale, look: look,
-            dark: theme.dark, refs: n.refs, hideHead: false, priority: priority)
+            dark: theme.dark, refs: n.refs, hideHead: false, preamble: "", priority: priority)
         } else {
           snap = await display.cached(
             of: .inline(n.text), width: n.frame.width, height: nil, folder: n.folder, scale: scale, look: look,
-            dark: theme.dark, refs: n.refs, hideHead: false)
+            dark: theme.dark, refs: n.refs, hideHead: false, preamble: "")
         }
         guard let snap, !Task.isCancelled else { return nil }
         shots.append((snap, n.frame.origin))

@@ -12,6 +12,16 @@ import Testing
 // groups, ↑ ↓ and Return, Tab between all boards and this one, Esc; the toolbar's Search; both keys in the shortcut list;
 // Related by Meaning over a fake index (never box itself), with settings in a defaults suite and the key in memory
 
+/// A key in memory that counts how often it is read
+final class CountingKeyStore: KeyStore {
+  let reads = Mutex(0)
+  func key() -> String? {
+    reads.withLock { $0 += 1 }
+    return "ek-1"
+  }
+  func setKey(_ key: String?) {}
+}
+
 /// box as Related by Meaning asks it: the nth search's answer, the reranker's hits (nil: it fails as a server without a
 /// reranking model), and every request
 final class FakeMeaning: MeaningIndex {
@@ -379,6 +389,8 @@ final class FakeMeaning: MeaningIndex {
   @Test func withoutAnEmbeddingAddressItIsOffAndNothingIsAsked() async throws {
     let index = FakeMeaning { _ in Self.hits([BoxHit(id: "card:q", score: 0.7)]) }
     try await withMeaning(index, address: nil) {
+      let keys = CountingKeyStore()
+      BoardPanes.embeddingKeys = keys
       let w = try await opened()
       defer { w.close() }
       try await open(w, "k")
@@ -392,6 +404,7 @@ final class FakeMeaning: MeaningIndex {
       #expect(await shown()?.off == nil)
       let log = index.log.withLock { $0 }
       #expect(log.syncs.isEmpty && log.searches.isEmpty && log.reranks.isEmpty)
+      #expect(keys.reads.withLock { $0 } == 0, "the Keychain is not read")
     }
   }
 

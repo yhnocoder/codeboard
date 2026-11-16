@@ -418,30 +418,35 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
     capture.cancel()
   }
 
-  /// The link in its entry in the vault, with what the metadata script read of the page when there is one; the
-  /// saving service, when there is one, keeps it too
+  /// The link in its entry in the vault at once, by the page's title, so that the button, the sidebar and the lists
+  /// answer the press. What the metadata script reads of the page is added when it answers (asked while the page is
+  /// being left for another, WebKit never answers, and the link stays as it is); the saving service, when there is
+  /// one, is told afterwards too: it may have to start first
   @objc func saveLink(_ sender: Any?) {
     guard context.pane.vault != nil, let url = web.url, ["http", "https"].contains(url.scheme) else { return }
-    let title = web.title ?? ""
+    let first = WebMeta(script: nil, title: web.title ?? "")
+    let name = first.title ?? WebAddress.shown(url)
+    let item = SavedItem(
+      id: "", kind: .link, url: url.absoluteString, title: name, savedAt: Int64(first.fetchedAt ?? 0))
+    do {
+      try context.pane.saveWeb(item, meta: first)
+    } catch {
+      showSave(.failed("The link could not be saved: \(error.localizedDescription)"))
+      return
+    }
+    if saved == .unsaved { saved = .link }
+    if capture == nil { showSaved() }
+    if let store { Task { _ = try? await store.saveLink(PageLink(url: item.url, title: name)) } }
+    guard scripts != nil else { return }
     Task {
-      let script =
-        scripts == nil
-        ? nil
-        : try? await web.callAsyncJavaScript(
+      guard
+        let read = try? await web.callAsyncJavaScript(
           "return await shiyiCapture.meta()", contentWorld: WebReading.scriptWorld)
-      let meta = WebMeta(script: script, title: title)
-      let name = meta.title ?? WebAddress.shown(url)
-      do {
-        let item =
-          try await store?.saveLink(PageLink(url: url.absoluteString, title: name))
-          ?? SavedItem(
-            id: "", kind: .link, url: url.absoluteString, title: name, savedAt: Int64(meta.fetchedAt ?? 0))
-        try context.pane.saveWeb(item, meta: meta)
-        if web.url == url, saved == .unsaved { saved = .link }
-        if capture == nil { showSaved() }
-      } catch {
-        showSave(.failed("The link could not be saved: \(error.localizedDescription)"))
-      }
+      else { return }
+      let meta = WebMeta(script: read, title: name)
+      var named = item
+      named.title = meta.title ?? name
+      try? context.pane.saveWeb(named, meta: meta)
     }
   }
 

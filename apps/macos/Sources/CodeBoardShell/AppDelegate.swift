@@ -28,12 +28,18 @@ import CodeBoardResources
   withExtendedLifetime(delegate) { NSApp.run() }
 }
 
+/// The shell an app window shows (there is one window, so one shell). The acceptance driver reads the app's state
+/// through it, typed: a change that moves that state then breaks the driver's build, not its answers
+@MainActor package func shell(of window: NSWindow?) -> Shell? {
+  (NSApp.delegate as? AppDelegate)?.shell
+}
+
 /// Owns the one window and does what touches the disk for the shell: the vault choice, its tree and watcher, the import,
 /// saving the state. Menu actions reach it through the responder chain.
 @MainActor final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
   private static let stateKey = "shell"
   private static let themeKey = "theme"
-  private let shell = Shell()
+  fileprivate let shell = Shell()
   private var window: NSWindow?
   private var panes: BoardPanes?
   private var watcher: VaultWatcher?
@@ -102,7 +108,10 @@ import CodeBoardResources
       guard let self, let state = shell.state, let data = try? JSONEncoder().encode(state) else { return }
       UserDefaults.standard.set(data, forKey: Self.stateKey)
     }
+    shell.importPages()
   }
+
+  func applicationDidBecomeActive(_ notification: Notification) { shell.importPages() }
 
   /// Every board is written first; when one cannot be, quitting would lose its changes, so it asks
   func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {

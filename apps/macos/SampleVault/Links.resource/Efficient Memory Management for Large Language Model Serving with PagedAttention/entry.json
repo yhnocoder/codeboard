@@ -1,0 +1,22 @@
+{
+  "added": 1763280001000,
+  "fields": {},
+  "highlights": [],
+  "id": "e-pagedattention",
+  "meta": {
+    "description": "The paper that introduced paged KV caches (vLLM).",
+    "failed": false,
+    "fetchedAt": 1763280000000,
+    "site": "arXiv",
+    "title": "Efficient Memory Management for Large Language Model Serving with PagedAttention"
+  },
+  "origin": {
+    "web": {
+      "url": "https://arxiv.org/abs/2309.06180"
+    }
+  },
+  "sidenotes": [],
+  "title": "Efficient Memory Management for Large Language Model Serving with PagedAttention",
+  "version": 1,
+  "versions": []
+}
