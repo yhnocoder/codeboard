@@ -27,6 +27,10 @@ import Testing
     return picture
   }
   func reveal(_ a: SourceAnchor) { revealed.append(a) }
+  func mathPreamble(for a: SourceAnchor) -> String? { nil }
+  func questions(in entry: EntryID?) -> [EntryQuestion] { [] }
+  func setDone(_ done: Bool, question: SidenoteID, in entry: EntryID) throws {}
+  func answer(_ text: String, question: SidenoteID, in entry: EntryID) throws -> String { "" }
 
   func letGo() {
     for w in waiting { w.resume() }
