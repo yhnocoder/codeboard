@@ -538,10 +538,11 @@ private struct Run {
 
   private func exists(_ url: URL) -> Bool { FileManager.default.fileExists(atPath: url.path) }
 
-  /// A group's folder name, never taken for a board package
+  /// A group's folder name, never taken for a board or resource package
   private func folderName(_ group: String) -> String {
     let name = Vault.packageName(for: group)
-    return name.hasSuffix(".\(Vault.packageExtension)") ? name + "-" : name
+    let package = [Vault.packageExtension, Vault.resourceExtension].contains { name.hasSuffix(".\($0)") }
+    return package ? name + "-" : name
   }
 
   /// `name.board`, or `name 2.board`… when something in `folder` has that name already (APFS compares names without
