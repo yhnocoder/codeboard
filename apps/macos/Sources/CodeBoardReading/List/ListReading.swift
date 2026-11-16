@@ -136,15 +136,27 @@ extension ReadingPane {
   func open(_ row: ListRow) {
     switch row.opens {
     case .pdf(let t): openPDF(t)
-    case .web(let p):
-      var key = p.key
-      if key == nil, case .online(let url?) = p, var parts = URLComponents(url: url, resolvingAgainstBaseURL: false) {
-        parts.fragment = nil
-        key = parts.string.map { "web:" + $0 }
-      }
-      open(row.title, key: key, kind: WebReading.kind, payload: p.payload)
+    case .web(let p): open(row.title, key: Self.key(p), kind: WebReading.kind, payload: p.payload)
     case nil: break
     }
+  }
+
+  /// The key of the tab an entry opens in (`openEntry`)
+  func openKey(_ id: EntryID) -> String? {
+    guard let found = entries[id] else { return nil }
+    switch ListRow(.entry(found.entry, path: found.path), vault: vault).opens {
+    case .pdf(let t): return t.key
+    case .web(let p): return Self.key(p)
+    case nil: return nil
+    }
+  }
+
+  private static func key(_ p: WebReading.Page) -> String? {
+    if p.key == nil, case .online(let url?) = p, var parts = URLComponents(url: url, resolvingAgainstBaseURL: false) {
+      parts.fragment = nil
+      return parts.string.map { "web:" + $0 }
+    }
+    return p.key
   }
 }
 
