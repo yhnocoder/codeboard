@@ -79,7 +79,7 @@ enum PDFPlaces {
       }
       let count = page.numberOfCharacters
       let r = p.range ?? 0..<count
-      guard r.lowerBound < count,
+      guard r.lowerBound >= 0, r.lowerBound < count,
         let s = page.selection(for: NSRange(location: r.lowerBound, length: min(r.upperBound, count) - r.lowerBound))
       else { continue }
       if let o = out { o.add(s) } else { out = s }
@@ -170,7 +170,8 @@ enum PDFPlaces {
   /// The box of the first glyph that is not a space after a line's last one, on the same page
   static func nextGlyph(after line: CGRect, on page: PDFPage) -> CGRect? {
     let i = page.characterIndex(at: CGPoint(x: line.maxX - 0.5, y: line.midY))
-    guard i >= 0, let text = page.string as NSString? else { return nil }
+    // no glyph there (a line drawn to its column's edge): NSNotFound, or -1 on some systems
+    guard let text = page.string as NSString?, i >= 0, i < text.length - 1 else { return nil }
     for j in (i + 1)..<min(i + 3, text.length) {
       let ch = text.substring(with: NSRange(location: j, length: 1))
       if ch.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { continue }

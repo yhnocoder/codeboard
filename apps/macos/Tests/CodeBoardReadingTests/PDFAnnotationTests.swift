@@ -96,6 +96,23 @@ import Testing
     #expect(try #require(doc.page(at: 1)).annotations.isEmpty)
   }
 
+  @Test func aLineEndingWhereThereIsNoGlyphOrAtThePagesLastOneHasItsMarkAfterIt() throws {
+    let v = try PDFVault()
+    defer { v.remove() }
+    let page = try #require(PDFDocument(url: v.vault.url(of: v.file))?.page(at: 0))
+    let box = page.bounds(for: .mediaBox)
+    // a line drawn into the margin, as a block's is to its column's edge: no glyph at its end
+    let empty = CGRect(x: box.maxX - 40, y: box.minY + 2, width: 38, height: 10)
+    #expect(page.characterIndex(at: CGPoint(x: empty.maxX - 0.5, y: empty.midY)) == NSNotFound)
+    #expect(PDFPlaces.nextGlyph(after: empty, on: page) == nil)
+    #expect(PDFPlaces.mark(after: empty, on: page, .yellow, id: "h").bounds.minX > empty.maxX)
+    // the page's last glyph that has a box
+    let n = page.numberOfCharacters
+    let last = try #require((0..<n).reversed().map { page.characterBounds(at: $0) }.first { $0.width > 1 })
+    _ = PDFPlaces.nextGlyph(after: last, on: page)
+    #expect(PDFPlaces.mark(after: last, on: page, .yellow, id: "h").bounds.width == 3)
+  }
+
   @Test func theMarkOfAHighlightEndingInAWordSitsAboveTheLineAtItsEnd() throws {
     let v = try PDFVault()
     defer { v.remove() }
