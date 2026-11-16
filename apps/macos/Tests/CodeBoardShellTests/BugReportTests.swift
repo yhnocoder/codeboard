@@ -50,6 +50,26 @@ import Testing
     #expect(Set(forms.map(RepoFinder.normalized)) == ["github.com/yhnocoder/nano-vllm"])
   }
 
+  /// A clone whose submodule is the repository looked for is not that repository
+  @Test func onlyAClonesRemotesNameIt() throws {
+    let tmp = FileManager.default.temporaryDirectory.appending(path: "bug-report-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: tmp) }
+    for (name, config) in [
+      (
+        "host",
+        "[remote \"origin\"]\n\turl = https://github.com/someone/host\n[submodule \"x\"]\n\turl = https://github.com/someone/engine\n"
+      ),
+      ("engine", "[core]\n\tbare = false\n[remote \"upstream\"]\n\turl = git@github.com:someone/engine.git\n"),
+    ] {
+      let git = tmp.appending(path: "\(name)/.git", directoryHint: .isDirectory)
+      try FileManager.default.createDirectory(at: git, withIntermediateDirectories: true)
+      try config.write(to: git.appending(path: "config"), atomically: true, encoding: .utf8)
+    }
+    #expect(RepoFinder.remotes(of: tmp.appending(path: "host")) == ["https://github.com/someone/host"])
+    let found = RepoFinder(roots: [tmp]).find(remote: "https://github.com/someone/engine", checkout: nil)
+    #expect(found?.lastPathComponent == "engine")
+  }
+
   @Test func theZipIsNamedByTheMinuteAndNeverOverAnother() {
     var c = DateComponents()
     (c.year, c.month, c.day, c.hour, c.minute) = (2026, 11, 16, 9, 5)

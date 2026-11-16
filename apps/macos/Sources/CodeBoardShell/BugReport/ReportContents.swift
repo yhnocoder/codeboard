@@ -247,7 +247,9 @@ enum ReportContents {
     for key in repos.keys.sorted() {
       let r = repos[key]!
       guard let root = finder.find(remote: r.remote, checkout: r.checkout) else {
-        unresolved.append(r.remote ?? r.checkout ?? key)
+        // a card from before remotes were kept names only where VS Code read it
+        let named = r.remote ?? r.checkout.flatMap { $0.isEmpty ? nil : $0 }
+        unresolved.append(named ?? "the repository of " + r.paths.keys.sorted().joined(separator: ", "))
         continue
       }
       let name = reportName(root.lastPathComponent)
@@ -313,12 +315,18 @@ struct RepoFinder {
     remotes = found
   }
 
-  /// The remotes a clone has, from its config file (read, not asked of git: there may be many clones)
+  /// The remotes a clone has, from its config file (read, not asked of git: there may be many clones). Only the
+  /// `[remote …]` sections: a submodule's url names another repository
   static func remotes(of root: URL) -> [String] {
     guard let config = try? String(contentsOf: root.appending(path: ".git/config"), encoding: .utf8) else { return [] }
+    var inRemote = false
     return config.split(separator: "\n").compactMap { line in
       let t = line.trimmingCharacters(in: .whitespaces)
-      guard t.hasPrefix("url"), let eq = t.firstIndex(of: "=") else { return nil }
+      if t.hasPrefix("[") {
+        inRemote = t.hasPrefix("[remote ")
+        return nil
+      }
+      guard inRemote, t.hasPrefix("url"), let eq = t.firstIndex(of: "=") else { return nil }
       return t[t.index(after: eq)...].trimmingCharacters(in: .whitespaces)
     }
   }
