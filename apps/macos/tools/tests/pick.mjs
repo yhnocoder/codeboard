@@ -14,7 +14,7 @@
 // tiers.json against Package.swift and the sources: every target and test it names must be there, once, and every
 // source of a "files" target's module in an area or its "broad"; after a run it fails when a test product printed no
 // summary of its run or ran another number of tests than were picked for it.
-import { execFileSync, spawn } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { namesIn, shown } from "../ci/description.mjs";
@@ -387,28 +387,126 @@ if (dry) process.exit(0);
 if (process.env.GITHUB_STEP_SUMMARY)
   fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `### Mac app unit tests\n\n\`\`\`\n${summary}\n\`\`\`\n`);
 
+const ansi = /\x1b\[[0-9;]*m/g;
+
+// A hanging test is ended by the tests' own watchdog after 120 s, and a test process's output reaches the pipe in
+// blocks, up to 106 s apart in a full run, so this long with nothing printed is a stuck process (a deadlock says
+// nothing itself)
+const SILENCE = 5 * 60_000;
+const silenceText = `${SILENCE / 60_000} minutes`;
+// The runner reads a line that begins with :: or ##[, after any spaces, as a command: such a line of a test's name or
+// of a stack is shown with its first character apart
+const shownLine = (line) => line.replace(/^(\s*)(::|##\[)/, (_, sp, c) => `${sp}${c[0]} ${c.slice(1)}`);
+
+// The tests that had started and not finished in what the current product's run printed so far (each product prints
+// its own run, from "Test run started."); a parameterized test's cases are left out, it ends with the test
+function unfinished(text) {
+  const plain = text.replace(ansi, "");
+  const run = plain.slice(Math.max(0, plain.lastIndexOf("Test run started.")));
+  const open = new Set();
+  const line = /^\S+ Test (.+?)(?: with \d+ test cases?)? (started\.|passed after|failed after|skipped)/gm;
+  for (const [, name, what] of run.matchAll(line)) {
+    if (name === "run" || name.startsWith("run with ") || name.startsWith("case ")) continue;
+    if (what === "started.") open.add(name);
+    else open.delete(name);
+  }
+  return [...open];
+}
+
+// The processes under a pid, parents before their children
+function descendants(root) {
+  let rows;
+  try {
+    rows = execFileSync("ps", ["-axo", "pid=,ppid=,comm="], { encoding: "utf8" }).split("\n");
+  } catch {
+    return [];
+  }
+  const all = rows.map((r) => /^\s*(\d+)\s+(\d+)\s+(.*)$/.exec(r)).filter(Boolean);
+  const found = [];
+  const parents = [root];
+  for (let i = 0; i < parents.length; i++)
+    for (const [, pid, ppid, comm] of all)
+      if (Number(ppid) === parents[i]) {
+        found.push({ pid: Number(pid), comm: comm.trim() });
+        parents.push(Number(pid));
+      }
+  return found;
+}
+
+// What can be said about a run that went silent: the tests it had not finished and the stuck processes' thread stacks,
+// and then it is ended, its descendants too, which would otherwise keep the pipes open
+function endStuck(run, output) {
+  const open = unfinished(Buffer.concat(output).toString("utf8"));
+  const message = `the tests printed nothing for ${silenceText}, so the run is ended`;
+  const list = open.length
+    ? "Tests started and not finished when the last output arrived (the test process's output comes in blocks, so " +
+      `some of these may have finished since):\n${open.map((n) => shownLine(`  ${n}`)).join("\n")}`
+    : "No test had started and not finished in the output so far (it comes in blocks, so the last may be missing).";
+  process.stderr.write(`\npick.mjs: ${message}\n${list}\n`);
+  if (process.env.GITHUB_STEP_SUMMARY)
+    fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `**${message}**\n\n\`\`\`\n${list}\n\`\`\`\n`);
+  const procs = descendants(run.pid);
+  for (const { pid, comm } of procs.filter((p) => /swiftpm-testing|xctest/.test(p.comm))) {
+    const name = path.basename(comm);
+    const take = (cmd, args) =>
+      spawnSync(cmd, args, { encoding: "utf8", timeout: 30_000, maxBuffer: 64 * 1024 * 1024 });
+    let sample = take("/usr/bin/sample", [String(pid), "3"]);
+    // a runner's user may need root to look into another process, and has it without a password; never asked for
+    // on a developer's Mac
+    if ((sample.error || sample.status !== 0) && process.env.CI)
+      sample = take("sudo", ["-n", "/usr/bin/sample", String(pid), "3"]);
+    if (sample.error || sample.status !== 0) {
+      const why = sample.error?.message ?? (sample.stderr.trim().split("\n")[0] || `status ${sample.status}`);
+      process.stderr.write(`pick.mjs: the thread stacks of ${name} ${pid} could not be taken: ${why}\n`);
+      continue;
+    }
+    const most = 3000;
+    const lines = sample.stdout.split("\n");
+    const cut = lines.length > most ? [`(cut at ${most} of ${lines.length} lines)`] : [];
+    const shown = [...lines.slice(0, most), ...cut].map(shownLine).join("\n");
+    process.stdout.write(`::group::sample of ${name} ${pid}\n${shown}\n::endgroup::\n`);
+  }
+  for (const { pid } of [...procs.reverse(), { pid: run.pid }]) {
+    try {
+      process.kill(pid, "SIGKILL");
+    } catch {}
+  }
+}
+
 // A test process can end with status 0 before it ran all its tests (seen when something under test stopped the main
 // run loop): it prints no summary, and swift test still exits 0. So every product's summary line must be there, with
 // the number of tests picked for it. The lines name no product, so the numbers are compared as a multiset; a product
 // with nothing picked is left out on both sides
 const output = [];
+let stuck = false;
 const status = await new Promise((done) => {
   const run = spawn("swift", args, { cwd: app, stdio: ["inherit", "pipe", "pipe"] });
+  let last = Date.now();
+  const watch = setInterval(() => {
+    if (Date.now() - last < SILENCE) return;
+    clearInterval(watch);
+    stuck = true;
+    endStuck(run, output);
+  }, 15_000);
   const pass = (to) => (chunk) => {
+    last = Date.now();
     to.write(chunk);
     output.push(chunk);
   };
   run.stdout.on("data", pass(process.stdout));
   run.stderr.on("data", pass(process.stderr));
   run.on("error", (e) => {
+    clearInterval(watch);
     process.stderr.write(`pick.mjs: cannot run swift: ${e.message}\n`);
     done(1);
   });
-  run.on("close", (code) => done(code ?? 1));
+  run.on("close", (code) => {
+    clearInterval(watch);
+    done(code ?? 1);
+  });
 });
-const text = Buffer.concat(output)
-  .toString("utf8")
-  .replace(/\x1b\[[0-9;]*m/g, "");
+if (stuck) process.exit(1);
+const text = Buffer.concat(output).toString("utf8").replace(ansi, "");
 const reported = [...text.matchAll(/Test run with (\d+) tests? in \d+ suites? (?:passed|failed)/g)]
   .map((m) => Number(m[1]))
   .filter((n) => n > 0);
