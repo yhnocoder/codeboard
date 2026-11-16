@@ -531,6 +531,7 @@ extension CanvasView {
     guard let doc = document, scene != nil else {
       chrome.sublayers = nil
       litArrows.sublayers = nil
+      tether.sublayers = nil
       placeAlignBar()
       return
     }
@@ -553,6 +554,7 @@ extension CanvasView {
     withoutAnimation {
       chrome.sublayers = nil
       litArrows.sublayers = nil
+      tether.sublayers = nil
       drawArrowChrome()
       drawMergeDrop()
       for item in doc.selection {

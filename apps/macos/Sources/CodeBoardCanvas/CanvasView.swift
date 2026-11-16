@@ -302,6 +302,8 @@ public final class CanvasView: NSView {
   let freeStickers = CALayer()
   var stickerSpots: [StickerSpot] = []
   var stickerLayers: [CALayer] = []
+  /// The selected sticker's tether to the place on its arrow, under the stickers (Picker.tsx .tether)
+  let tether = CALayer()
   /// The glyph picked in the palette, following the pointer (its ghost, in the view's units) until a click
   package var placing: Sticker.Glyph?
   let stickerGhost = CALayer()
@@ -530,6 +532,9 @@ public final class CanvasView: NSView {
     for l in [sections, dropLayer, below, arrows, litArrows, above, cards, freeStickers, freeMarks] {
       cardLevel.addSublayer(l)
     }
+    tether.anchorPoint = .zero
+    tether.zPosition = 3
+    freeStickers.addSublayer(tether)
     // faded as one: cards over one another do not show through each other halfway
     cardLevel.allowsGroupOpacity = true
     summaryLayer.allowsGroupOpacity = true

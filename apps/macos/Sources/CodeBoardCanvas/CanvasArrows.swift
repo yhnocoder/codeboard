@@ -188,6 +188,8 @@ extension CanvasView {
     guard let doc = document, let s = scene else { return }
     var on = Set(doc.selection.compactMap(\.arrow))
     if let h = hoveredArrow { on.insert(h) }
+    // the one a dragged sticker would go on (.edge.on for isBindHot)
+    if case .sticker(let d)? = gesture?.kind, case .arrow(let h)? = d.aim { on.insert(h) }
     // the one whose end is being moved is drawn where the end goes
     if let id = connecting?.arrow { on.remove(id) }
     for (i, a) in s.arrows.enumerated() where on.contains(a.id) {
