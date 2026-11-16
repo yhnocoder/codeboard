@@ -75,7 +75,8 @@ public struct ProcessGitRunner: GitRunner {
     p.standardInput = FileHandle.nullDevice
     let job = Job(p, out: out.fileHandleForReading, err: err.fileHandleForReading)
     let end = await withTaskCancellationHandler {
-      await withCheckedContinuation { c in DispatchQueue.global().async { c.resume(returning: job.wait()) } }
+      // its own thread, not dispatch's: dispatch has 64, and git calls all blocked on them leave none for their pipes
+      await withCheckedContinuation { c in Thread.detachNewThread { c.resume(returning: job.wait()) } }
     } onCancel: {
       job.cancel()
     }
@@ -135,13 +136,14 @@ private final class Job: Sendable {
     }
     // Both pipes are read at once: git stops writing to one while the other is full
     let errData = Mutex(Data())
-    let group = DispatchGroup()
-    DispatchQueue.global().async(group: group) { [held] in
+    let errRead = DispatchSemaphore(value: 0)
+    Thread.detachNewThread { [held] in
       let d = held.err.readDataToEndOfFile()
       errData.withLock { $0 = d }
+      errRead.signal()
     }
     let outData = held.out.readDataToEndOfFile()
-    group.wait()
+    errRead.wait()
     process.waitUntilExit()
     if state.withLock({ $0.cancelled }) { return .cancelled }
     if process.terminationReason == .uncaughtSignal { return .signal }
