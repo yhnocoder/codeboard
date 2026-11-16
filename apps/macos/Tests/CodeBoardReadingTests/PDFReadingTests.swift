@@ -99,7 +99,8 @@ import Testing
     #expect(w.pasteboard.string(forType: .string) == "Evening light")
   }
 
-  @Test func addToBoardAndOptionReturnHandTheSameCollectedPassage() throws {
+  /// A file alone is made an entry by the first passage taken from it, so the passage has its source
+  @Test func addToBoardAndOptionReturnHandTheSameCollectedPassageWithItsSource() throws {
     let v = try PDFVault()
     defer { v.remove() }
     let w = try PDFWindow(v)
@@ -116,8 +117,20 @@ import Testing
     t.keyDown(with: key)
     #expect(w.collected.count == 3)
     #expect(w.collected.allSatisfy { $0 == w.collected[0] })
+    guard case .entry(let entry, _)? = try v.vault.items(in: v.resource.path).first else {
+      Issue.record("the file made an entry")
+      return
+    }
+    let place = Place(
+      version: entry.versions[0].id, block: .page(2),
+      range: (page.string! as NSString).range(of: "boat").location..<(page.string! as NSString).range(of: "boat")
+        .location + 4)
     #expect(
-      w.collected.first == Collected(body: .note(markdown: "boat"), source: nil, title: "Field notes", label: "p. 2"))
+      w.collected.first
+        == Collected(
+          body: .note(markdown: "boat"), source: SourceAnchor(entry: entry.id, place: place), title: "Field notes",
+          label: "p. 2"))
+    #expect(entry.highlights.isEmpty && entry.sidenotes.isEmpty)
   }
 
   /// A file alone is made an entry by its first highlight: a folder, the file moved into it under a plain name,
@@ -201,7 +214,6 @@ import Testing
     let t = try w.tab(try #require(w.pane.openPDF(.file(v.file))))
     try w.select(t, "past the mill")
     t.copySelection()
-    t.collect()
     #expect(t.selectedText == "past the mill")
     #expect(v.files() == before)
   }

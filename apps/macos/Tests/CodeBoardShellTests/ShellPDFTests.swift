@@ -99,8 +99,11 @@ import Testing
         with: .keyDown, location: .zero, modifierFlags: .option, timestamp: 0, windowNumber: 0, context: nil,
         characters: "\r", charactersIgnoringModifiers: "\r", isARepeat: false, keyCode: 36))
     t.keyDown(with: key)
-    let c = Collected(body: .note(markdown: "river"), source: nil, title: "Field notes", label: "p. 1")
-    #expect(handed == [c, c] && shell.collected == c)
+    #expect(handed.count == 2 && handed.allSatisfy { $0 == shell.collected })
+    let c = try #require(shell.collected)
+    #expect(c.body == .note(markdown: "river") && c.title == "Field notes" && c.label == "p. 1")
+    let e = try #require(shell.reading.tabs.first?.payload["entry"])
+    #expect(c.source?.entry.rawValue == e && c.source?.place.range == 4..<9)
   }
 
   /// A highlight makes the file an entry; the tree read again, the tab is the entry's and stays open, and a source

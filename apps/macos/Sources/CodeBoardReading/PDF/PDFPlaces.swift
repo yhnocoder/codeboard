@@ -78,8 +78,57 @@ enum PDFPlaces {
     }
   }
 
-  /// The highlight drawn under a point of a page (page space), by its id
+  /// The highlight drawn under a point of a page (page space), or the mark of its annotations, by its id
   static func highlight(at point: CGPoint, on page: PDFPage) -> String? {
-    page.annotations.first { $0.type == "Highlight" && $0.bounds.contains(point) }?.userName
+    page.annotations.first { ["Highlight", "Circle"].contains($0.type) && $0.bounds.contains(point) }?.userName
+  }
+
+  /// Highlights made together (a selection across pages is one Highlight a page): the same time, colour and version
+  static func groups(_ highlights: [Highlight]) -> [[Highlight]] {
+    var out: [[Highlight]] = []
+    for h in highlights {
+      if let i = out.firstIndex(where: {
+        $0[0].at == h.at && $0[0].color == h.color && $0[0].place.version == h.place.version
+      }) {
+        out[i].append(h)
+      } else {
+        out.append([h])
+      }
+    }
+    return out
+  }
+
+  /// The mark at the end of a highlight's last line that says it has annotations: a small dot of its colour, darker
+  static func mark(after line: CGRect, _ c: Highlight.Color, id: String) -> PDFAnnotation {
+    let a = PDFAnnotation(
+      bounds: CGRect(x: line.maxX + 1, y: line.maxY - 6, width: 5, height: 5), forType: .circle, withProperties: nil)
+    let dark = color(c).withAlphaComponent(1).blended(withFraction: 0.35, of: .black) ?? .black
+    a.color = dark
+    a.interiorColor = dark
+    a.userName = id
+    return a
+  }
+
+  /// A region of a page (page space, from its media box's origin) drawn into a picture `pixelWidth` wide, on white
+  static func picture(of page: PDFPage, _ r: CGRect, pixelWidth: Int) -> CGImage? {
+    guard pixelWidth > 0, r.width > 0, r.height > 0 else { return nil }
+    let scale = CGFloat(pixelWidth) / r.width
+    let height = max(1, Int((r.height * scale).rounded()))
+    guard
+      let ctx = CGContext(
+        data: nil, width: pixelWidth, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+        space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+    else { return nil }
+    ctx.setFillColor(CGColor(gray: 1, alpha: 1))
+    ctx.fill(CGRect(x: 0, y: 0, width: pixelWidth, height: height))
+    ctx.scaleBy(x: scale, y: scale)
+    let box = page.bounds(for: .cropBox)
+    ctx.translateBy(x: box.minX - r.minX, y: box.minY - r.minY)
+    // the page as its file has it: none of the highlights drawn on it here
+    let shown = page.displaysAnnotations
+    page.displaysAnnotations = false
+    page.draw(with: .cropBox, to: ctx)
+    page.displaysAnnotations = shown
+    return ctx.makeImage()
   }
 }

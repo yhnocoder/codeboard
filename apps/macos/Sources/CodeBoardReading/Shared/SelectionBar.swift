@@ -32,7 +32,10 @@ public final class SelectionBar: NSView {
   private let glass = NSVisualEffectView()
   private let tint = NSView()
 
-  public init(_ actions: [SelectionAction], look: ReadingBarLook = .warmInk(dark: false)) {
+  /// `id`: the bar's accessibility identifier
+  public init(
+    _ actions: [SelectionAction], id: String = "ui-selectionbar", look: ReadingBarLook = .warmInk(dark: false)
+  ) {
     self.actions = actions
     self.look = look
     buttons = actions.map { a in
@@ -44,7 +47,7 @@ public final class SelectionBar: NSView {
       return b
     }
     super.init(frame: .zero)
-    setAccessibilityIdentifier("ui-selectionbar")
+    setAccessibilityIdentifier(id)
     setAccessibilityElement(true)
     setAccessibilityRole(.toolbar)
     wantsLayer = true
