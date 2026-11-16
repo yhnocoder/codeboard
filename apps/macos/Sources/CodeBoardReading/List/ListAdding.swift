@@ -40,7 +40,7 @@ enum ListAdd: Equatable {
     case .papers:
       // ponytail: a DOI is refused: the papers line has no DOI lookup yet
       return Arxiv.parse(text).map { .arxiv(id: $0.id, version: $0.version) }
-    case .files:
+    case .files, .images, .blank:
       return nil
     }
   }
@@ -55,7 +55,7 @@ extension ListTabView {
     switch preset {
     case .papers?: "Drop PDFs here or paste an arXiv address"
     case .web?: "Paste or drop an address here"
-    case .files?, nil: "Drop files here or add them with +"
+    case .files?, .images?, .blank?, nil: "Drop files here or add them with +"
     }
   }
 
