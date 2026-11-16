@@ -6,8 +6,12 @@ import UniformTypeIdentifiers
 
 /// The D2 window: sidebar on the window's own warm-grey ground, the board and the reading pane as floating rounded
 /// panels, each with its tabs in its top bar. Traffic lights, the sidebar toggle, back / forward and both panels' tabs
-/// share one title line, whichever is shown.
-@MainActor func makeMainWindow(shell: Shell, repositories: RepositoriesModel? = nil) -> (NSWindow, BoardPanes) {
+/// share one title line, whichever is shown. Its panes are on the app's `documents` (nil: a table of their own);
+/// `frameName` is where its frame is kept (the first window's: "main"; nil: by WindowSet, with its state)
+@MainActor func makeMainWindow(
+  shell: Shell, repositories: RepositoriesModel? = nil, documents: BoardDocuments? = nil,
+  frameName: String? = "main"
+) -> (NSWindow, BoardPanes) {
   let window = BoardWindow(
     contentRect: NSRect(x: 0, y: 0, width: 1200, height: 800),
     styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
@@ -20,7 +24,7 @@ import UniformTypeIdentifiers
   window.backgroundColor = ShellTheme.ground
   window.minSize = NSSize(width: 640, height: 400)
   window.isReleasedWhenClosed = false
-  let root = RootView(shell: shell, repositories: repositories)
+  let root = RootView(shell: shell, repositories: repositories, documents: documents)
   window.contentView = root
   if let repositories {
     // a file clicked in a repository opens in the reading pane, and the tree selects the current code tab's file
@@ -64,8 +68,10 @@ import UniformTypeIdentifiers
       })
     if let s = sheet?.window { window.beginSheet(s) }
   }
-  if !window.setFrameUsingName("main") { window.center() }
-  window.setFrameAutosaveName("main")
+  if let frameName {
+    if !window.setFrameUsingName(frameName) { window.center() }
+    window.setFrameAutosaveName(frameName)
+  }
   return (window, panes)
 }
 
@@ -109,9 +115,9 @@ private final class RootView: NSView {
     var side: ReadingPane.Side
   }
 
-  init(shell: Shell, repositories: RepositoriesModel?) {
+  init(shell: Shell, repositories: RepositoriesModel?, documents: BoardDocuments?) {
     self.shell = shell
-    panes = BoardPanes(shell: shell)
+    panes = BoardPanes(shell: shell, documents: documents)
     let empty = NSButton(title: "Open Vault…", target: nil, action: #selector(AppDelegate.openVault(_:)))
     empty.bezelStyle = .push
     empty.controlSize = .large

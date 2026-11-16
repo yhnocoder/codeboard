@@ -18,6 +18,8 @@ import CodeBoardResources
 /// in the saved state is open
 @MainActor package protocol AppDriver: AnyObject {
   func started(window: NSWindow)
+  /// Each window made after the first (New Window, the saved state's others): kept behind as the first
+  func opened(window: NSWindow)
 }
 
 @MainActor package func runApp(driver: AppDriver) {
@@ -28,20 +30,23 @@ import CodeBoardResources
   withExtendedLifetime(delegate) { NSApp.run() }
 }
 
-/// The shell an app window shows (there is one window, so one shell). The acceptance driver reads the app's state
-/// through it, typed: a change that moves that state then breaks the driver's build, not its answers
+/// The shell an app window shows (nil, or a window that is no board window: the main window's). The acceptance driver
+/// reads the app's state through it, typed: a change that moves that state then breaks the driver's build, not its
+/// answers
 @MainActor package func shell(of window: NSWindow?) -> Shell? {
-  (NSApp.delegate as? AppDelegate)?.shell
+  (NSApp.delegate as? AppDelegate)?.windows.entry(of: window)?.shell
 }
 
-/// Owns the one window and does what touches the disk for the shell: the vault choice, its tree and watcher, the import,
-/// saving the state. Menu actions reach it through the responder chain.
+/// Owns the windows and does what touches the disk for them: the vault choice, its tree and watcher, the import,
+/// saving the state. Menu actions reach it through the responder chain and act on the main window.
 @MainActor final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
-  private static let stateKey = "shell"
   private static let themeKey = "theme"
-  fileprivate let shell = Shell()
-  private var window: NSWindow?
-  private var panes: BoardPanes?
+  fileprivate let windows = WindowSet()
+  /// The first window's shell, made before its window
+  private lazy var first = Shell(session: windows.session)
+  /// The main window's shell, which menu actions act on
+  private var shell: Shell { windows.main?.shell ?? first }
+  private var window: NSWindow? { windows.main?.window }
   private var watcher: VaultWatcher?
   /// The repositories added on this Mac, in the app's data folder
   private var repositories: RepositoriesModel?
@@ -59,9 +64,8 @@ import CodeBoardResources
     CanvasView.warmUp()
     NSWindow.allowsAutomaticWindowTabbing = false
     NSApp.mainMenu = mainMenu()
-    let saved = UserDefaults.standard.data(forKey: Self.stateKey).flatMap {
-      try? JSONDecoder().decode(ShellState.self, from: $0)
-    }
+    let savedWindows = WindowSet.saved(in: .standard)
+    let saved = savedWindows.first?.shell
     if let saved {
       shell.sidebarShown = saved.sidebarShown
       if let w = saved.sidebarWidth {
@@ -72,13 +76,17 @@ import CodeBoardResources
     appearance = follow(NSApp, into: shell)
     // beside the cameras: Application Support/<this app's id>. Before the vault and the window: the reading tabs kept
     // from the last run are made with the window, and a PDF tab's versions bar reads the translations as it is made
-    shell.machineFolder = cameras?.folder.deletingLastPathComponent()
-    // tongtu's work, beside it: never in the vault
-    shell.reading.translations = shell.machineFolder.map { folder in
-      Translations(folder: folder.appending(path: "Translations", directoryHint: .isDirectory)) {
-        Tongtu.find(setting: AISettings(defaults: .standard).tongtuPath)
+    windows.session.machineFolder = cameras?.folder.deletingLastPathComponent()
+    windows.prepare = { shell in
+      shell.machineFolder = shell.session.machineFolder
+      // tongtu's work, beside it: never in the vault
+      shell.reading.translations = shell.machineFolder.map { folder in
+        Translations(folder: folder.appending(path: "Translations", directoryHint: .isDirectory)) {
+          Tongtu.find(setting: AISettings(defaults: .standard).tongtuPath)
+        }
       }
     }
+    windows.prepare(shell)
     if let saved, FileManager.default.fileExists(atPath: saved.vault) {
       open(URL(filePath: saved.vault, directoryHint: .isDirectory), restoring: saved)
     } else if saved == nil, let first = Bundle.main.object(forInfoDictionaryKey: "CodeBoardFirstVault") as? String,
@@ -88,19 +96,21 @@ import CodeBoardResources
       open(URL(filePath: first, directoryHint: .isDirectory), restoring: nil)
     }
     repositories = shell.machineFolder.map { RepositoriesModel.forApp(folder: $0) }
-    let (window, panes) = makeMainWindow(shell: shell, repositories: repositories)
-    self.window = window
-    self.panes = panes
-    panes.onVaultChanged = { [weak self] in self?.readTree(reloadBoards: true) }
-    panes.cameras = cameras
-    panes.pictures = CanvasView.defaultPictures
-    let ai = AISettings(defaults: .standard)
-    let keys = KeychainKeyStore()
-    panes.summarySwitch = ai.summarySwitch
-    CanvasView.welcomeBack = ai.welcomeBack
-    panes.summaryWriter = keys.key() != nil ? ai.writer(keys: keys) : nil
-    window.title = shell.vault?.root.lastPathComponent ?? "CodeBoard"
+    windows.repositories = repositories
+    CanvasView.welcomeBack = AISettings(defaults: .standard).welcomeBack
+    windows.configure = { [weak self] panes in
+      guard let self else { return }
+      panes.onVaultChanged = { [weak self] in self?.readTree(reloadBoards: true) }
+      panes.cameras = cameras
+      panes.pictures = CanvasView.defaultPictures
+      let ai = AISettings(defaults: .standard)
+      let keys = KeychainKeyStore()
+      panes.summarySwitch = ai.summarySwitch
+      panes.summaryWriter = keys.key() != nil ? ai.writer(keys: keys) : nil
+    }
+    let window = windows.add(first).window
     if let driver {
+      windows.present = { driver.opened(window: $0) }
       driver.started(window: window)
     } else {
       window.makeKeyAndOrderFront(nil)
@@ -110,14 +120,18 @@ import CodeBoardResources
     bugRecorder?.onChange = { NSApp.mainMenu?.update() }
     // a driver's run never takes the keys from the apps of the person at the Mac: it uses the menu item
     if driver == nil, BugRecorder.personal { bugKey = HotKey { [weak self] in self?.bugRecorder?.toggle() } }
-    track { [weak self] in
-      guard let self, let state = shell.state, let data = try? JSONEncoder().encode(state) else { return }
-      UserDefaults.standard.set(data, forKey: Self.stateKey)
-    }
+    // the other windows saved on the vault open (one vault app-wide), in front of the first as they were
+    for w in savedWindows.dropFirst() where w.shell.vault == shell.vault?.root.path { windows.open(w) }
+    track { [weak self] in self?.windows.save(in: .standard) }
     shell.importPages()
   }
 
-  /// The bug report recorder, reading the shell and the board panes. Reports go to Application Support/CodeBoard/Bug
+  func applicationWillTerminate(_ notification: Notification) {
+    // where each window is now: frames are not watched
+    windows.save(in: .standard)
+  }
+
+  /// The bug report recorder, reading the shells and the open boards. Reports go to Application Support/CodeBoard/Bug
   /// Reports; a build of another bundle id (a driver's run, a build to try beside the app) keeps them in its own folder
   private func makeBugRecorder() -> BugRecorder {
     let own = Bundle.main.bundleIdentifier == "com.yhnocoder.codeboard"
@@ -127,10 +141,10 @@ import CodeBoardResources
         path: "CodeBoard")
     let source = BugRecorder.Source(
       vault: { [weak shell] in shell?.vault },
-      frontBoard: { [weak self] w in w === self?.window ? self?.shell.current?.board : nil },
+      frontBoard: { [weak self] w in self?.windows.all.first { $0.window === w }?.shell.current?.board },
       board: { [weak self] id in
         guard let self, let at = shell.board(id), let vault = shell.vault,
-          let board = panes?.documents[id]?.board ?? (try? vault.board(at: at.path))
+          let board = windows.documents.open[id]?.board ?? (try? vault.board(at: at.path))
         else { return nil }
         return (at.title, at.path, board)
       },
@@ -162,10 +176,10 @@ import CodeBoardResources
       }
       return .terminateLater
     }
-    // a card being written in: what was typed goes to its board first
-    if let panes, panes.isEditing {
+    // a card being written in, in any window: what was typed goes to its board first
+    if windows.isEditing {
       Task {
-        await panes.endEditing()
+        await windows.endEditing()
         // else the question answers it
         if self.writeAll() == .terminateNow { NSApp.reply(toApplicationShouldTerminate: true) }
       }
@@ -175,7 +189,7 @@ import CodeBoardResources
   }
 
   private func writeAll() -> NSApplication.TerminateReply {
-    let unsaved = panes?.flush() ?? []
+    let unsaved = windows.flush()
     guard !unsaved.isEmpty else { return .terminateNow }
     Self.askToQuit(unsaved, on: window) { NSApp.reply(toApplicationShouldTerminate: $0) }
     return .terminateLater
@@ -217,8 +231,9 @@ import CodeBoardResources
     Task {
       let result = await Task.detached { Result { try vault.tree() } }.value
       guard read == treeRead else { return }
+      // every window's shell hears it
       shell.apply(result)
-      panes?.sync(reload: reloadBoards)
+      windows.sync(reload: reloadBoards)
     }
   }
 
@@ -235,8 +250,9 @@ import CodeBoardResources
     panel.beginSheetModal(for: window) { [weak self] response in
       guard response == .OK, let url = panel.url else { return }
       Task { @MainActor in
-        // what is being written goes to its board before the boards are let go
-        await self?.panes?.close()
+        // what is being written, in any window, goes to its board before the boards are let go; one vault app-wide,
+        // so the other windows close
+        await self?.windows.closeAll()
         self?.open(url, restoring: nil)
       }
     }
@@ -286,8 +302,10 @@ import CodeBoardResources
   }
 
   private var otherKeyWindow: NSWindow? {
-    NSApp.keyWindow.flatMap { $0 === window || $0.sheetParent != nil ? nil : $0 }
+    NSApp.keyWindow.flatMap { w in windows.all.contains { $0.window === w } || w.sheetParent != nil ? nil : w }
   }
+
+  @objc func newWindow(_ sender: Any?) { windows.open() }
 
   // Not toggleSidebar(_:): NSWindow answers that one itself (and disables it, having no split view)
   @objc func flipSidebar(_ sender: Any?) { shell.sidebarShown.toggle() }
@@ -309,9 +327,11 @@ import CodeBoardResources
       settings
       ?? SettingsWindow(
         settings: ai, keys: keys, search: BoardPanes.searchSettings, searchKeys: BoardPanes.embeddingKeys)
-    s.onSwitchChange = { [weak self] in self?.panes?.summarySwitch = $0 }
+    s.onSwitchChange = { [weak self] v in for e in self?.windows.all ?? [] { e.panes.summarySwitch = v } }
     s.onWelcomeChange = { CanvasView.welcomeBack = $0 }
-    s.onKeyChange = { [weak self] set in self?.panes?.summaryWriter = set ? ai.writer(keys: keys) : nil }
+    s.onKeyChange = { [weak self] set in
+      for e in self?.windows.all ?? [] { e.panes.summaryWriter = set ? ai.writer(keys: keys) : nil }
+    }
     settings = s
     s.show()
   }
@@ -325,6 +345,7 @@ import CodeBoardResources
   func validateMenuItem(_ item: NSMenuItem) -> Bool {
     switch item.action {
     case #selector(importOldBoards(_:)): return shell.vault != nil && !shell.importing
+    case #selector(newWindow(_:)): return shell.vault != nil
     case #selector(closeTab(_:)):
       item.title = shell.selected == nil || otherKeyWindow != nil ? "Close" : "Close Tab"
       return window != nil
@@ -379,6 +400,7 @@ import CodeBoardResources
     app.addItem(withTitle: "Quit CodeBoard", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
 
     let file = NSMenu(title: "File")
+    file.addItem(withTitle: "New Window", action: #selector(newWindow(_:)), keyEquivalent: "n")
     file.addItem(withTitle: "Open Vault…", action: #selector(openVault(_:)), keyEquivalent: "o")
     file.addItem(item("Import Old Boards…", #selector(importOldBoards(_:)), "i", [.command, .shift]))
     file.addItem(.separator())
