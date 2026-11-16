@@ -49,6 +49,8 @@ struct ListRow: Equatable {
   var authors: [String] = []
   var year: Int?
   var site: String?
+  /// A web page's address: what dragging it to a board carries (ListDrag.swift)
+  var address: URL?
   /// When it was saved: its newest saving, else when it was added
   var saved: Date?
   /// Of its file: the newest PDF or file of an entry, the file of an entry alone
@@ -72,6 +74,7 @@ struct ListRow: Equatable {
       // the page online
       let address: URL? = if case .web(let a) = e.origin { URL(string: a) } else { nil }
       site = e.meta?.site ?? address?.host()
+      self.address = address
       let pdf = e.versions.filter { v in
         if case .pdf = v.content { v.of == nil } else { false }
       }.max { (Arxiv.number($0) ?? 0, $0.added) < (Arxiv.number($1) ?? 0, $1.added) }
@@ -191,6 +194,8 @@ final class ListTabView: NSView, ReadingLookFollower, NSTableViewDataSource, NST
     table.dataSource = self
     table.delegate = self
     table.onOpen = { [weak self] in self?.open($0) }
+    // a row dragged to a board, or a web page's address to anything that takes one
+    for local in [true, false] { table.setDraggingSourceOperationMask(.copy, forLocal: local) }
     scroll.drawsBackground = false
     scroll.hasVerticalScroller = true
     scroll.autohidesScrollers = true
