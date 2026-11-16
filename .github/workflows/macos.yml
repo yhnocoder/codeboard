@@ -155,9 +155,9 @@ jobs:
       # with this Package.resolved is taken: one made with other pins holds precompiled modules of the old packages'
       # headers (ShiyiFFI's shiyi.h), which the compiler refuses instead of building them again, so after a pin changes
       # PRs compile everything until the next regular run on main has kept a build (start one by hand). The regular
-      # run itself starts from nothing, so a wrong kept build lasts 6 hours at most. A cache saved on the default branch is readable by every PR's run. It is sealed with
-      # SHIYI_READ_TOKEN (the sealed-cache action), because the build holds the private package and a pull request from
-      # a fork can restore caches saved on main
+      # run itself starts from nothing, so a wrong kept build lasts 6 hours at most. A cache saved on the default
+      # branch is readable by every PR's run. It is sealed with SHIYI_READ_TOKEN (the sealed-cache action), because the
+      # build holds the private package and a pull request from a fork can restore caches saved on main
       - id: built
         if: ${{ !inputs.everything }}
         uses: ./.github/actions/sealed-cache
