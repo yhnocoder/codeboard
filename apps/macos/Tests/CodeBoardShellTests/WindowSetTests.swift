@@ -851,6 +851,30 @@ import Testing
     #expect(doc.board.cards.count == 2 && doc.undoName == "Move")
   }
 
+  /// With no other window's canvas under the pointer the drag stays the canvas's own wherever the pointer goes: over
+  /// its window's sidebar, past every window, and let go there it lands where it is let go
+  @Test func aCardDragOutOfItsCanvasWithNoOtherBoardUnderItStaysItsOwn() async throws {
+    let (set, first, second, vault) = try await onAAndB()
+    defer { try? FileManager.default.removeItem(at: vault.root) }
+    await cardWindows(set, first, second)
+    let from = try #require(canvas(first))
+    let docA = try #require(set.documents.open[a])
+    let start = try #require(docA.board.card(n).map { CGPoint(x: $0.x, y: $0.y) })
+    let sidebar = CGPoint(x: first.window.frame.minX + 60, y: middle(first).y)
+    #expect(!from.visibleRect.contains(from.convert(first.window.convertPoint(fromScreen: sidebar), from: nil)))
+    drag(from, at: CGPoint(x: 100, y: 50), through: [sidebar])
+    #expect(from.cardsOut == nil && from.liveRect(.card(n)).map { $0.minX < start.x } == true, "it follows")
+    from.mouseUp(with: mouse(from, .leftMouseUp, sidebar))
+    #expect(docA.undoName == "Move" && (docA.board.card(n)?.x ?? 0) < start.x)
+
+    // the other card, past every window
+    let away = CGPoint(x: first.window.frame.minX - 300, y: first.window.frame.minY - 200)
+    drag(from, at: CGPoint(x: 400, y: 50), through: [sidebar, away])
+    #expect(from.cardsOut == nil)
+    from.mouseUp(with: mouse(from, .leftMouseUp, away))
+    #expect(docA.undoName == "Move" && docA.history.undoSteps.count == 2 && (docA.board.card(m)?.x ?? 300) < 300)
+  }
+
   @Test func cardsLetGoOffABoardOrAfterEscChangeNothingAndBackOverTheirCanvasTheDragGoesOn() async throws {
     let (set, first, second, vault) = try await onAAndB()
     defer { try? FileManager.default.removeItem(at: vault.root) }
@@ -863,7 +887,7 @@ import Testing
     // over the other window's sidebar, then the desktop: no mark, and let go there nothing changes
     let sidebar = CGPoint(x: second.window.frame.minX + 60, y: middle(second).y)
     drag(from, at: CGPoint(x: 100, y: 50), through: [middle(second), sidebar])
-    #expect(set.canvas(at: sidebar) == nil && to.cardsDropLayer?.path == nil)
+    #expect(set.canvas(at: sidebar) == nil && to.cardsDropLayer?.path == nil && from.cardsOut != nil)
     let desktop = CGPoint(x: 5000, y: 5000)
     from.mouseDragged(with: mouse(from, .leftMouseDragged, desktop))
     from.mouseUp(with: mouse(from, .leftMouseUp, desktop))
