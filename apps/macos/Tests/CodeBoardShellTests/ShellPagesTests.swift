@@ -305,7 +305,10 @@ struct ShiyiWebTabTests {
     try await until("the selection said") { v.selection?.text.contains("long enough to be read") == true }
     #expect(!v.selectionBar.isHidden)
     let passage = try #require(v.collecting())
-    if case .id? = passage.source?.place?.block {} else { Issue.record("no block in \(String(describing: passage.source))") }
+    if case .id? = passage.source?.place?.block {
+    } else {
+      Issue.record("no block in \(String(describing: passage.source))")
+    }
     #expect(
       passage.body
         == .note(markdown: "The article's text, long enough to be read as the body of the page and nothing else."))
