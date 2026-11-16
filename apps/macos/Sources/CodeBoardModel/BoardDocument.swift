@@ -180,6 +180,7 @@ import Foundation
   /// Gives a seat back: the document's own is free for the next holder, keeping its selection; another is forgotten
   fileprivate func leave(_ s: Seat) {
     s.holder = nil
+    s.place.writingTaken = nil
     if mainSeat === s { mainSeat = nil }
     others.removeAll { $0.seat == nil || $0.seat === s }
   }
@@ -305,8 +306,8 @@ import Foundation
   /// A card being written in: the board as it was when the writing began, which the one undo step the writing becomes
   /// starts from. What is typed meanwhile reaches the board (and the disk) as drafts with no step. `isNew`: a card just
   /// made and not written yet (core CommandEnv.fresh), which goes and leaves no step when it is left empty. `place`:
-  /// the seat writing, whose selection the writing gives back or sets when it ends. One writing a document: what a
-  /// seat starting to write while another seat writes does is for a later change
+  /// the seat writing, whose selection the writing gives back or sets when it ends. One writing a document: a seat
+  /// that starts writing while another seat writes ends that writing first, kept (`takeWriting`)
   private var writing: (id: CardID, before: Board, selection: Set<Item>, isNew: Bool, place: Place)?
 
   public var freshCard: CardID? { writing?.isNew == true ? writing?.id : nil }
@@ -315,6 +316,7 @@ import Foundation
   public func addFresh(_ card: Card) { addFresh(card, by: mainPlace) }
 
   fileprivate func addFresh(_ card: Card, by place: Place) {
+    takeWriting(for: place)
     if let w = writing { settleWriting(keep: !w.isNew, "") { _ in } }
     writing = (card.id, board, place.selection, true, place)
     board.cards.append(card)
@@ -326,14 +328,27 @@ import Foundation
   public func beginWriting(_ id: CardID) { beginWriting(id, by: mainPlace) }
 
   fileprivate func beginWriting(_ id: CardID, by place: Place) {
+    takeWriting(for: place)
     guard writing == nil else { return }
     writing = (id, board, place.selection, false, place)
   }
 
+  /// Another seat's writing ends, kept, before `place` writes: its holder ends it as its own end does (the editor goes,
+  /// what was typed is one step), else it ends here with what its drafts put on the board. Without this, the drafts and
+  /// the end of the one would act on the other's writing
+  private func takeWriting(for place: Place) {
+    guard let w = writing, w.place !== place else { return }
+    w.place.writingTaken?()
+    if let now = writing, now.place === w.place { settleWriting(keep: !now.isNew, "") { _ in } }
+  }
+
   /// What is typed so far, onto the board with no undo step; saved as any change is. A draft never takes the card
   /// being written in off the board (with what points at it): only the end of the writing may
-  public func draft(_ change: (inout Board) -> Void) {
-    guard let w = writing else { return }
+  public func draft(_ change: (inout Board) -> Void) { draft(change, by: mainPlace) }
+
+  /// Only the seat writing drafts
+  fileprivate func draft(_ change: (inout Board) -> Void, by place: Place) {
+    guard let w = writing, w.place === place else { return }
     var b = board
     apply(change, to: &b)
     guard b != board, board.card(w.id) == nil || b.card(w.id) != nil else { return }
@@ -343,7 +358,7 @@ import Foundation
 
   /// The writing ends with `change`: from where it began to now is one undo step named `name` (none when that changed
   /// nothing). A new card not kept (`keep` false) goes as if it had never been, and the selection it took is given back
-  /// to the seat that was writing, whichever seat ends it
+  /// to the seat that was writing (a seat ends only its own writing: `Seat.settleWriting`)
   public func settleWriting(keep: Bool, _ name: String, _ change: (inout Board) -> Void) {
     guard let w = writing else { return }
     writing = nil
@@ -352,8 +367,13 @@ import Foundation
     let dropped = w.isNew && !keep
     if dropped { b.delete([.card(w.id)]) }
     let now = (dropped ? w.selection : w.place.selection).filter { b.has($0) }
-    if !dropped && b != w.before { history.record(name, from: w.before, to: b, selection: (w.selection, now)) }
-    guard b != board || now != w.place.selection else { return }
+    let recorded = !dropped && b != w.before
+    if recorded { history.record(name, from: w.before, to: b, selection: (w.selection, now)) }
+    guard b != board || now != w.place.selection else {
+      // what was typed is on the board already, as its drafts: the other seats still hear that it is one step now
+      if recorded { for p in places where p !== w.place { for o in p.observers.values { o(.edit) } } }
+      return
+    }
     board = b
     w.place.selection = now
     keepSelections(on: b, but: w.place)
@@ -523,6 +543,8 @@ extension BoardDocument {
       }
     }
     var observers: [UUID: (Change) -> Void] = [:]
+    /// Ends this seat's writing when another seat starts one (`Seat.onWritingTaken`)
+    var writingTaken: (() -> Void)?
   }
 
   /// A seat no longer held is not kept for it
@@ -558,8 +580,15 @@ extension BoardDocument {
     public func redo() { document.redo(by: place) }
     public func addFresh(_ card: Card) { document.addFresh(card, by: place) }
     public func beginWriting(_ id: CardID) { document.beginWriting(id, by: place) }
+    /// Only its own writing: one another seat took over has ended already
     public func settleWriting(keep: Bool, _ name: String, _ change: (inout Board) -> Void) {
+      guard document.writing?.place === place else { return }
       document.settleWriting(keep: keep, name, change)
+    }
+    /// What ends its writing, at once, when another seat starts writing on the board (a canvas ends its editor)
+    public var onWritingTaken: (() -> Void)? {
+      get { place.writingTaken }
+      set { place.writingTaken = newValue }
     }
     /// Called after every change of the board or of this seat's selection; returns what stops it
     public func observe(_ f: @escaping (Change) -> Void) -> () -> Void { document.observe(f, at: place) }
@@ -575,7 +604,7 @@ extension BoardDocument {
     public func sync(_ change: (inout Board) -> Void) { document.sync(change) }
     public func preview(_ change: (inout Board) -> Void) { document.preview(change) }
     public func derive(_ change: @escaping (inout Board) -> Void) { document.derive(change) }
-    public func draft(_ change: (inout Board) -> Void) { document.draft(change) }
+    public func draft(_ change: (inout Board) -> Void) { document.draft(change, by: place) }
     public func flush() { document.flush() }
     public func diskChanged() { document.diskChanged() }
   }

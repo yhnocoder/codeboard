@@ -423,10 +423,12 @@
           "sources": [
             "CodeBoardShell/BoardPanes.swift",
             "CodeBoardShell/BoardDocuments.swift",
+            "CodeBoardShell/WindowSet.swift",
             "CodeBoardModel/SharedCards.swift"
           ],
           "tests": [
             "BoardPanesTests",
+            "WindowSetTests",
             "MissingCardTests",
             "FullWindowDeleteEverywhereTests",
             "aQuestionBeforeDeletingTakesAPressToGoAhead"

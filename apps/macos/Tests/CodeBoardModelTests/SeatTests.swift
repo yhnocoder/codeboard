@@ -127,8 +127,10 @@ private final class Holder {}
     sb.addFresh(Board.newCard(.text(.text), id: cid("new"), x: 10, y: 20))
     #expect(sb.selection == [.card(cid("new"))] && sa.selection == [.card(cid("n1"))])
     #expect(doc.freshCard == cid("new") && sa.freshCard == cid("new"))
-    // ended from the other seat: the selection goes back to the seat that was writing
+    // only the seat writing ends its writing; ended: the selection goes back to it
     sa.settleWriting(keep: false, "New Text") { _ in }
+    #expect(doc.freshCard == cid("new"))
+    sb.settleWriting(keep: false, "New Text") { _ in }
     #expect(doc.board.card(cid("new")) == nil && doc.history.undoSteps.isEmpty)
     #expect(sb.selection == [.card(cid("n2"))] && sa.selection == [.card(cid("n1"))])
     // kept: one step with that seat's selection, the card selected there
@@ -138,6 +140,41 @@ private final class Holder {}
     #expect(step.name == "New Note" && step.selectionBefore == [.card(cid("n2"))])
     #expect(step.selectionAfter == [.card(cid("new2"))])
     #expect(sb.selection == [.card(cid("new2"))] && sa.selection == [.card(cid("n1"))])
+    withExtendedLifetime((a, b)) {}
+  }
+
+  @Test func aSeatThatStartsWritingWhileAnotherWritesEndsThatWritingKeptAndOnlyTheSeatWritingDraftsOrEndsIt() throws {
+    let (doc, _) = try opened()
+    let a = Holder()
+    let b = Holder()
+    let sa = doc.seat(for: a)
+    let sb = doc.seat(for: b)
+    sa.beginWriting(cid("t1"))
+    sa.draft { $0.write(cid("t1"), text: "A typed", layout: nil) }
+    // its holder ends it as its own end does (a canvas: its editor goes)
+    var taken = 0
+    sa.onWritingTaken = {
+      taken += 1
+      sa.settleWriting(keep: true, "Edit Text") { $0.write(cid("t1"), text: "A typed more", layout: nil) }
+    }
+    sb.beginWriting(cid("n1"))
+    #expect(taken == 1 && doc.undoName == "Edit Text" && doc.board.card(cid("t1"))?.writing == "A typed more")
+    // the first seat's late drafts and end touch nothing: the writing is the second's
+    sa.draft { $0.write(cid("t1"), text: "late", layout: nil) }
+    sa.settleWriting(keep: true, "Edit Text") { $0.write(cid("t1"), text: "later", layout: nil) }
+    #expect(doc.board.card(cid("t1"))?.writing == "A typed more" && doc.history.undoSteps.count == 1)
+    sb.draft { $0.write(cid("n1"), text: "B typed", layout: nil) }
+    #expect(doc.board.card(cid("n1"))?.writing == "B typed")
+    sb.settleWriting(keep: true, "Edit Note") { $0.write(cid("n1"), text: "B typed", layout: nil) }
+    #expect(doc.undoName == "Edit Note" && doc.history.undoSteps.count == 2)
+
+    // a holder that ends nothing: the writing ends here, kept as its drafts left the board, one step
+    sb.beginWriting(cid("n1"))
+    sb.draft { $0.write(cid("n1"), text: "B again", layout: nil) }
+    sa.beginWriting(cid("t1"))
+    #expect(doc.board.card(cid("n1"))?.writing == "B again" && doc.history.undoSteps.count == 3)
+    sa.draft { $0.write(cid("t1"), text: "A again", layout: nil) }
+    #expect(doc.board.card(cid("t1"))?.writing == "A again")
     withExtendedLifetime((a, b)) {}
   }
 }

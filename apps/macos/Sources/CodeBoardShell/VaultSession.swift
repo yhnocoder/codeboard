@@ -24,7 +24,20 @@ import Observation
   /// Where Copy Path, and Copy in the reading pane, put text: the general pasteboard; tests give one of their own
   @ObservationIgnored public var pasteboard = NSPasteboard.general
 
+  /// Every window's shell, each told of a fresh tree whichever window read it (`Shell.apply`)
+  @ObservationIgnored private var joined: [Joined] = []
+  private struct Joined {
+    weak var shell: Shell?
+  }
+
   public init() {}
+
+  func join(_ shell: Shell) {
+    joined.removeAll { $0.shell == nil }
+    joined.append(Joined(shell: shell))
+  }
+
+  var shells: [Shell] { joined.compactMap(\.shell) }
 
   /// The theme in the appearance the app shows: what boards, the board panel and its glass are drawn in
   public var look: Theme { Theme.named(theme, dark: dark) }
