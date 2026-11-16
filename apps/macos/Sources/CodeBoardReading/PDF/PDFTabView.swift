@@ -18,6 +18,9 @@ final class PDFTabView: NSView, NSDraggingSource, ReadingLookFollower {
   private(set) var bar: SelectionBar!
   private(set) var regionBar: SelectionBar!
   private(set) var highlightBar: SelectionBar!
+  /// The entry's versions, at the bottom (PDFVersions.swift), and the note above it
+  private(set) var versions: VersionsBar!
+  let note = VersionNote()
   /// What is written on a highlight, while it is open
   var pop: AnnotationPop?
   /// The entry's folder once it has one, and the entry as last read or written
@@ -82,7 +85,14 @@ final class PDFTabView: NSView, NSDraggingSource, ReadingLookFollower {
     regionFrame.layer?.borderWidth = 1.5
     regionFrame.layer?.cornerRadius = 2
     regionFrame.setAccessibilityIdentifier("ui-pdfregion")
-    for v in [regionFrame, bar!, regionBar!, highlightBar!] {
+    versions = VersionsBar(look: look)
+    versions.onSelect = { [weak self] in self?.showVersion($0) }
+    versions.onTranslate = { [weak self] in self?.translateShown() }
+    versions.onJob = { [weak self] in self?.jobPressed() }
+    versions.onMore = { [weak self] v in
+      self?.versionsMenu().popUp(positioning: nil, at: CGPoint(x: 0, y: v.bounds.maxY + 4), in: v)
+    }
+    for v in [regionFrame, bar!, regionBar!, highlightBar!, versions!, note] {
       v.isHidden = true
       addSubview(v)
     }
@@ -103,6 +113,11 @@ final class PDFTabView: NSView, NSDraggingSource, ReadingLookFollower {
           MainActor.assumeIsolated { self?.followPage() }
         })
     }
+    // a translation's progress, or its version added
+    watching.append(
+      center.addObserver(forName: Translations.changed, object: nil, queue: .main) { [weak self] _ in
+        MainActor.assumeIsolated { self?.reread() }
+      })
     Self.live[context.tab] = Weak(view: self)
     if let place = Self.pending.removeValue(forKey: context.tab) { reveal(place) }
   }
@@ -118,17 +133,27 @@ final class PDFTabView: NSView, NSDraggingSource, ReadingLookFollower {
 
   /// The document, mapped from its file (it stays readable when the file moves into an entry folder); nothing when
   /// the file is gone: the blank panel
-  private func load() {
+  func load() {
     guard let target, let found = context.pane.locate(target, scanning: true),
       let data = try? Data(contentsOf: found.url, options: .mappedIfSafe), let doc = PDFDocument(data: data)
     else {
       pdf.isHidden = true
       return
     }
+    pdf.isHidden = false
     entryPath = found.entry?.path
     entry = found.entry?.entry
     pdf.document = doc
     if let entry { draw(entry) }
+    refreshVersions()
+  }
+
+  /// What the tab shows changed to `t` (another version: showVersion)
+  func retarget(_ t: PDFTarget) { target = t }
+
+  override func layout() {
+    super.layout()
+    placeVersions()
   }
 
   var title: String { context.pane.tabs.first { $0.id == context.tab }?.title ?? "" }
@@ -190,6 +215,8 @@ final class PDFTabView: NSView, NSDraggingSource, ReadingLookFollower {
 
   func barLookChanged(_ look: ReadingBarLook) {
     for b in [bar!, regionBar!, highlightBar!] { b.look = look }
+    versions.look = look
+    placeVersions()
     pop?.look = look
     regionFrame.layer?.borderColor = look.accent
   }
@@ -393,11 +420,12 @@ final class PDFTabView: NSView, NSDraggingSource, ReadingLookFollower {
     }
   }
 
-  private func took(_ e: Entry, at path: String) {
+  func took(_ e: Entry, at path: String) {
     entryPath = path
     entry = e
     context.pane.entries.update(e, at: path)
     draw(e)
+    refreshVersions()
   }
 
   static var now: Double { (Date().timeIntervalSince1970 * 1000).rounded() }

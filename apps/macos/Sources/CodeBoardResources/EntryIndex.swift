@@ -8,6 +8,11 @@ public struct EntryIndex: Sendable {
     public var entry: Entry
     /// The entry's folder, relative to the vault
     public var path: String
+
+    public init(entry: Entry, path: String) {
+      self.entry = entry
+      self.path = path
+    }
   }
 
   private var byID: [EntryID: Found] = [:]

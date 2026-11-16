@@ -38,6 +38,16 @@ public struct TranslationJob: Codable, Hashable, Sendable {
     self.label = label
   }
 
+  /// The translation of `version` of `entry`, an arXiv paper of `vault`: tongtu is given the number of that version
+  /// (from its label `v<n>`; without one the newest) so its source is that version's; nil for an entry not from arXiv
+  public init?(vault: Vault, entry: Entry, version: Version) {
+    guard case .arxiv(let id)? = entry.origin else { return nil }
+    self.init(
+      vault: vault.root.path, entry: entry.id, version: version.id,
+      paper: Arxiv.number(version).map { "\(id)v\($0)" } ?? id,
+      label: [version.label, "中文"].compactMap { $0 }.joined(separator: " "))
+  }
+
   /// Its work folder's name, which tongtu names its output after (`/` of an old-style id as `_`, as tongtu does)
   public var name: String { paper.replacing("/", with: "_") }
 }

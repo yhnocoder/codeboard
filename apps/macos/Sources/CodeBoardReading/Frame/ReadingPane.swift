@@ -79,6 +79,10 @@ public struct ReadingTab: Codable, Equatable, Identifiable, Sendable {
   @ObservationIgnored public var onCollect: ((Collected) -> Void)?
   /// This machine's data of the app, never in the vault: each kind has a folder in it (ReadingContext.dataFolder)
   @ObservationIgnored public var machineFolder: URL?
+  /// arXiv, where a paper's newer versions come from; tests give one that answers without the network
+  @ObservationIgnored public var arxiv = Arxiv()
+  /// This machine's translations (the shell makes them); nil: none, and no "+ 译文"
+  @ObservationIgnored public var translations: Translations?
   /// The board's bar look in its theme now (the shell sets it); tabs' views follow it
   public var barLook = ReadingBarLook.warmInk(dark: false)
 
