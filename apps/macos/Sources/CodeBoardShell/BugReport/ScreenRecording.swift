@@ -11,6 +11,7 @@ import Synchronization
 final class ScreenRecording: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Sendable {
   enum Failure: Error, CustomStringConvertible {
     case noPermission
+    case notPersonal
     case windowNotShared
     case writer(String)
 
@@ -18,6 +19,7 @@ final class ScreenRecording: NSObject, SCStreamOutput, SCStreamDelegate, @unchec
       switch self {
       case .noPermission:
         "Screen Recording is not allowed for CodeBoard (System Settings › Privacy & Security › Screen & System Audio Recording); allow it, then record again"
+      case .notPersonal: "a driver's run records no video"
       case .windowNotShared: "the window was not among what ScreenCaptureKit can record"
       case .writer(let s): "the video could not be written: \(s)"
       }
@@ -62,11 +64,15 @@ final class ScreenRecording: NSObject, SCStreamOutput, SCStreamDelegate, @unchec
   }
 
   /// `window` and `excluding`: window numbers; `frame`: the window's frame in screen coordinates (y up, AppKit's)
-  /// `ask`: the system asks for Screen Recording when it is not allowed (the report goes on without video meanwhile)
-  static func start(window: Int, frame: CGRect, excluding: [Int], to url: URL, t0: Double, ask: Bool) async throws
+  /// `personal`: the person's own app, where the system asks for Screen Recording when it is not allowed (the report
+  /// goes on without video meanwhile); a driver's run records nothing
+  static func start(window: Int, frame: CGRect, excluding: [Int], to url: URL, t0: Double, personal: Bool) async throws
     -> ScreenRecording
   {
-    guard CGPreflightScreenCaptureAccess() || ask && CGRequestScreenCaptureAccess() else { throw Failure.noPermission }
+    // a driver's run never records, whatever its Mac allows: one started from a terminal that may record the screen
+    // would otherwise record for real
+    guard personal else { throw Failure.notPersonal }
+    guard CGPreflightScreenCaptureAccess() || CGRequestScreenCaptureAccess() else { throw Failure.noPermission }
     let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
     guard let target = content.windows.first(where: { Int($0.windowID) == window }),
       let app = content.applications.first(where: { $0.processID == getpid() }),

@@ -157,7 +157,8 @@ import CodeBoardResources
     if let r = bugRecorder, r.isBusy {
       Task {
         await r.finishForQuit()
-        NSApp.reply(toApplicationShouldTerminate: self.applicationShouldTerminate(sender) == .terminateNow)
+        // when the rest answers later (a card being written in, a board that could not be saved), the answer is its
+        if self.applicationShouldTerminate(sender) == .terminateNow { NSApp.reply(toApplicationShouldTerminate: true) }
       }
       return .terminateLater
     }
