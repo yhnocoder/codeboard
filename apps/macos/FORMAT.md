@@ -280,7 +280,9 @@ File names are plain file names, as in `images/`.
   `rect` the region.
 
 **SourceAnchor** (a Place from outside the entry: a card's `source`, an image card's `resource`): `entry, version,
-block, range?`, a Place with the entry's id. The board does not check that the entry is there: a card whose entry is
+block, range?`, a Place with the entry's id; or `entry` alone, the entry as a whole (what was taken from a page saved
+as a link, which has no version: its source shows the entry's title and opens its address). An image card's `resource`
+always has its place (a file where it has none is refused). The board does not check that the entry is there: a card whose entry is
 gone keeps its anchor and is drawn as missing its source.
 
 Read strictly besides: version, highlight and sidenote ids are each unique among their kind in the entry; a place's
