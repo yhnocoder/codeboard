@@ -32,6 +32,18 @@ import UniformTypeIdentifiers
     panel.prompt = "Add"
     return await panel.beginSheetModal(for: window) == .OK ? panel.urls : []
   }
+  shell.askArxiv = { [weak window, weak shell] resource in
+    guard let window, let shell else { return }
+    var sheet: ArxivSheet?
+    sheet = ArxivSheet(
+      missing: shell.reading.translations.map { $0.missing } ?? "Translations are not set up.",
+      add: { await shell.addArxiv($0, translate: $1, to: resource) },
+      done: {
+        if let s = sheet?.window { window.endSheet(s) }
+        sheet = nil
+      })
+    if let s = sheet?.window { window.beginSheet(s) }
+  }
   if !window.setFrameUsingName("main") { window.center() }
   window.setFrameAutosaveName("main")
   return (window, panes)

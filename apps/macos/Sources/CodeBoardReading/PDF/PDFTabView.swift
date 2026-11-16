@@ -18,6 +18,9 @@ final class PDFTabView: NSView, NSDraggingSource, ReadingLookFollower {
   private(set) var bar: SelectionBar!
   private(set) var regionBar: SelectionBar!
   private(set) var highlightBar: SelectionBar!
+  /// The entry's versions, at the bottom (PDFVersions.swift), and the note above it
+  private(set) var versions: VersionsBar!
+  let note = VersionNote()
   /// What is written on a highlight, while it is open
   var pop: AnnotationPop?
   /// The entry's folder once it has one, and the entry as last read or written
@@ -27,6 +30,14 @@ final class PDFTabView: NSView, NSDraggingSource, ReadingLookFollower {
   var shownHighlight: [Highlight] = []
   /// The region framed on a page (page space), and its frame
   private(set) var region: (page: PDFPage, rect: CGRect)?
+  /// The version's block list and TeX, when it has a list (PDFBlocks.swift)
+  private(set) var paper: Paper?
+  /// The object clicked (a formula, a table, a figure): the region is its frame on its first page
+  private(set) var object: BlockList.Block?
+  /// The picture of the block a link goes to, while the pointer rests on the link
+  let refPreview = RefPreview()
+  var previewing: BlockList.Block?
+  var previewTask: Task<Void, Never>?
   let regionFrame = NSView()
   private var regionStart: (page: PDFPage, at: CGPoint)?
   /// What floats over the pages, each with its top left in the space of the page it belongs to, so it moves with it
@@ -82,7 +93,14 @@ final class PDFTabView: NSView, NSDraggingSource, ReadingLookFollower {
     regionFrame.layer?.borderWidth = 1.5
     regionFrame.layer?.cornerRadius = 2
     regionFrame.setAccessibilityIdentifier("ui-pdfregion")
-    for v in [regionFrame, bar!, regionBar!, highlightBar!] {
+    versions = VersionsBar(look: look)
+    versions.onSelect = { [weak self] in self?.showVersion($0) }
+    versions.onTranslate = { [weak self] in self?.translateShown() }
+    versions.onJob = { [weak self] in self?.jobPressed() }
+    versions.onMore = { [weak self] v in
+      self?.versionsMenu().popUp(positioning: nil, at: CGPoint(x: 0, y: v.bounds.maxY + 4), in: v)
+    }
+    for v in [regionFrame, bar!, regionBar!, highlightBar!, versions!, note, refPreview] {
       v.isHidden = true
       addSubview(v)
     }
@@ -103,6 +121,11 @@ final class PDFTabView: NSView, NSDraggingSource, ReadingLookFollower {
           MainActor.assumeIsolated { self?.followPage() }
         })
     }
+    // a translation's progress, or its version added
+    watching.append(
+      center.addObserver(forName: Translations.changed, object: nil, queue: .main) { [weak self] _ in
+        MainActor.assumeIsolated { self?.reread() }
+      })
     Self.live[context.tab] = Weak(view: self)
     if let place = Self.pending.removeValue(forKey: context.tab) { reveal(place) }
   }
@@ -118,17 +141,33 @@ final class PDFTabView: NSView, NSDraggingSource, ReadingLookFollower {
 
   /// The document, mapped from its file (it stays readable when the file moves into an entry folder); nothing when
   /// the file is gone: the blank panel
-  private func load() {
+  func load() {
     guard let target, let found = context.pane.locate(target, scanning: true),
       let data = try? Data(contentsOf: found.url, options: .mappedIfSafe), let doc = PDFDocument(data: data)
     else {
       pdf.isHidden = true
       return
     }
+    pdf.isHidden = false
     entryPath = found.entry?.path
     entry = found.entry?.entry
+    paper = nil
+    if case .entry(_, let version) = target, let found = found.entry, let vault = context.pane.vault,
+      let v = found.entry.versions.first(where: { $0.id == version })
+    {
+      paper = Paper.read(v.content, in: vault.url(of: found.path))
+    }
     pdf.document = doc
     if let entry { draw(entry) }
+    refreshVersions()
+  }
+
+  /// What the tab shows changed to `t` (another version: showVersion)
+  func retarget(_ t: PDFTarget) { target = t }
+
+  override func layout() {
+    super.layout()
+    placeVersions()
   }
 
   var title: String { context.pane.tabs.first { $0.id == context.tab }?.title ?? "" }
@@ -138,12 +177,16 @@ final class PDFTabView: NSView, NSDraggingSource, ReadingLookFollower {
   override var acceptsFirstResponder: Bool { true }
 
   /// A key given to the pages comes back here when they do not take it (this view is above them in the responder
-  /// chain): it goes on up then, never to the pages again
+  /// chain): never to the pages again. With ⌘ or ⌃ it goes on up the chain; a plain key ends here, so a letter pressed
+  /// over a paper makes no sound
   private var keyAtPages = false
 
   override func keyDown(with event: NSEvent) {
     if collectKey(event) { return }
-    guard !keyAtPages, window?.firstResponder === self else { return super.keyDown(with: event) }
+    guard !keyAtPages, window?.firstResponder === self else {
+      if !event.modifierFlags.intersection([.command, .control]).isEmpty { super.keyDown(with: event) }
+      return
+    }
     keyAtPages = true
     defer { keyAtPages = false }
     pdf.keyDown(with: event)
@@ -162,9 +205,10 @@ final class PDFTabView: NSView, NSDraggingSource, ReadingLookFollower {
 
   // MARK: What floats over the pages
 
-  /// `view` at `origin` (this view's space), kept there on `page` as it scrolls
+  /// `view` at `origin` (this view's space), kept there on `page` as it scrolls; one pinned already moves there without
+  /// being hidden in between (hiding it would take the keys from the view in it that has them: the popup's input)
   func pin(_ view: NSView, at origin: CGPoint, on page: PDFPage) {
-    unpin(view)
+    pinned.removeAll { $0.view === view }
     view.setFrameOrigin(origin)
     view.isHidden = false
     pinned.append((view, page, pdf.convert(pdf.convert(origin, from: self), to: page)))
@@ -184,12 +228,15 @@ final class PDFTabView: NSView, NSDraggingSource, ReadingLookFollower {
   func dismiss() {
     for v in [bar!, regionBar!, highlightBar!] { unpin(v) }
     closePop()
+    hidePreview()
     shownHighlight = []
     clearRegion()
   }
 
   func barLookChanged(_ look: ReadingBarLook) {
     for b in [bar!, regionBar!, highlightBar!] { b.look = look }
+    versions.look = look
+    placeVersions()
     pop?.look = look
     regionFrame.layer?.borderColor = look.accent
   }
@@ -204,10 +251,16 @@ final class PDFTabView: NSView, NSDraggingSource, ReadingLookFollower {
     lines.map { ($0.0, convert(pdf.convert($0.1, from: $0.0), from: pdf)) }
   }
 
+  /// Where what floats over the pages may go: the tab, down to a little above the versions bar when it shows
+  var floatArea: CGRect {
+    guard !versions.isHidden else { return bounds }
+    return CGRect(x: bounds.minX, y: bounds.minY, width: bounds.width, height: max(0, versions.frame.minY - 6))
+  }
+
   /// A bar over lines in this view, in reading order (the selection bar's rule)
   func show(_ b: SelectionBar, over lines: [(PDFPage, CGRect)]) {
     guard let first = lines.first else { return unpin(b) }
-    pin(b, at: SelectionBar.origin(size: b.size, lines: lines.map(\.1), visible: bounds), on: first.0)
+    pin(b, at: SelectionBar.origin(size: b.size, lines: lines.map(\.1), visible: floatArea), on: first.0)
   }
 
   // MARK: The selection
@@ -217,12 +270,38 @@ final class PDFTabView: NSView, NSDraggingSource, ReadingLookFollower {
     return s
   }
 
-  /// A triple click: the line PDFKit selected grows to its paragraph (PDFPlaces.block)
+  /// A triple click: the line PDFKit selected grows to its block when the version has a list, else to its paragraph
+  /// (PDFPlaces.block)
   func selectParagraph() {
-    guard let s = pdf.currentSelection, let page = s.pages.first, let p = PDFPlaces.paragraph(of: s, on: page) else {
-      return
+    guard let s = pdf.currentSelection, let page = s.pages.first, let doc = pdf.document else { return }
+    if let paper {
+      let at = s.bounds(for: page)
+      if let b = paper.block(at: CGPoint(x: at.midX, y: at.midY), page: doc.index(for: page) + 1), !b.isObject,
+        let whole = PDFBlocks.selection(of: b, in: doc)
+      {
+        return pdf.setCurrentSelection(whole, animate: false)
+      }
     }
+    guard let p = PDFPlaces.paragraph(of: s, on: page) else { return }
     pdf.setCurrentSelection(p, animate: false)
+  }
+
+  /// A click on an object of a version read by blocks: it is selected whole, framed, with its bar; false when there is
+  /// none at the point (the PDF view's space)
+  func clickObject(at point: CGPoint) -> Bool {
+    guard let (b, page, r) = object(at: point) else { return false }
+    selectObject(b, on: page, r)
+    return true
+  }
+
+  func selectObject(_ b: BlockList.Block, on page: PDFPage, _ r: CGRect) {
+    dismiss()
+    pdf.clearSelection()
+    region = (page, r)
+    object = b
+    regionFrame.setAccessibilityIdentifier("ui-pdfobject")
+    placeRegionFrame()
+    show(regionBar, over: inView([(page, r)]))
   }
 
   /// The selection's lines in this view (y-down)
@@ -254,6 +333,19 @@ final class PDFTabView: NSView, NSDraggingSource, ReadingLookFollower {
     guard let doc = pdf.document, selectedText != nil || region != nil, let (e, _, version) = madeEntry() else {
       return nil
     }
+    if let object, let (page, r) = region {
+      let n = doc.index(for: page) + 1
+      let place = Place(version: version, block: .id(object.id))
+      let body: Collected.Body =
+        if let f = paper?.formula(object) {
+          .note(markdown: "$$\n\(f)\n$$")
+        } else {
+          .image(alt: nil, width: r.width, height: r.height)
+        }
+      return Collected(
+        body: body, source: SourceAnchor(entry: e.id, place: place), title: title,
+        label: label([place], pages: [n]))
+    }
     if let (page, r) = region {
       let n = doc.index(for: page) + 1
       let box = page.bounds(for: .cropBox)
@@ -263,11 +355,13 @@ final class PDFTabView: NSView, NSDraggingSource, ReadingLookFollower {
         source: SourceAnchor(entry: e.id, place: Place(version: version, block: .page(n, rect: rect))), title: title,
         label: PDFPlaces.label([n]))
     }
-    guard let text = selectedText, let s = pdf.currentSelection else { return nil }
-    let first = PDFPlaces.places(s, in: doc, version: version).first
+    guard let s = pdf.currentSelection, let text = collectedText(s, places: places(s, version: version)) else {
+      return nil
+    }
+    let all = places(s, version: version)
     return Collected(
-      body: .note(markdown: text), source: first.map { SourceAnchor(entry: e.id, place: $0) }, title: title,
-      label: PDFPlaces.label(PDFPlaces.pages(s, in: doc)))
+      body: .note(markdown: text), source: all.first.map { SourceAnchor(entry: e.id, place: $0) }, title: title,
+      label: label(all, pages: PDFPlaces.pages(s, in: doc)))
   }
 
   func collect() {
@@ -277,6 +371,11 @@ final class PDFTabView: NSView, NSDraggingSource, ReadingLookFollower {
   /// The text on the pasteboard, or the region's picture drawn at twice its size in points
   func copySelection() {
     let pb = context.pane.pasteboard
+    if let object, let f = paper?.formula(object) {
+      pb.clearContents()
+      pb.setString(f, forType: .string)
+      return
+    }
     if let (page, r) = region {
       guard let image = PDFPlaces.picture(of: page, r, pixelWidth: Int((r.width * 2).rounded())) else { return }
       let item = NSPasteboardItem()
@@ -288,7 +387,9 @@ final class PDFTabView: NSView, NSDraggingSource, ReadingLookFollower {
       pb.writeObjects([item])
       return
     }
-    guard let text = selectedText else { return }
+    guard let s = pdf.currentSelection, selectedText != nil else { return }
+    let version: VersionID? = if case .entry(_, let v)? = target { v } else { nil }
+    let text = version.flatMap { collectedText(s, places: places(s, version: $0)) } ?? s.string ?? ""
     pb.clearContents()
     pb.setString(text, forType: .string)
   }
@@ -325,6 +426,8 @@ final class PDFTabView: NSView, NSDraggingSource, ReadingLookFollower {
 
   func clearRegion() {
     region = nil
+    object = nil
+    regionFrame.setAccessibilityIdentifier("ui-pdfregion")
     regionStart = nil
     unpin(regionFrame)
     unpin(regionBar)
@@ -393,11 +496,12 @@ final class PDFTabView: NSView, NSDraggingSource, ReadingLookFollower {
     }
   }
 
-  private func took(_ e: Entry, at path: String) {
+  func took(_ e: Entry, at path: String) {
     entryPath = path
     entry = e
     context.pane.entries.update(e, at: path)
     draw(e)
+    refreshVersions()
   }
 
   static var now: Double { (Date().timeIntervalSince1970 * 1000).rounded() }
@@ -406,7 +510,12 @@ final class PDFTabView: NSView, NSDraggingSource, ReadingLookFollower {
 
   /// A place of this tab's version shown as an ordinary selection, scrolled to only when it is out of view
   func reveal(_ place: Place) {
-    guard let doc = pdf.document, let s = PDFPlaces.selection([place], in: doc) else { return }
+    if case .id(let id) = place.block, let b = paper?.block(id), b.isObject, let (page, r) = objectFrame(b) {
+      let shown = bounds.contains(convert(pdf.convert(r, from: page), from: pdf))
+      if !shown { pdf.go(to: r, on: page) }
+      return selectObject(b, on: page, r)
+    }
+    guard let s = selection([place]) else { return }
     dismiss()
     pdf.setCurrentSelection(s, animate: false)
     let shown = lines().contains { bounds.contains($0.1) }
@@ -469,6 +578,8 @@ final class PagesView: PDFView {
     let p = convert(event.locationInWindow, from: nil)
     let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
     if event.clickCount == 1, mods.isEmpty, tab.isOnSelection(p) { return tab.dragOut(from: event) }
+    // a formula, a table or a figure taken whole; a link is followed as PDFKit follows it
+    if event.clickCount == 1, mods.isEmpty, tab.linkTarget(at: p) == nil, tab.clickObject(at: p) { return }
     if event.clickCount == 1, mods == .option { return tab.trackRegion(from: event) }
     tab.dismiss()
     // PDFKit follows the drag itself until the mouse lets go
@@ -479,6 +590,26 @@ final class PagesView: PDFView {
 
   override func keyDown(with event: NSEvent) {
     if tab?.collectKey(event) != true { super.keyDown(with: event) }
+  }
+
+  // the pointer followed for the links' previews
+  override func updateTrackingAreas() {
+    super.updateTrackingAreas()
+    for t in trackingAreas where t.owner === self && t.userInfo?["links"] != nil { removeTrackingArea(t) }
+    addTrackingArea(
+      NSTrackingArea(
+        rect: .zero, options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self,
+        userInfo: ["links": true]))
+  }
+
+  override func mouseMoved(with event: NSEvent) {
+    super.mouseMoved(with: event)
+    tab?.pointerMoved(to: convert(event.locationInWindow, from: nil))
+  }
+
+  override func mouseExited(with event: NSEvent) {
+    super.mouseExited(with: event)
+    tab?.hidePreview()
   }
 
   override func copy(_ sender: Any?) { tab?.copySelection() }

@@ -172,10 +172,13 @@ import Testing
     #expect(window.firstResponder === editing, "the field keeps them")
   }
 
-  /// A tab saved before tabs had kinds reads as a blank page
+  /// A tab saved before tabs had kinds reads as a blank page, a resource's as its list
   @Test func aTabSavedWithoutAKindIsBlank() throws {
     let json = #"{"id":"6F9619FF-8B86-D011-B42D-00C04FC964FF","key":"r/a","title":"Old","content":{"empty":{}}}"#
     let t = try JSONDecoder().decode(ReadingTab.self, from: Data(json.utf8))
     #expect(t.kind == "" && t.payload == [:] && t.title == "Old" && t.key == "r/a")
+    let resource = #"{"id":"6F9619FF-8B86-D011-B42D-00C04FC964FF","key":"resource:r1","title":"Papers"}"#
+    let r = try JSONDecoder().decode(ReadingTab.self, from: Data(resource.utf8))
+    #expect(r.kind == "list" && r.payload == ["resource": "r1"])
   }
 }

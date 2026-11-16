@@ -257,8 +257,10 @@ something needs its id: a highlight, a sidenote, a card taken from it.
 **Version** (one readable form of the entry; a paper's v1, its v2, a translation of either, one saving of a web page):
 `id, label?, added, language?, of?, content`. `label`: what its tab says (`v2`, `v2 中文`). `of`: the version this one
 translates (blocks of the two correspond by order). `language`: BCP 47 (`zh`, `en`). `content` is one of:
-- `pdf: {file, blocks?}`: a PDF in the entry folder, and `blocks`, the file there listing its blocks (tongtu's
-  `<id>.zh.anchors.json` as written). Without `blocks` it is a plain PDF: text by page only.
+- `pdf: {file, blocks?, source?}`: a PDF in the entry folder, and `blocks`, the file there listing its blocks (tongtu's
+  `<id>.zh.anchors.json` as written). `source`, only with `blocks`: the TeX file there whose lines the list's
+  `first_line`…`last_line` number (tongtu's `zh.tex`, kept as `<id>.zh.tex`). Without `blocks` it is a plain PDF: text
+  by page only.
 - `page: {hash, bytes}`: a web page saved whole, kept outside the vault by its content fingerprint (`hash`, as the
   saving service names the file); `bytes` its size.
 - `file: {file}`: any other file in the entry folder, opened as the system opens it; no places in it.
@@ -268,10 +270,12 @@ every highlight, sidenote and card source keeps naming the version it was made o
 File names are plain file names, as in `images/`.
 
 **Place** (where in an entry): `version, block, range?`.
-- `block` is one of `id: "<block id>"` (a block of the version's block list, or of a saved page: the id that list or
-  page gives it) or `page: {page, rect?}` (a plain PDF: a page from 1, and `rect: [x, y, width, height]` for a region
-  of it, in PDF points from the page's bottom left).
-- `range: [from, to]`: characters of the block's text (a block's source text as its list gives it; a page's text as
+- `block` is one of `id: "<block id>"` (a block of the version's block list, by the `id` the list gives it, or of a
+  saved page: the id the page gives it) or `page: {page, rect?}` (a plain PDF: a page from 1, and `rect: [x, y, width,
+  height]` for a region of it, in PDF points from the page's bottom left).
+- A block's text is its lines of the version's `source`, `first_line` to `last_line`, joined with "\n". The block
+  list's rects are in PDF points of their page's MediaBox, from its bottom left (y up).
+- `range: [from, to]`: characters of the block's text (a block of a list: its text as above; a page: its text as
   PDFKit gives it), in UTF-16 code units, `from` included, `to` not, `0 ≤ from < to`. Absent: the whole block, or with
   `rect` the region.
 
