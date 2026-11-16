@@ -1,11 +1,13 @@
 import AppKit
 import CodeBoardModel
+import CodeBoardNotes
 import TreeSitterHighlight
 
 // What a reading pane collects onto the board (Collected): selected text as an ordinary Note with its source, a figure
-// or a table as an image card showing that block of the entry. Its Add to Board and ⌥↵ (`collect`) put it in a free
-// place of the view; dragged over the board, the card as it will be is in hand, centred on the pointer as a sticker
-// being placed is, and let go it lands there. Either way it is selected, one step, in the Section it lands in.
+// or a table as an image card showing that block of the entry, a web page's picture as an image card of its own. Its
+// Add to Board and ⌥↵ (`collect`) put it in a free place of the view; dragged over the board, the card as it will be is
+// in hand, centred on the pointer as a sticker being placed is, and let go it lands there. Either way it is selected,
+// one step, in the Section it lands in.
 
 /// A collected card in hand while its drag is over the board: laid out and drawn once, then only moved
 struct InHand {
@@ -22,7 +24,7 @@ extension CanvasView {
   static let collectedType = NSPasteboard.PasteboardType(Collected.pasteboardType)
 
   /// Collected from a reading pane: its card in a free place of the view, selected. False when it cannot be a card (an
-  /// image with no source to draw it from)
+  /// image with no source to draw it from, a data: picture that is no picture kept)
   @discardableResult public func collect(_ c: Collected) -> Bool {
     guard document != nil, let size = collectedSize(c) else { return false }
     return add(c, at: pastePlace(size, at: nil, besideSelection: false), size: size, reveal: true)
@@ -41,7 +43,26 @@ extension CanvasView {
       return Card(
         id: id, x: p.x, y: p.y, width: w.rounded(),
         content: .own(CardContent(body: .image(ImageCard(source: .resource(a), alt: alt)))))
+    case .picture(let url, let alt, let w, _):
+      // a web page's picture: read from its address as a pasted address is, or a data: one kept in the board's images
+      // as a pasted picture is (an SVG is refused: a paste has it cleaned first); its source the entry the page is
+      guard let picture = collectedPicture(url) else { return nil }
+      return Card(
+        id: id, x: p.x, y: p.y, width: w.rounded(),
+        content: .own(CardContent(source: c.source, body: .image(ImageCard(source: picture, alt: alt)))))
     }
+  }
+
+  /// An http(s) address as it is, a data: picture's bytes in the board's images by their content (already when its card
+  /// is first in hand); nil for anything else
+  private func collectedPicture(_ url: String) -> ImageSource? {
+    if webAddress(url) == url { return .url(url) }
+    guard url.hasPrefix("data:"), let comma = url.firstIndex(of: ","), url[..<comma].hasSuffix(";base64"),
+      let data = Data(base64Encoded: String(url[url.index(after: comma)...])),
+      NoteImages.kind(of: data)?.0 != "svg", let (board, vault) = shown,
+      let address = try? NoteImages.store(data, in: vault.url(of: board.path))
+    else { return nil }
+    return .file(String(address.dropFirst(Vault.imagesFolder.count + 1)))
   }
 
   /// How big its card is before it is laid out: an image's natural size, a Note as tall as a pasted one is taken to be
@@ -49,13 +70,18 @@ extension CanvasView {
     switch c.body {
     case .note: CGSize(width: Board.newNoteWidth, height: 160)
     case .image(_, let w, let h): c.source == nil ? nil : CGSize(width: w.rounded(), height: h)
+    case .picture(_, _, let w, let h): w > 0 && h > 0 ? CGSize(width: w.rounded(), height: w.rounded() * h / w) : nil
     }
   }
 
   /// `reveal`: brought into view when it is not (a card let go where the pointer is: the camera stays)
   @discardableResult private func add(_ c: Collected, at p: CGPoint, size: CGSize, reveal: Bool = false) -> Bool {
     let id = CardID(rawValue: Board.newID("card-"))
-    guard let card = collectedCard(c, id: id, at: p) else { return false }
+    guard let card = collectedCard(c, id: id, at: p) else {
+      // only a picture whose data: address is refused: as a refused paste is
+      toast("Could not add the image")
+      return false
+    }
     settle(id, size, "Add to Board", reveal: reveal) { $0.cards.append(card) }
     return true
   }
