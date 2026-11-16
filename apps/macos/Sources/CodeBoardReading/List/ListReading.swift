@@ -47,8 +47,11 @@ struct ListRow: Equatable {
   var kind: String
   var opens: Opens?
   var authors: [String] = []
+  var venue: String?
   var year: Int?
   var site: String?
+  /// A web page's address: what dragging it to a board carries (ListDrag.swift)
+  var address: URL?
   /// When it was saved: its newest saving, else when it was added
   var saved: Date?
   /// Of its file: the newest PDF or file of an entry, the file of an entry alone
@@ -67,11 +70,13 @@ struct ListRow: Equatable {
       id = e.id
       title = e.title
       authors = e.authors ?? []
+      venue = e.venue
       year = e.year
       // the newest PDF that is not a translation (a paper's by its arXiv number); else the newest saved page, else
       // the page online
       let address: URL? = if case .web(let a) = e.origin { URL(string: a) } else { nil }
       site = e.meta?.site ?? address?.host()
+      self.address = address
       let pdf = e.versions.filter { v in
         if case .pdf = v.content { v.of == nil } else { false }
       }.max { (Arxiv.number($0) ?? 0, $0.added) < (Arxiv.number($1) ?? 0, $1.added) }
@@ -115,6 +120,30 @@ struct ListRow: Equatable {
     case .arxiv(let id)?: URL(string: "https://arxiv.org/abs/\(id)")
     case .doi(let doi)?: URL(string: "https://doi.org/\(doi)")
     default: nil
+    }
+  }
+}
+
+extension ReadingPane {
+  /// An entry opened as its row in a list opens it (a board's source that is the entry as a whole)
+  func openEntry(_ id: EntryID) {
+    guard let found = entries[id] else { return }
+    open(ListRow(.entry(found.entry, path: found.path), vault: vault))
+  }
+
+  /// What a row opens, opened: a PDF in its tab, a page in its web tab (gone to when it is open: a saved page by its
+  /// hash, a page online by its address without the fragment)
+  func open(_ row: ListRow) {
+    switch row.opens {
+    case .pdf(let t): openPDF(t)
+    case .web(let p):
+      var key = p.key
+      if key == nil, case .online(let url?) = p, var parts = URLComponents(url: url, resolvingAgainstBaseURL: false) {
+        parts.fragment = nil
+        key = parts.string.map { "web:" + $0 }
+      }
+      open(row.title, key: key, kind: WebReading.kind, payload: p.payload)
+    case nil: break
     }
   }
 }
@@ -191,6 +220,8 @@ final class ListTabView: NSView, ReadingLookFollower, NSTableViewDataSource, NST
     table.dataSource = self
     table.delegate = self
     table.onOpen = { [weak self] in self?.open($0) }
+    // a row dragged to a board, or a web page's address to anything that takes one
+    for local in [true, false] { table.setDraggingSourceOperationMask(.copy, forLocal: local) }
     scroll.drawsBackground = false
     scroll.hasVerticalScroller = true
     scroll.autohidesScrollers = true
@@ -332,16 +363,11 @@ final class ListTabView: NSView, ReadingLookFollower, NSTableViewDataSource, NST
     table.scrollRowToVisible(i)
   }
 
-  /// A row shown opened: a PDF in its tab, a page online in a new web tab, a saved page in its web tab (gone to when it
-  /// is open, by its hash)
+  /// A row shown opened (ReadingPane.open)
   func open(_ i: Int) {
     guard shown.indices.contains(i) else { return }
     select(i)
-    switch shown[i].opens {
-    case .pdf(let t): context.pane.openPDF(t)
-    case .web(let p): context.open(shown[i].title, kind: WebReading.kind, payload: p.payload, key: p.key)
-    case nil: break
-    }
+    context.pane.open(shown[i])
   }
 
   func barLookChanged(_ look: ReadingBarLook) { paint() }

@@ -27,10 +27,14 @@ extension ListColumn {
       order: { $0.title.localizedStandardCompare($1.title) == .orderedAscending })
   }
 
-  // ponytail: the second line is the authors alone; the venue joins them once entry.json has one (FORMAT.md has none)
   static var papers: [ListColumn] {
     [
-      title("Title", detail: { $0.authors.joined(separator: ", ") }),
+      // the second line: the authors, then where it was published
+      title(
+        "Title",
+        detail: {
+          ([$0.authors.joined(separator: ", ")] + [$0.venue ?? ""]).filter { !$0.isEmpty }.joined(separator: " · ")
+        }),
       ListColumn(
         id: "year", title: "Year", width: 56, minWidth: 44, value: { $0.year.map(String.init) ?? "" },
         order: { ($0.year ?? .min) < ($1.year ?? .min) }, ascending: false),
