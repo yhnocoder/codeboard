@@ -253,7 +253,7 @@ text|number|date|checkbox`; an entry's value for it is in its `entry.json`.
 **entry.json**: `version, id, title, added, origin?, authors?: [String], year?, venue?, meta?: WebMeta, versions:
 [Version], highlights: [Highlight], sidenotes: [EntrySidenote], fields: {<field id>: String | Number | Bool}`. `added`
 and every time: ms since 1970. `venue`: where it was published, as its metadata says it (an arXiv paper's journal
-reference), absent when unknown. `origin` (where it came from, one of): `arxiv: {id}` (without a version: `1706.03762`), `doi: {doi}`,
+reference; a DOI's journal or proceedings, or for a book, report, thesis or dataset its publisher), absent when unknown. `origin` (where it came from, one of): `arxiv: {id}` (without a version: `1706.03762`), `doi: {doi}`,
 `web: {url}`. `meta` is what a page saved as a link keeps, exactly what a Web card keeps (its WebMeta), so a Web card made
 from the entry copies it as it is; its picture and icon are `{file}` (in `images/` in the entry's folder, as in a board
 package) or `{url}`, never a resource's. The web line saves one entry per address (the exact string, without its

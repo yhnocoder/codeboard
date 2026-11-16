@@ -153,8 +153,8 @@ public struct ShellState: Codable, Equatable, Sendable {
   /// Asks which PDF files to add (Add PDF…): an open panel in a sheet on the main window (makeMainWindow); with no
   /// window to ask in, none
   @ObservationIgnored public var askPDFs: @MainActor () async -> [URL] = { [] }
-  /// Add arXiv Paper… for a resource: a sheet on the main window (makeMainWindow) asking for the id, which adds it with
-  /// `addArxiv`; with no window, nothing
+  /// Add arXiv or DOI Paper… for a resource: a sheet on the main window (makeMainWindow) asking for the id or DOI,
+  /// which adds it with `addPaper`; with no window, nothing
   @ObservationIgnored public var askArxiv: @MainActor (VaultResource) -> Void = { _ in }
   /// Asks a question before a delete, the first button the yes: a sheet on the main window (makeMainWindow); with no
   /// window to ask in, nothing is deleted

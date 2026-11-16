@@ -47,12 +47,13 @@ extension Shell {
     ]
   }
 
-  /// A resource's row menu: what a board's has that a resource has too, and adding PDFs and arXiv papers to it
+  /// A resource's row menu: what a board's has that a resource has too, and adding PDFs and papers (by arXiv id or
+  /// DOI) to it
   public func menu(resource: VaultResource) -> [MenuEntry] {
     let n = resource.entryCount
     return [
       ("Add PDF…", { Task { self.addPDFs(await self.askPDFs(), to: resource) } }),
-      ("Add arXiv Paper…", { self.askArxiv(resource) }), nil,
+      ("Add arXiv or DOI Paper…", { self.askArxiv(resource) }), nil,
       ("Rename", { self.renaming = .resource(resource.id) }), ("Move to", {}), nil,
     ]
       + fileEntries(resource.path, Vault.resourceFileName) + [
@@ -193,13 +194,22 @@ extension Shell {
     return !added.isEmpty
   }
 
-  /// Add arXiv Paper…'s Add: the paper `text` names (an id or an address) opened in a PDF tab. One the vault has an
-  /// entry for is that entry, opened at the version asked for (else its newest), never a second entry; else its
-  /// metadata and PDF come from arXiv (`reading.arxiv`) and make a new entry of `resource`. `translate`: that version's
-  /// translation queued too. Nil when it went through, else what went wrong in plain words
-  public func addArxiv(_ text: String, translate: Bool, to resource: VaultResource) async -> String? {
+  /// Add arXiv or DOI Paper…'s Add: the paper `text` names (an arXiv id or address, or a DOI) added to `resource`. One
+  /// the vault has an entry for is that entry, opened at the version asked for (else its newest), never a second
+  /// entry; else its metadata (and an arXiv paper's PDF) come from arXiv (`reading.arxiv`) or doi.org (`reading.doi`)
+  /// and make a new entry of `resource`. An arXiv paper opens in a PDF tab, `translate`: that version's translation
+  /// queued too; a DOI's entry has no PDF, so its resource's list opens. Nil when it went through, else what went wrong
+  /// in plain words
+  public func addPaper(_ text: String, translate: Bool, to resource: VaultResource) async -> String? {
     guard vault != nil else { return "No vault is open." }
-    guard let (id, asked) = Arxiv.parse(text) else { return ArxivError.notAnID(text).description }
+    switch PaperID.parse(text) {
+    case .arxiv(let id, let asked)?: return await addArxiv(id, asked, translate: translate, to: resource)
+    case .doi(let doi)?: return await addDOI(doi, to: resource)
+    case nil: return "“\(text)” is not an arXiv id, a DOI or an address of either."
+    }
+  }
+
+  private func addArxiv(_ id: String, _ asked: Int?, translate: Bool, to resource: VaultResource) async -> String? {
     if let found = reading.entries.arxiv(id) {
       let originals = found.entry.versions.filter { $0.of == nil }
       guard
@@ -226,6 +236,30 @@ extension Shell {
     }
     openPDF(.entry(made.0.id, version: made.0.versions[0].id))
     if translate { queueTranslation(made.0, made.0.versions[0]) }
+    return nil
+  }
+
+  /// A DOI's paper: the entry the vault has for it (its newest PDF opened, when it has one), else a new one without a
+  /// version; the list of the resource it is in opened
+  private func addDOI(_ doi: String, to resource: VaultResource) async -> String? {
+    if let found = reading.entries.doi(doi) {
+      let pdf = found.entry.versions.last { v in if case .pdf = v.content { v.of == nil } else { false } }
+      if let pdf {
+        openPDF(.entry(found.entry.id, version: pdf.id))
+      } else if let r = tree?.allFolders.flatMap(\.resources).first(where: { found.path.hasPrefix($0.path + "/") }) {
+        openResource(r)
+      }
+      return nil
+    }
+    do {
+      let paper = try await reading.doi.paper(doi)
+      guard files({ v in _ = try v.newEntry(paper, in: resource.path) }) else {
+        return fileError ?? "The paper could not be added."
+      }
+    } catch {
+      return error.description
+    }
+    openResource(resource)
     return nil
   }
 

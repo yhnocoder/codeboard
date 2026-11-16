@@ -99,15 +99,17 @@ import Testing
     let machine = fm.temporaryDirectory.appending(path: "machine-\(UUID().uuidString)")
     defer { try? fm.removeItem(at: machine) }
     shell.reading.translations = Translations(folder: machine, tongtu: { nil })
-    // the row's menu: Add arXiv Paper… asks with the sheet (here: nothing shown)
+    // the row's menu: Add arXiv or DOI Paper… asks with the sheet (here: nothing shown)
     var sheetFor: VaultResource?
     shell.askArxiv = { sheetFor = $0 }
-    shell.menu(resource: r).compactMap { $0 }.first { $0.title == "Add arXiv Paper…" }?.run()
+    shell.menu(resource: r).compactMap { $0 }.first { $0.title == "Add arXiv or DOI Paper…" }?.run()
     #expect(sheetFor == r)
 
-    #expect(await shell.addArxiv("attention", translate: false, to: r) == "“attention” is not an arXiv id or address.")
-    #expect(await shell.addArxiv("2401.00001", translate: false, to: r) == "arXiv has no paper 2401.00001.")
-    #expect(await shell.addArxiv("https://arxiv.org/abs/1706.03762", translate: true, to: r) == nil)
+    #expect(
+      await shell.addPaper("attention", translate: false, to: r)
+        == "“attention” is not an arXiv id, a DOI or an address of either.")
+    #expect(await shell.addPaper("2401.00001", translate: false, to: r) == "arXiv has no paper 2401.00001.")
+    #expect(await shell.addPaper("https://arxiv.org/abs/1706.03762", translate: true, to: r) == nil)
     let e = try #require(shell.reading.entries.arxiv("1706.03762"))
     #expect(e.path == "Papers.resource/Attention Is All You Need" && e.entry.authors == ["Ashish Vaswani"])
     #expect(e.entry.versions.map(\.label) == ["v7"])
@@ -120,9 +122,38 @@ import Testing
 
     // again, as arXiv:…: that entry, not a second one, and nothing asked of arXiv
     let before = asked.withLock { $0.count }
-    #expect(await shell.addArxiv("arXiv:1706.03762v7", translate: false, to: r) == nil)
+    #expect(await shell.addPaper("arXiv:1706.03762v7", translate: false, to: r) == nil)
     #expect(asked.withLock { $0.count } == before)
     #expect(try vault.items(in: r.path).count == 1 && shell.reading.tabs.count == 1)
+    // its arXiv DOI is that paper too
+    #expect(await shell.addPaper("https://doi.org/10.48550/arXiv.1706.03762", translate: false, to: r) == nil)
+    #expect(asked.withLock { $0.count } == before && shell.reading.tabs.count == 1)
+  }
+
+  @Test func addDOIPaperMakesAnEntryWithoutAVersionAndTheSameDOIAgainFindsIt() async throws {
+    let (vault, shell, r) = try vault()
+    defer { try? fm.removeItem(at: vault.root) }
+    let asked = Mutex<[URLRequest]>([])
+    shell.reading.doi = DOI { req in
+      asked.withLock { $0.append(req) }
+      let known = req.url!.absoluteString == "https://doi.org/10.1145/3292500.3330701"
+      let body = #"{"title": "Quiet Rivers", "author": [{"given": "Ada", "family": "Brook"}]}"#
+      return (
+        Data(body.utf8),
+        HTTPURLResponse(url: req.url!, statusCode: known ? 200 : 404, httpVersion: nil, headerFields: nil)!
+      )
+    }
+    #expect(await shell.addPaper("10.1000/none", translate: false, to: r) == "No paper has the DOI 10.1000/none.")
+    #expect(await shell.addPaper("doi:10.1145/3292500.3330701", translate: true, to: r) == nil)
+    shell.apply(.success(try vault.tree()))
+    let e = try #require(shell.reading.entries.doi("10.1145/3292500.3330701"))
+    #expect(e.path == "Papers.resource/Quiet Rivers" && e.entry.authors == ["Ada Brook"] && e.entry.versions.isEmpty)
+    // nothing to read in a tab: its resource's list shows it
+    #expect(shell.reading.tabs.map(\.kind) == ["list"])
+    let before = asked.withLock { $0.count }
+    #expect(
+      await shell.addPaper("https://doi.org/10.1145/3292500.3330701".uppercased(), translate: false, to: r) == nil)
+    #expect(try asked.withLock { $0.count } == before && vault.items(in: r.path).count == 1)
   }
 
   @Test func addToBoardAndOptionReturnHandTheSameCollectedPassageToTheShell() throws {

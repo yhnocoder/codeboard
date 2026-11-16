@@ -447,7 +447,8 @@
             "OpeningWritesNothingTests",
             "WritingWhenClosingTests",
             "ShellPDFTests/addPDFCopiesTheFileUnderAFreeNameAndOpensItsTab",
-            "ShellPDFTests/addArxivPaperMakesAnEntryOpensItAndTheSameIdAgainOpensThatEntry"
+            "ShellPDFTests/addArxivPaperMakesAnEntryOpensItAndTheSameIdAgainOpensThatEntry",
+            "ShellPDFTests/addDOIPaperMakesAnEntryWithoutAVersionAndTheSameDOIAgainFindsIt"
           ]
         },
         "search": {

@@ -280,7 +280,8 @@ import Testing
     let menu = shell.menu(resource: r)
     #expect(
       menu.map { $0?.title ?? "-" } == [
-        "Add PDF…", "Add arXiv Paper…", "-", "Rename", "Move to", "-", "Reveal in Finder", "Copy Path", "-", "Delete",
+        "Add PDF…", "Add arXiv or DOI Paper…", "-", "Rename", "Move to", "-", "Reveal in Finder", "Copy Path", "-",
+        "Delete",
       ])
     menu[7]?.run()
     #expect(
