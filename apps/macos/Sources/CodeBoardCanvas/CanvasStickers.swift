@@ -483,8 +483,8 @@ extension CanvasView {
 
   // MARK: The menu
 
-  /// A sticker's menu (actions/stickers.ts stickerMenu): its colours (not an emoji's), Size ▸ and Detach from Card,
-  /// Delete
+  /// A sticker's menu (actions/stickers.ts stickerMenu): its colours (not an emoji's), Size ▸ and Detach from Card or
+  /// Arrow, Delete
   func stickerMenu(_ id: StickerID) -> NSMenu {
     let m = NSMenu()
     // an emoji has its own colours
@@ -498,7 +498,7 @@ extension CanvasView {
               menuItem(name, checked: k.color?.uppercased() == hex) { pick(hex) }
             }))
     }
-    // one on the board or on a card: its size; on a card, Detach keeps it where it is drawn, on the board
+    // one on the board, a card or an arrow: its size; on a card or an arrow, Detach keeps it where it is drawn, free
     if let k = document?.board.sticker(id), let now = k.size {
       m.addItem(
         submenu(
@@ -508,11 +508,17 @@ extension CanvasView {
               self?.document?.edit("Sticker Size") { $0.setStickerSize(id, n) }
             }
           }))
-      if case .card(_, _, _, let size) = k.anchor, let at = stickerSpots.first(where: { $0.id == id })?.board {
-        let detach = menuItem("Detach from Card") { [weak self] in
+      let on: (title: String, size: Double?)? =
+        switch k.anchor {
+        case .card(_, _, _, let s): ("Detach from Card", s)
+        case .arrow(_, _, _, _, let s): ("Detach from Arrow", s)
+        case .canvas, .line: nil
+        }
+      if let on, let at = stickerSpots.first(where: { $0.id == id })?.board {
+        let detach = menuItem(on.title) { [weak self] in
           self?.document?.edit("Detach Sticker") { b in
             guard let i = b.stickers.firstIndex(where: { $0.id == id }) else { return }
-            b.stickers[i].anchor = .canvas(x: at.minX.rounded(), y: at.minY.rounded(), size: size)
+            b.stickers[i].anchor = .canvas(x: at.minX.rounded(), y: at.minY.rounded(), size: on.size)
           }
         }
         detach.toolTip = "Keep it here on the canvas"

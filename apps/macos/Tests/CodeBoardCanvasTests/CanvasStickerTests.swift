@@ -661,4 +661,28 @@ extension CanvasStickerTests {
     r.doc.undo()
     #expect(r.bytes == start)
   }
+
+  /// Detach from Arrow (actions/stickers.ts detachSticker): free where it is drawn, its size kept, one step
+  @Test(arguments: [0.5, 2] as [CGFloat])
+  func detachFromArrowLeavesItWhereItIsDrawn(zoom: CGFloat) async throws {
+    var b = arrowStickerBoard()
+    b.stickers[0].anchor = .arrow(ab, position: 0.25, x: 7, y: -50, size: 48)
+    let r = try await Rig(b, zoom: zoom)
+    defer { r.close() }
+    let c = r.canvas
+    let start = r.bytes
+    let drawn = try spot(c, "k1").board
+    let menu = c.stickerMenu(kid("k1"))
+    let titles = menu.items.map { $0.isSeparatorItem ? "-" : $0.title }
+    #expect(titles == ["Color", "Size", "Detach from Arrow", "-", "Delete"])
+    let detach = try #require(menu.item(withTitle: "Detach from Arrow"))
+    #expect(detach.toolTip == "Keep it here on the canvas")
+    (detach.representedObject as? MenuAction)?.run()
+    #expect(sticker(r, "k1")?.anchor == .canvas(x: drawn.minX.rounded(), y: drawn.minY.rounded(), size: 48))
+    #expect(r.doc.undoName == "Detach Sticker" && r.doc.history.undoSteps.count == 1)
+    await r.settle()
+    #expect(try spot(c, "k1").board.origin == CGPoint(x: drawn.minX.rounded(), y: drawn.minY.rounded()))
+    r.doc.undo()
+    #expect(r.bytes == start)
+  }
 }
