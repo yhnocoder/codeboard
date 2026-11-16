@@ -291,7 +291,7 @@ private struct ResourceRow: View {
     }
     .background {
       if on {
-        RoundedRectangle(cornerRadius: ShellTheme.rowRadius, style: .continuous).fill(ShellTheme.shade.opacity(0.07))
+        RoundedRectangle(cornerRadius: ShellTheme.rowRadius, style: .continuous).fill(ShellTheme.shade.opacity(0.1))
       }
     }
     .onTapGesture {
