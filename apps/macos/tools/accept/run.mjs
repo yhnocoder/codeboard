@@ -92,6 +92,11 @@ if (!attach && sides.includes("mac")) {
   fs.rmSync(app, { recursive: true, force: true });
   fs.mkdirSync(path.join(app, "Contents/MacOS"), { recursive: true });
   fs.copyFileSync(path.join(bin, "Accept"), path.join(app, "Contents/MacOS/Accept"));
+  // the Markdown package's resources (its formula and diagram engines), when the build has them: SwiftPM puts a
+  // package's resources in a bundle beside the executable, and an app finds it in Contents/Resources
+  const mdBundle = "better-swift-markdown_MarkdownUI.bundle";
+  if (fs.existsSync(path.join(bin, mdBundle)))
+    fs.cpSync(path.join(bin, mdBundle), path.join(app, "Contents/Resources", mdBundle), { recursive: true });
   // where make-app.sh puts them (and make-demo.sh the demo's): the app finds them in its own bundle, as a person's does
   fs.cpSync(path.join(mac, ".build-markdown"), path.join(app, "Contents/Resources/Assets"), { recursive: true });
   if (!demo) fs.cpSync(path.join(mac, "web/dist"), path.join(app, "Contents/Resources/NotePage"), { recursive: true });
