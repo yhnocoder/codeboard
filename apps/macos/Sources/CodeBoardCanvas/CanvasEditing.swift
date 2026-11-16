@@ -374,6 +374,7 @@ extension CanvasView {
     if openPop != nil { refreshPop() }
     questionsChanged()
     summariesChanged()
+    subPreviewsChanged()
     // a swap made here otherwise reaches the screen a frame later than the layers it replaces go
     CATransaction.flush()
     arrive()
@@ -594,6 +595,7 @@ extension CanvasView {
       if let acts = sectionActsLayer() { chrome.addSublayer(acts) }
       drawHoverLine()
       placeHeadActs()
+      placeSubPreviews()
       if restText != nil { drawRestText() }
       placeAlignBar()
       drawPorts()
@@ -1247,6 +1249,8 @@ extension CanvasView {
       }
       return
     }
+    // a preview beside a sub-board card
+    if pressSubPreview(e, at: p) { return }
     // a card header's button
     if let (id, a) = headAct(at: p) {
       if e.clickCount == 1 {
@@ -1550,6 +1554,7 @@ extension CanvasView {
       } else if case .card(let id)? = item, was, !toggle, doc.selection == [.card(id)] {
         clickEdit(id, at: g.start)
       }
+      if case .card(let id)? = item, !toggle { clickMap(id, at: g.start) }
       if let item {
         if toggle && was {
           doc.select(doc.selection.subtracting([item]))
