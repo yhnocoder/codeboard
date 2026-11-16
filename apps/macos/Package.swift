@@ -32,7 +32,10 @@ let package = Package(
       ]),
     .target(
       name: "CodeBoardShell",
-      dependencies: ["CodeBoardModel", "CodeBoardCanvas", "CodeBoardNotes", "CodeBoardReading", "CodeBoardResources"]),
+      dependencies: [
+        "CodeBoardModel", "CodeBoardCanvas", "CodeBoardNotes", "CodeBoardReading", "CodeBoardResources",
+        .product(name: "Shiyi", package: "shiyi"),
+      ]),
     .executableTarget(name: "CodeBoard", dependencies: ["CodeBoardShell"]),
     .executableTarget(
       name: "CanvasBench",
