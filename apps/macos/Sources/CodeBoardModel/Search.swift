@@ -162,14 +162,14 @@ public enum BoardSearch {
     }
   }
 
-  private static func sidenoteText(_ n: Sidenote) -> String {
+  static func sidenoteText(_ n: Sidenote) -> String {
     switch n.body {
     case .text(let t): t.text
     case .code(let s): s.lines.joined(separator: "\n")
     }
   }
 
-  private static func path(_ s: Segment) -> String {
+  static func path(_ s: Segment) -> String {
     switch s.source {
     case .git(_, _, let p, _, _), .package(_, _, let p), .file(let p, _): p
     case nil: ""
