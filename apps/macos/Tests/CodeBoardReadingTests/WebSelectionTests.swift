@@ -191,15 +191,14 @@ import WebKit
 
   // MARK: Saved pages
 
-  /// A tab on a saved page of an entry in the vault, the stand-in reader in it
-  func saved() async throws -> (WebPageView, WebTabs, Got, Entry) {
+  /// A saved page of an entry in the vault, its file kept by `store`: the entry's folder
+  func savePage(in store: TestStore) async throws -> String {
     let resource = try vault.newResource(in: "", title: "Web", preset: .web).path
     let path = try vault.save(
       SavedItem(
         id: "p1", kind: .page, url: Self.address.absoluteString, title: "Saved", savedAt: 1_000, pageHash: Self.hash,
         bytes: 100),
       in: resource)
-    let store = TestStore()
     let file = dir.appending(path: "page.html")
     try """
     <!doctype html><html lang="en"><meta charset="utf-8"><title>Saved</title>
@@ -207,11 +206,23 @@ import WebKit
     <p id=p>The second paragraph.</p><div style="height:3000px"></div><p>Far below.</p>
     """.write(to: file, atomically: true, encoding: .utf8)
     await store.set(file: file, forHash: Self.hash)
+    return path
+  }
+
+  /// A tab on the saved page, the stand-in reader in it, in tabs of their own reading the vault
+  func openSaved(_ store: TestStore) async throws -> (WebPageView, WebTabs, Got) {
     let tabs = try WebTabs(vault: vault, store: store, scripts: scripts)
     let got = Got()
     tabs.pane.onCollect = { got.list.append($0) }
     let v = tabs.open(WebReading.Page.saved(hash: Self.hash, address: Self.address, title: "Saved").payload)
     try await until("the saved page read") { v.blocks != nil && !v.web.isLoading }
+    return (v, tabs, got)
+  }
+
+  func saved() async throws -> (WebPageView, WebTabs, Got, Entry) {
+    let store = TestStore()
+    let path = try await savePage(in: store)
+    let (v, tabs, got) = try await openSaved(store)
     return (v, tabs, got, try vault.entry(at: path))
   }
 
@@ -258,13 +269,13 @@ import WebKit
   }
 
   /// A card's source shows its place again: a saved page's block in the saved page's tab, scrolled to by the reader;
-  /// a page online in the tab already on it. Its foot is the site's and the entry's title, the heading lighter when
-  /// this run collected it; nothing for an entry that is not a web page's
+  /// a page online in the tab already on it. Its foot is the site's and the entry's title, the nearest heading above
+  /// the block lighter; nothing for an entry that is not a web page's
   @Test func aWebSourceIsLabelledAndShownAgain() async throws {
     let (v, tabs, _, entry) = try await saved()
     defer { done(tabs) }
     let far = SourceAnchor(entry: entry.id, place: Place(version: VersionID(rawValue: "v1"), block: .id("1.b5")))
-    #expect(WebReading.sourceLabel(far, in: tabs.pane) == SourceLabel(title: "Saved", number: nil, icon: .site))
+    #expect(WebReading.sourceLabel(far, in: tabs.pane) == SourceLabel(title: "Saved", number: "Second", icon: .site))
     #expect(WebReading.sourceLabel(SourceAnchor(entry: entry.id), in: tabs.pane)?.title == "Saved")
     let gone = SourceAnchor(entry: entry.id, place: Place(version: VersionID(rawValue: "v9"), block: .id("1.b5")))
     #expect(WebReading.sourceLabel(gone, in: tabs.pane) == nil)
@@ -283,6 +294,72 @@ import WebKit
     tabs.pane.select(tabs.pane.tabs[0].id)
     #expect(WebReading.reveal(SourceAnchor(entry: entry.id), in: tabs.pane))
     #expect(tabs.pane.tabs.count == 2 && tabs.pane.selected == tabs.pane.tabs[1].id, "the tab on it gone to")
+  }
+
+  /// The reader's blocks are kept beside the entry the first time the saved page is read, and named in its version:
+  /// after a relaunch (a pane and provider of their own reading the vault) the heading above a place is known without
+  /// the page; reading the page again writes nothing
+  @Test func theSavedPagesBlocksAreKeptOnceForItsHeadingsAfterARelaunch() async throws {
+    let store = TestStore()
+    let path = try await savePage(in: store)
+    let (_, tabs, _) = try await openSaved(store)
+    defer { done(tabs) }
+    let entry = try vault.entry(at: path)
+    #expect(entry.versions[0].content == .page(hash: Self.hash, bytes: 100, blocks: "v1.blocks.json"))
+    #expect(tabs.pane.entries[entry.id]?.entry == entry, "the pane's entries have it")
+    let blocks = try vault.pageBlocks("v1.blocks.json", in: path)
+    #expect(blocks.map(\.id) == ["1.b1", "1.b2", "1.b3", "1.b4", "1.b5"])
+    #expect(blocks.map(\.kind) == ["heading", "paragraph", "heading", "paragraph", "paragraph"])
+    #expect(blocks.map(\.level) == [1, nil, 2, nil, nil] && blocks[3].text == "The second paragraph.")
+    let files = ["v1.blocks.json", Vault.entryFileName].map { vault.url(of: path).appending(path: $0) }
+    func written() throws -> [Data] { try files.map { try Data(contentsOf: $0) } }
+    let before = try written()
+
+    let (_, again, _) = try await openSaved(store)
+    defer { again.close() }
+    #expect(try written() == before, "read again: nothing written")
+    let relaunched = try WebTabs(vault: vault)
+    defer { relaunched.close() }
+    let provider = ReadingSources(pane: relaunched.pane)
+    let at = { (block: String) in
+      provider.sourceLabel(
+        SourceAnchor(entry: entry.id, place: Place(version: VersionID(rawValue: "v1"), block: .id(block))))
+    }
+    #expect(at("1.b5") == SourceLabel(title: "Saved", number: "Second", icon: .site))
+    #expect(at("1.b3")?.number == "Second" && at("1.b2")?.number == "A heading")
+    #expect(at("1.b9") == SourceLabel(title: "Saved", number: nil, icon: .site), "a block not in the file")
+  }
+
+  /// A saved page whose version names a blocks file already is read without writing any; its places' headings are
+  /// that file's
+  @Test func aVersionNamingItsBlocksFileAlreadyIsLeftAsItIs() async throws {
+    let store = TestStore()
+    let path = try await savePage(in: store)
+    var entry = try vault.entry(at: path)
+    entry.versions[0].content = .page(hash: Self.hash, bytes: 100, blocks: "kept.json")
+    try vault.write(entry, at: path)
+    try Data(
+      """
+      [
+        {
+          "hash": "x",
+          "id": "1.b4",
+          "kind": "heading",
+          "level": 3,
+          "text": "Kept"
+        }
+      ]
+
+      """.utf8
+    ).write(to: vault.url(of: path).appending(path: "kept.json"))
+    let entryFile = vault.url(of: path).appending(path: Vault.entryFileName)
+    let before = try Data(contentsOf: entryFile)
+    let (_, tabs, _) = try await openSaved(store)
+    defer { done(tabs) }
+    #expect(try Data(contentsOf: entryFile) == before)
+    #expect(!FileManager.default.fileExists(atPath: vault.url(of: path).appending(path: "v1.blocks.json").path))
+    let place = Place(version: VersionID(rawValue: "v1"), block: .id("1.b4"))
+    #expect(WebReading.sourceLabel(SourceAnchor(entry: entry.id, place: place), in: tabs.pane)?.number == "Kept")
   }
 
   /// The source line's icon is the site's own when it can be drawn: the file kept in the entry's images, or an https

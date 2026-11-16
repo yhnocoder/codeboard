@@ -5,19 +5,44 @@ import Foundation
 // What the board asks about cards taken from web pages: their source line and showing their place again.
 
 extension WebReading {
-  /// The heading before each place collected in this run of the app, by anchor: the anchor names none (FORMAT.md),
-  /// so after a relaunch a card's source line is its title alone
-  @MainActor private static var headings: [String: String] = [:]
-
-  @MainActor static func heard(_ heading: String?, for a: SourceAnchor) { headings["\(a)"] = heading }
-
-  /// A web entry's card foot: the site's icon and the entry's title, and the heading before the place, lighter, when it
-  /// is known; nil for an entry that is not a web page's, is gone, or has not the anchor's version
+  /// A web entry's card foot: the site's icon and the entry's title, and the nearest heading above the place, lighter,
+  /// when the page's blocks file has one; nil for an entry that is not a web page's, is gone, or has not the anchor's
+  /// version
   @MainActor public static func sourceLabel(_ a: SourceAnchor, in pane: ReadingPane) -> SourceLabel? {
-    guard let found = pane.entries[a.entry], case .web = found.entry.origin,
-      a.place.map({ p in found.entry.versions.contains { $0.id == p.version } }) ?? true
-    else { return nil }
-    return SourceLabel(title: found.entry.title, number: headings["\(a)"], icon: icon(of: found, in: pane))
+    guard let found = pane.entries[a.entry], case .web = found.entry.origin else { return nil }
+    var heading: String?
+    if let p = a.place {
+      guard let v = found.entry.versions.first(where: { $0.id == p.version }) else { return nil }
+      heading = Self.heading(at: p, in: v, of: found, in: pane)
+    }
+    return SourceLabel(title: found.entry.title, number: heading, icon: icon(of: found, in: pane))
+  }
+
+  /// The headings of the blocks files read, by file: each block's nearest heading at or before it, by block id. The
+  /// board asks for its feet on every change, and a long page's file takes a while to read
+  @MainActor private static var headings: [URL: (modified: Date?, byBlock: [String: String])] = [:]
+
+  /// The nearest heading at or before the place's block, from the blocks file of its page (a translation's: the page
+  /// it translates)
+  @MainActor private static func heading(
+    at p: Place, in v: Version, of found: EntryIndex.Found, in pane: ReadingPane
+  ) -> String? {
+    let page = v.of.flatMap { of in found.entry.versions.first { $0.id == of } } ?? v
+    guard case .id(let id) = p.block, case .page(_, _, let name?) = page.content, let vault = pane.vault else {
+      return nil
+    }
+    let file = vault.url(of: found.path).appending(path: name)
+    let modified = try? file.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
+    if let kept = headings[file], kept.modified == modified { return kept.byBlock[id] }
+    guard let blocks = try? vault.pageBlocks(name, in: found.path) else { return nil }
+    var byBlock: [String: String] = [:]
+    var last: String?
+    for b in blocks {
+      if b.kind == "heading" { last = b.text }
+      byBlock[b.id] = last
+    }
+    headings[file] = (modified, byBlock)
+    return byBlock[id]
   }
 
   /// The site's own icon when it can be drawn: the file kept with the entry, or an https address

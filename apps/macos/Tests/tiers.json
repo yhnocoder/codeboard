@@ -554,7 +554,7 @@
           ]
         },
         "reading: web": {
-          "sources": ["CodeBoardReading/Web"],
+          "sources": ["CodeBoardReading/Web", "CodeBoardResources/PageBlocks.swift"],
           "tests": [
             "WebBarVisibilityTests",
             "WebAddressTests",

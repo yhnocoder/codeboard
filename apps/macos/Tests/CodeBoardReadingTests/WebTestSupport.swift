@@ -279,8 +279,10 @@ enum StandInScripts {
           const keep = this.files.map(f => f.body).filter(Boolean).join(",")
           return { scheme: 1, blocks: this.els().map(e => {
             const kind = this.kinds[e.tagName], text = e.dataset.shiyiOriginal
-            return { id: e.dataset.shiyiId, kind, text, textHash: this.hash(text), inBody: !keep || !!e.closest(keep),
+            const b = { id: e.dataset.shiyiId, kind, text, textHash: this.hash(text), inBody: !keep || !!e.closest(keep),
               translate: kind != "code" }
+            if (kind == "heading") b.level = +e.tagName[1]
+            return b
           }) }
         },
         setTranslations(t) { Object.assign(this.translations, t); this.render() },

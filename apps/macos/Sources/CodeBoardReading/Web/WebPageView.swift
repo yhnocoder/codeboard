@@ -2,6 +2,7 @@ import AppKit
 import CodeBoardModel
 import CodeBoardResources
 import WebKit
+import os
 
 /// A web page filling its tab, with its bar floating over the page's bottom edge. The bar comes and goes as
 /// `WebBarVisibility` says, moving over the page: the page is never laid out again for it. A saved page is shown in
@@ -501,8 +502,26 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
     }
     let lang = (d["lang"] as? String).flatMap { $0.isEmpty ? nil : $0 }
     blocks = (scheme, lang, list.compactMap(WebBlock.init(script:)))
+    keepBlocks()
     showTranslation()
     await takeKept()
+  }
+
+  /// The reader's blocks kept beside the page's entry the first time it is read, so that a place in it is named
+  /// without loading it; a version that names its file already is left as it is
+  private func keepBlocks() {
+    guard case .saved(let hash, _, _) = page, let blocks, let vault = context.pane.vault,
+      let (path, entry, version) = savedVersion(hash),
+      case .page(_, _, nil)? = entry.versions.first(where: { $0.id == version })?.content
+    else { return }
+    do {
+      if let e = try vault.writePageBlocks(blocks.list.map(\.kept), of: version, in: path) {
+        context.pane.entries.update(e, at: path)
+      }
+    } catch {
+      Logger(subsystem: "com.yhnocoder.codeboard", category: "web").error(
+        "The saved page's blocks could not be kept: \(error, privacy: .public)")
+    }
   }
 
   /// The translations kept for this saved page in its entry, read and shown, and the page shown as the tab says
@@ -703,7 +722,6 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
       let place = Place(
         version: version, block: .id(first.id), range: first.fromTranslation ? nil : first.start..<first.end)
       let anchor = SourceAnchor(entry: entry.id, place: place)
-      WebReading.heard(s.heading, for: anchor)
       return Collected(
         body: .note(markdown: s.markdown), source: anchor, title: web.title.flatMap { $0.isEmpty ? nil : $0 } ?? title,
         label: label)
