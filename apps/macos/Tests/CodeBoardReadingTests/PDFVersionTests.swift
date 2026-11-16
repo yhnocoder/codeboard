@@ -128,7 +128,7 @@ func fakeArxiv(latest: Int) -> Arxiv {
     await queue.settled()
     t.layoutSubtreeIfNeeded()
     let item = try #require(t.versions.job)
-    #expect(item.accessibilityIdentifier() == "ui-versionjob" && item.title == "译文 · failed")
+    #expect(item.accessibilityIdentifier() == "ui-versionjob" && item.title == "译文 · 失败")
     #expect(t.versions.translate == nil)
     // red from the moment it fails, before any hover or press
     #expect(item.layer?.backgroundColor == NSColor.systemRed.withAlphaComponent(0.14).cgColor)

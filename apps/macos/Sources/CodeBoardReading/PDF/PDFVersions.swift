@@ -98,9 +98,10 @@ final class VersionsBar: NSView {
   /// What the job's item says
   static func jobTitle(_ s: TranslationState) -> String {
     switch s {
-    case .waiting: "译文 · waiting"
-    case .running(let p): "译文 · \(p.stage)" + (p.fraction.map { " \(Int(($0 * 100).rounded()))%" } ?? "")
-    case .failed: "译文 · failed"
+    // tongtu's own name of the stage is in the item's note, not here
+    case .waiting: "译文 · 排队中"
+    case .running(let p): "译文 · 进行中" + (p.fraction.map { " \(Int(($0 * 100).rounded()))%" } ?? "")
+    case .failed: "译文 · 失败"
     }
   }
 
