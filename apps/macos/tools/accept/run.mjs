@@ -272,6 +272,12 @@ class Driver {
     this.n = 0;
     delete this.env.ACCEPT_IMPORT_FROM;
     await this.spawn();
+    // a kept session names the new process, so that --stop ends it
+    if (fs.existsSync(sessionFile)) {
+      const kept = JSON.parse(fs.readFileSync(sessionFile, "utf8"));
+      for (const k of kept) if (k.dir === this.dir) k.pid = this.pid;
+      fs.writeFileSync(sessionFile, JSON.stringify(kept));
+    }
   }
   plist(vault) {
     fs.writeFileSync(
@@ -290,6 +296,15 @@ class Driver {
 </dict></plist>`,
     );
     run("codesign", ["--force", "--sign", "-", app]);
+  }
+  /** The pid is this run's process: the Accept app or the web board's script */
+  mine() {
+    try {
+      const c = execFileSync("ps", ["-o", "command=", "-p", String(this.pid)], { encoding: "utf8" });
+      return c.includes(this.side === "mac" ? "Contents/MacOS/Accept" : webBundle);
+    } catch {
+      return false;
+    }
   }
   alive() {
     if (this.proc) return !this.exited;
@@ -376,13 +391,22 @@ class Driver {
     throw new Error(`${this.side}: no answer to ${line} within ${limit / 1000} s`);
   }
   async stop() {
-    // no driver started (start threw): writing to its FIFO would block with no reader
-    if (!this.proc) return;
-    await Promise.race([this.send("quit").catch(() => {}), sleep(1500)]);
+    // no driver started (start threw); a kept one (--stop) has its pid and no proc
+    if (!this.proc && !this.pid) return;
+    // a kept pid may be another program's by now (the run's app ended long ago): only the run's own app or web board
+    if (!this.proc && !this.mine()) return;
+    if (this.alive()) await Promise.race([this.send("quit").catch(() => {}), sleep(1500)]);
     if (this.exited && this.how !== 0) await this.keepCrash();
-    if (this.alive()) process.kill(this.pid, "SIGTERM");
+    // its process group too (it was started detached, so it leads one): what it started, such as the web side's host
+    const kill = (sig) => {
+      for (const p of [-this.pid, this.pid])
+        try {
+          process.kill(p, sig);
+        } catch {}
+    };
+    kill("SIGTERM");
     await sleep(300);
-    if (this.alive()) process.kill(this.pid, "SIGKILL");
+    kill("SIGKILL");
     // the vault, its own trash (what the app deleted goes there, never to the person's Trash) and the web's copy
     for (const d of [this.vault, this.vault && `${this.vault}-trash`, this.copy]) if (d) fs.rmSync(d, { recursive: true, force: true });
     // what the app kept under its identity: its defaults, cameras, caches, web data
@@ -699,7 +723,13 @@ async function subject(d, subj) {
   // <title>", * on the one shown) and "pane shown|hidden"; webviews: each web view's address, title, whether it is
   // shown and what its page says of its visibility (Mac only)
   if (subj.startsWith("entry:")) return d.send(`entries ${subj.slice(6)}`);
-  if (subj === "readtabs" || subj === "webviews") return d.send(subj);
+  if (subj === "readtabs" || subj === "webviews" || subj === "subpv" || subj === "vaultstamp") return d.send(subj);
+  if (subj.startsWith("cols:")) return d.send(`cols ${subj.slice(5)}`);
+  // file:board / file:<path in the vault>: what the Mac app wrote there, read from disk (expect … has / lacks)
+  if (subj.startsWith("file:") && d.side === "mac") {
+    const f = subj === "file:board" ? await macBoardFile(d) : path.join(d.vault, subj.slice(5));
+    return fs.existsSync(f) ? fs.readFileSync(f, "utf8").replace(/\s+/g, "") : "none";
+  }
   if (subj === "focus") {
     const r = await d.send("focused");
     return r || "none";
@@ -1155,7 +1185,12 @@ for (const file of scenarios) {
             // clip image <file> / drop <file> <point>: the file from the tools folder (storage/assets/…) or absolute
             const file = (f) => path.resolve(here, f);
             if (verb === "clip" && arg === "image") return void (await d.send(`clip image ${file(cmd.split(" ").slice(2).join(" "))}`));
-            // menubar Menu/Item: a line that did not choose it (no such item, disabled) fails
+            // menubar Menu/Item, and pick on the Mac: a line that did not choose it (no such item, disabled) fails
+            if (verb === "pick" && d.side === "mac") {
+              const r = await d.send(cmd);
+              if (!r.startsWith("picked ")) throw new Error(r);
+              return;
+            }
             if (verb === "menubar") {
               const r = await d.send(cmd);
               if (!r.startsWith("chose ")) throw new Error(r);
