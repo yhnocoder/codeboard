@@ -191,7 +191,7 @@ extension ListTabView {
     if let i = shown.firstIndex(where: { $0.key == path }) { select(i) }
   }
 
-  private func failed(_ why: String) {
+  func failed(_ why: String) {
     Self.log.error("\(why, privacy: .public)")
     NSSound.beep()
     say(why)

@@ -151,8 +151,8 @@ extension ReadingPane {
 /// A resource's tab: its entries in a table with the columns of its preset (ListColumn), sorted by its default until a
 /// header is clicked, narrowed by the filter at the top right. A click selects a row, ↑ ↓ move the selection, a
 /// double-click or Return opens it in a tab. An empty resource says how to add to it. Files dropped on it, what ⌘V
-/// pastes and what the + beside the filter chooses are added to it as its preset takes them (ListAdding.swift). Sort and
-/// filter are the tab's, not saved
+/// pastes and what the + beside the filter chooses are added to it as its preset takes them (ListAdding.swift); ⌫ or the
+/// row menu's Delete deletes the selected rows (ListDelete.swift). Sort and filter are the tab's, not saved
 final class ListTabView: NSView, ReadingLookFollower, NSTableViewDataSource, NSTableViewDelegate {
   /// The open list tabs' views by their tab, for their kind's follow to reach
   static let live = NSMapTable<NSUUID, ListTabView>.strongToWeakObjects()
@@ -180,6 +180,11 @@ final class ListTabView: NSView, ReadingLookFollower, NSTableViewDataSource, NST
   /// The + button's choosing, an arXiv paper's adding, going on (tests wait for them)
   var choosing: Task<Void, Never>?
   var adding: Task<Void, Never>?
+  /// How deleting asks before entries used on boards go (ListDelete.swift), and where they go; tests give their own
+  var confirm: @MainActor (NSAlert, NSWindow?) async -> Bool = { await ListTabView.ask($0, in: $1) }
+  var trasher: Vault.Trasher = Vault.systemTrash
+  /// A delete going on: its boards looked up, its question asked (tests wait for it)
+  var deleting: Task<Void, Never>?
   let table = ListTable()
   private let header = ListHeaderView()
   private let scroll = NSScrollView()
@@ -213,13 +218,16 @@ final class ListTabView: NSView, ReadingLookFollower, NSTableViewDataSource, NST
     table.cornerView = nil
     table.intercellSpacing = .zero
     table.gridStyleMask = []
-    table.allowsMultipleSelection = false
+    table.allowsMultipleSelection = true
     table.allowsColumnReordering = false
     table.columnAutoresizingStyle = .firstColumnOnlyAutoresizingStyle
     table.setAccessibilityLabel("Entries")
     table.dataSource = self
     table.delegate = self
     table.onOpen = { [weak self] in self?.open($0) }
+    table.onDelete = { [weak self] in self?.delete(nil) }
+    table.menu = NSMenu()
+    table.menu?.addItem(withTitle: "Delete", action: #selector(delete(_:)), keyEquivalent: "").target = self
     // a row dragged to a board, or a web page's address to anything that takes one
     for local in [true, false] { table.setDraggingSourceOperationMask(.copy, forLocal: local) }
     scroll.drawsBackground = false
