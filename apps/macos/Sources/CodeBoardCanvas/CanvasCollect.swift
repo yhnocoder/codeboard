@@ -135,7 +135,7 @@ extension CanvasView {
       let sources = sourceInfo(mini)
       let made = await Task.detached(priority: .userInitiated) { () -> (Scene.Item, IOSurface?, CGFloat)? in
         let sizes = await CanvasView.measure(
-          Scene.measures(mini, package: package, vault: vault), theme: t, display: display)
+          Scene.measures(mini, package: package, vault: vault, sources: sources), theme: t, display: display)
         let s = Scene(
           mini, package: package, vault: vault, theme: t, highlighter: highlighter, sizes: sizes, sources: sources)
         guard let it = s.items.first(where: { $0.owner == .card(card.id) }) else { return nil }

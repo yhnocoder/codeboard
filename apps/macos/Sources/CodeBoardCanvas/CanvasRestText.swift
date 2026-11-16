@@ -25,7 +25,7 @@ extension CanvasView {
       let card = doc.board.card(c),
       let l = try? display.laid(
         n.content, width: card.width, folder: n.folder, look: theme.id.rawValue, dark: theme.dark, refs: n.refs,
-        hideHead: n.hideHead)
+        hideHead: n.hideHead, preamble: n.preamble)
     else { return nil }
     let r = scene!.items[i].rect
     let o = l.origin(in: l.size(height: n.height.map { Double($0) }))
