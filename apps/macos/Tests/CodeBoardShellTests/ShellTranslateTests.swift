@@ -84,6 +84,25 @@ final class TranslateStub: URLProtocol, @unchecked Sendable {
     #expect(body["model"] as? String == "deepseek-flash", "the summary writer's request")
   }
 
+  /// The summaries' writer and settings, with room for a batch's translations
+  @Test func translationAsksTheSettingsWriterForLongerAnswers() async throws {
+    let name = "codeboard-tests-\(UUID().uuidString)"
+    let d = try #require(UserDefaults(suiteName: name))
+    defer { d.removePersistentDomain(forName: name) }
+    AISettings(defaults: d).baseURL = "http://ai.test"
+    TranslateStub.reset(200, reply(#"["一"]"#))
+    let translate = Shell.translator {
+      let c = URLSessionConfiguration.ephemeral
+      c.protocolClasses = [TranslateStub.self]
+      return Shell.translationWriter(
+        AISettings(defaults: UserDefaults(suiteName: name)!), keys: MemoryKeyStore("sk-test"),
+        session: URLSession(configuration: c))
+    }
+    #expect(try await translate(["One"], nil, "zh") == ["一"])
+    let body = try JSONSerialization.jsonObject(with: #require(TranslateStub.bodies.first)) as? [String: Any]
+    #expect(body?["max_tokens"] as? Int == Shell.translationAnswerTokens && Shell.translationAnswerTokens > 800)
+  }
+
   @Test func withoutThePagesLanguageThePromptSaysNone() {
     #expect(!Shell.translationPrompt(from: nil, to: "zh").contains("The page is in"))
     #expect(Shell.translationPrompt(from: "fr", to: "zh").contains("French (fr)"))

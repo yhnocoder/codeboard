@@ -55,9 +55,10 @@ struct WebBlock: Equatable, Sendable {
 /// the block at the top of the window down, so that what the reader sees fills first; then the body above it; then
 /// the rest, in the same order
 enum WebTranslating {
-  /// A batch's texts together, at most (one longer block goes alone): small enough that the answer fits the AI
-  /// writer's reply limit
-  static let batchCharacters = 1000
+  /// A batch's texts together, at most (one longer block goes alone): its answer in Chinese is at most about 0.6
+  /// tokens a character, under 2000 tokens, which the shell's translator leaves twice the room for; and at the AI's
+  /// usual pace it comes well inside the writer's minute
+  static let batchCharacters = 3000
   /// Batches asked for at once
   static let concurrent = 3
 

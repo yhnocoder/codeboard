@@ -8,7 +8,21 @@ import Foundation
 extension Shell {
   /// Web tabs' translator over the AI settings in the app's defaults and the key in the Keychain
   static let webTranslate: WebReading.Translator = translator {
-    AISettings(defaults: .standard).writer(keys: KeychainKeyStore())
+    translationWriter(AISettings(defaults: .standard), keys: KeychainKeyStore())
+  }
+
+  /// A batch of WebTranslating.batchCharacters, in Chinese, as a JSON list: at most about 0.6 tokens a character (a
+  /// page in Chinese or Japanese; English comes out in fewer characters than it had), and a few tokens a block for the
+  /// list. Twice that and more, so that an answer is never cut short
+  nonisolated static let translationAnswerTokens = 4096
+
+  /// The summaries' writer as `ai` and `keys` describe it, with room for a batch's translations
+  nonisolated static func translationWriter(
+    _ ai: AISettings, keys: any KeyStore, session: URLSession = .shared
+  ) -> OpenAISummaryWriter {
+    var w = ai.writer(keys: keys, session: session)
+    w.answerTokens = translationAnswerTokens
+    return w
   }
 
   /// A translator asking `writer`'s model once per batch: the texts numbered in, their translations as a JSON list out
