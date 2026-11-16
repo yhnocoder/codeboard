@@ -84,6 +84,14 @@ public struct ReadingTab: Codable, Equatable, Identifiable, Sendable {
   @ObservationIgnored public var arxiv = Arxiv()
   /// This machine's translations (the shell makes them); nil: none, and no "+ 译文"
   @ObservationIgnored public var translations: Translations?
+  /// The popup a passage's annotations are shown and written in, made for a tab with what is done in it and its size
+  /// changing heard (the shell makes the board's sidenote popup); nil: passages are not annotated
+  @ObservationIgnored public var makePop:
+    (
+      @MainActor (
+        _ act: @escaping @MainActor (AnnotationPop.Action) -> Void, _ resized: @escaping @MainActor () -> Void
+      ) -> AnnotationPop
+    )?
   /// The board's bar look in its theme now (the shell sets it); tabs' views follow it
   public var barLook = ReadingBarLook.warmInk(dark: false)
 

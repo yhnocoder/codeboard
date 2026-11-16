@@ -507,6 +507,8 @@
           "sources": [
             "CodeBoardShell/MainWindow.swift",
             "CodeBoardShell/TabStrip.swift",
+            "CodeBoardShell/ShellAnnotations.swift",
+            "CodeBoardCanvas/NativePop.swift",
             "CodeBoardReading/Frame",
             "CodeBoardReading/PDF",
             "CodeBoardReading/Shared"
@@ -552,7 +554,7 @@
           "tests": [
             "SelectionBarPlaceTests",
             "SelectionBarTests",
-            "PDFAnnotationTests/theAnnotationPopupGoesBelowTheHighlightAndAboveOnlyWhenThereIsNoRoom"
+            "PDFAnnotationTests"
           ]
         }
       }
