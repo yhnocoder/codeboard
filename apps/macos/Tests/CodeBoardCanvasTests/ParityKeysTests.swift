@@ -101,8 +101,8 @@ private func keysBoard() -> Board {
       (
         "View",
         [
-          ("⌘K", "Search"), ("⌘F", "Search This Board"), ("⇧1", "Fit to Window"), ("⇧2", "Fit Selection"),
-          ("⌘0", "Fit All"), ("⌘1", "Zoom to 100%"),
+          ("⌘K", "Search"), ("⌘F", "Search This Board"), ("⌘L", "Open Location"), ("⇧1", "Fit to Window"),
+          ("⇧2", "Fit Selection"), ("⌘0", "Fit All"), ("⌘1", "Zoom to 100%"),
           ("⌃- / ⌘[", "Back after a jump"), ("⌃⇧- / ⌘]", "Forward after a jump"), ("⌘+", "Zoom In"),
           ("⌘−", "Zoom Out"), ("⌘ + scroll / pinch", "Zoom"), ("Space + drag / two fingers", "Pan"),
           ("⌃⌘S", "Hide Sidebar"), ("⌃⌘R", "Show Reading Pane"), ("⇧⌘[ / ⌃⇧⇥", "Show Previous Tab"),

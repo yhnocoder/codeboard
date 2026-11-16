@@ -38,17 +38,19 @@ final class RefResolver {
     var seen = Set<[String]>()
     var out: [NoteRef] = []
     for m in markdown.matches(of: /\[\[([^\[\]\n]+?)\]\]/) {
-      let inner = String(m.output.1)
-      var label = inner.trimmingCharacters(in: .whitespaces)
-      var target: String?
-      if let t = inner.firstMatch(of: /#\^([A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)?)$/) {
-        target = String(t.output.1)
-        label = String(inner[..<t.range.lowerBound]).trimmingCharacters(in: .whitespaces)
-      }
+      let (label, target) = Self.split(String(m.output.1))
       guard !label.isEmpty, seen.insert([label, target ?? ""]).inserted else { continue }
       if let hit = resolve(label, target: target) { out.append(NoteRef(label: label, target: target, hit: hit)) }
     }
     return out
+  }
+
+  /// What is inside a ref's brackets: its label, and the id the [[ menu wrote after it (`#^id`, `#^board/card`)
+  static func split(_ inner: String) -> (label: String, target: String?) {
+    guard let t = inner.firstMatch(of: /#\^([A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)?)$/) else {
+      return (inner.trimmingCharacters(in: .whitespaces), nil)
+    }
+    return (String(inner[..<t.range.lowerBound]).trimmingCharacters(in: .whitespaces), String(t.output.1))
   }
 
   /// Where a ref goes when clicked

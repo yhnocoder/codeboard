@@ -1,4 +1,4 @@
-# 进出子白板（main：ui/Crumbs.tsx、actions/subboards.ts enterFrame / leaveBoard）：双击子白板卡进 Third，左上角面包屑「‹ First › Third」，名字从卡上飞过去；点面包屑里的 First 回去，镜头回到进去前；再进去，Esc 回去。--only mac
+# 进出子白板（main：ui/Crumbs.tsx、actions/subboards.ts enterFrame / leaveBoard）：双击子白板卡进 Third，左上角面包屑「‹ First › Third」，名字从卡上飞过去；点面包屑里的 First 回去，镜头回到进去前；再进去（双击落在 Third 图里唯一的卡上，进去时选中它），第一下 Esc 取消选中，第二下回去。--only mac
 # storage: storage-two
 # only: mac
 zoom 1
@@ -26,6 +26,8 @@ dbl @csub:c
 wait 900
 expect ui.crumbs.w > 60
 expect cthird.x = 80
+key esc
+wait 300
 key esc
 wait 900
 expect csub.x = 860

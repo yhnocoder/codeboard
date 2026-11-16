@@ -99,6 +99,8 @@ public final class CanvasView: NSView {
   var summaryHover: SummaryKey?
   /// The hovered column's ↻, dot and ✓ 保留, kept their size on screen
   let summaryButtons = CALayer()
+  /// The one of them under the pointer, whose tip shows
+  var summaryButtonHover: (key: SummaryKey, keep: Bool)?
   /// A body pressed, edited when let go where it was pressed (view points)
   var summaryPress: (key: SummaryKey, at: CGPoint)?
   var summaryEditor: SummaryEditor?

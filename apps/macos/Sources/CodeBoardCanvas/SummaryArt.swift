@@ -1,4 +1,5 @@
 import AppKit
+import CodeBoardMarkdownLooks
 import CoreText
 
 // A summary column drawn (the web board's .sumlay, styles.css and Summaries.tsx): an optional kick line, the title (a
@@ -24,6 +25,14 @@ struct SummaryColumnText: Sendable, Hashable {
   var loose: Bool
   /// Pending with a summary: the body's dotted underline
   var stale: Bool
+  /// What each [[ref]] in the title and body shows, by what is inside its brackets
+  var refs: [String: Ref] = [:]
+
+  /// A ref's target's current name; one that finds nothing (not found) its label
+  struct Ref: Sendable, Hashable {
+    var name: String
+    var found: Bool
+  }
 }
 
 /// The summary layer's look in one theme (styles.css .sumlay tokens)
@@ -37,6 +46,14 @@ struct SummaryLook: Sendable {
   let shade: CGColor
   let serif: Bool
   let dark: Bool
+  /// A ref's colour (--k-fn), and the line under one that finds nothing (--hair)
+  let link: CGColor
+  let hair: CGColor
+  /// ==mark==: a band over the lower part of its box from `markFrom` (--md-hl), or Ink Wash's brush stroke `brush` em
+  /// tall at its bottom
+  let mark: CGColor
+  let markFrom: CGFloat
+  let brush: CGFloat?
   /// Screen points per unit of the sizes the text is made at, where main lays it out (the switch point's: S · cut px for
   /// S): the system font takes its optical size and tracking from there, as Chrome's does
   var layout: CGFloat = 0.3
@@ -58,6 +75,13 @@ struct SummaryLook: Sendable {
     accent = t.accent
     panel = !t.dark && ink ? t.surface : t.canvas
     shade = t.dark ? CGColor(gray: 0, alpha: 1) : rgb(0x32230a)
+    // as the Notes draw them
+    let md = MarkdownLooks.theme(t.id.rawValue, dark: t.dark)
+    link = md.colors.link.cg
+    hair = md.colors.hair.cg
+    mark = md.marks.highlight.cg
+    markFrom = CGFloat(md.metrics.highlightFrom)
+    if case .brush(let h) = md.marks.highlightStyle { brush = CGFloat(h) } else { brush = nil }
   }
 }
 
@@ -110,14 +134,15 @@ enum SummaryArt {
 
   // MARK: Text
 
-  /// The body as an attributed string: **bold** runs in ink, the rest in the summary grey; ==mark== and [[ref]] show their
-  /// text
-  static func bodyString(_ t: String, look: SummaryLook, font em: CGFloat) -> NSAttributedString {
+  /// The body as an attributed string: **bold** runs in ink, the rest in the summary grey; with `refs`, its ==marks==
+  /// and [[refs]] as `inline` shows them (nil: as written, for the editor)
+  static func bodyString(
+    _ t: String, look: SummaryLook, font em: CGFloat, refs: [String: SummaryColumnText.Ref]? = nil
+  ) -> NSAttributedString {
     let out = NSMutableAttributedString()
-    let plain = t.replacingOccurrences(of: "==", with: "").replacing(/\[\[([^\]|]*)(?:\|[^\]]*)?\]\]/) { String($0.1) }
     let para = paragraph(lineHeight: 1.5 * em)
     var bold = false
-    for part in plain.components(separatedBy: "**") {
+    for part in t.components(separatedBy: "**") {
       if !part.isEmpty {
         let a: [NSAttributedString.Key: Any] = [
           .font: body(look, em, bold: bold), .foregroundColor: bold ? look.ink : look.grey, .paragraphStyle: para,
@@ -126,7 +151,37 @@ enum SummaryArt {
       }
       bold.toggle()
     }
+    if let refs { inline(out, look: look, refs: refs) }
     return out
+  }
+
+  /// Under a mark's text, for draw() to paint its band
+  static let markKey = NSAttributedString.Key("summaryMark")
+  /// On a ref's name: the colour of the line under it
+  static let refKey = NSAttributedString.Key("summaryRef")
+
+  /// ==marks== and [[refs]] as the inline renderer shows them (markdown schema-marks.ts HL_RE, schema-nodes.ts wikiRef):
+  /// a mark's text with `markKey`; a ref its target's current name in the ref colour (.md-ref), one that finds nothing
+  /// its label in ink-3 (.md-ref.missing), with `refKey`
+  static func inline(_ s: NSMutableAttributedString, look: SummaryLook, refs: [String: SummaryColumnText.Ref]) {
+    var str = s.string
+    for m in str.matches(of: /==(?=[^\s=])((?:\\.|[^\n\\])*?[^\s\\])==/).reversed() {
+      let inner = NSRange(m.output.1.startIndex..<m.output.1.endIndex, in: str)
+      let t = NSMutableAttributedString(attributedString: s.attributedSubstring(from: inner))
+      t.addAttribute(markKey, value: true, range: NSRange(location: 0, length: t.length))
+      s.replaceCharacters(in: NSRange(m.range, in: str), with: t)
+    }
+    str = s.string
+    for m in str.matches(of: /\[\[([^\[\]\n]+?)\]\]/).reversed() {
+      guard let r = refs[String(m.output.1)] else { continue }
+      let at = NSRange(m.range, in: str)
+      s.replaceCharacters(in: at, with: r.name)
+      s.addAttributes(
+        [
+          .foregroundColor: r.found ? look.link : look.ink3, refKey: r.found ? look.link.copy(alpha: 0.34)! : look.hair,
+        ],
+        range: NSRange(location: at.location, length: r.name.utf16.count))
+    }
   }
 
   static func paragraph(lineHeight: CGFloat) -> NSParagraphStyle {
@@ -229,12 +284,13 @@ enum SummaryArt {
       b.square = 0.55 * size
       b.squareGap = 0.45 * size
     }
-    let s = NSAttributedString(
+    let s = NSMutableAttributedString(
       string: c.title,
       attributes: [
         .font: head(look, size, bold: true), .foregroundColor: color, .kern: kern,
         .paragraphStyle: paragraph(lineHeight: b.titleLine),
       ])
+    inline(s, look: look, refs: c.refs)
     // the square sits in the first line, so the first line is that much narrower: laid out as an indent
     b.title = indentedLines(s, width: w, indent: b.square + b.squareGap, max: level == nil && !whole ? 2 : .max)
     b.height += CGFloat(max(1, b.title.count)) * b.titleLine
@@ -281,7 +337,7 @@ enum SummaryArt {
     let w = width - 2 * pad
     let hd = titleBlock(c, look: look, font: em, width: w, cut: cut).height
     let tx =
-      c.text.map { CGFloat(lines(bodyString($0, look: look, font: em), width: w).count) * 1.5 * em }
+      c.text.map { CGFloat(lines(bodyString($0, look: look, font: em, refs: c.refs), width: w).count) * 1.5 * em }
       ?? 0
     return SummaryMeasure(hd: hd, tx: tx)
   }
@@ -295,7 +351,7 @@ enum SummaryArt {
   ) -> Drawn? {
     let w = width - 2 * pad
     let block = titleBlock(c, look: look, font: em, width: w, cut: cut, whole: whole)
-    let body = c.text.map { lines(bodyString($0, look: look, font: em), width: w) } ?? []
+    let body = c.text.map { lines(bodyString($0, look: look, font: em, refs: c.refs), width: w) } ?? []
     let gap = c.head == 1 ? 1.12 * 0.32 * em : c.head == 2 ? 0.92 * 0.3 * em : 0.3 * em
     let bodyH = CGFloat(body.count) * 1.5 * em
     let full = ceil(2 * pad + max(hd, block.height) + (c.head != nil && body.isEmpty ? 0 : gap) + bodyH)
@@ -321,6 +377,7 @@ enum SummaryArt {
       _ = CTLineGetTypographicBounds(l, &asc, &desc, nil)
       // CSS centres the glyphs' ascent + descent in the line box
       let base = top + (lineHeight - (asc + desc)) / 2 + asc
+      decorate(l, x: x, base: base)
       ctx.saveGState()
       ctx.translateBy(x: x, y: base)
       ctx.scaleBy(x: 1, y: -1)
@@ -328,6 +385,53 @@ enum SummaryArt {
       CTLineDraw(l, ctx)
       ctx.restoreGState()
       return base
+    }
+    // under the text, what Core Text does not draw: a mark's band or brush stroke over its runs (their font's ascent and
+    // descent and .12em below, markdown.css mark), a ref's line at the bottom of its 1.32em box, 1 px at the switch point
+    func decorate(_ l: CTLine, x: CGFloat, base: CGFloat) {
+      var spans:
+        [(mark: Bool, line: CGColor?, x0: CGFloat, x1: CGFloat, top: CGFloat, bottom: CGFloat, size: CGFloat)] =
+          []
+      for run in CTLineGetGlyphRuns(l) as? [CTRun] ?? [] {
+        let a = CTRunGetAttributes(run) as NSDictionary
+        let mark = a[markKey] != nil
+        let line = a[refKey].map { $0 as! CGColor }
+        guard mark || line != nil, let font = a[NSAttributedString.Key.font].map({ $0 as! CTFont }) else { continue }
+        let x0 = x + CTLineGetOffsetForStringIndex(l, CTRunGetStringRange(run).location, nil)
+        let x1 = x0 + CGFloat(CTRunGetTypographicBounds(run, CFRange(), nil, nil, nil))
+        let (asc, desc, size) = (CTFontGetAscent(font), CTFontGetDescent(font), CTFontGetSize(font))
+        let span = (mark, line, x0, x1, base - asc, base + desc, size)
+        // a font fallback splits a run: one span across it
+        if let p = spans.last, p.mark == mark, p.line == line, abs(p.x1 - x0) < 0.01 {
+          spans[spans.count - 1] = (mark, line, p.x0, x1, min(p.top, span.4), max(p.bottom, span.5), max(p.size, size))
+        } else {
+          spans.append(span)
+        }
+      }
+      for s in spans {
+        let w = s.x1 - s.x0
+        if s.mark {
+          let h = s.bottom - s.top + 0.12 * s.size
+          ctx.setFillColor(look.mark)
+          if let b = look.brush {
+            // Ink Wash: themes.css --hl-brush, its 120 × 8 path stretched over the stroke
+            ctx.saveGState()
+            ctx.translateBy(x: s.x0, y: s.top + h - b * s.size)
+            ctx.scaleBy(x: w / 120, y: b * s.size / 8)
+            ctx.addPath(SVGPath.parse(brushPath))
+            ctx.fillPath()
+            ctx.restoreGState()
+          } else {
+            ctx.fill(CGRect(x: s.x0, y: s.top + h * look.markFrom, width: w, height: h * (1 - look.markFrom)))
+          }
+        }
+        if let c = s.line {
+          let t = 1 / max(cut, 0.01)
+          let bottom = s.bottom + (1.32 * s.size - (s.bottom - s.top)) / 2
+          ctx.setFillColor(c)
+          ctx.fill(CGRect(x: s.x0, y: bottom - t, width: w, height: t))
+        }
+      }
     }
     for l in block.kick {
       put(l, x: pad, top: y, lineHeight: block.kickLine)
@@ -402,6 +506,9 @@ enum SummaryArt {
     var titleEnd: CGPoint
     var bodyTop: CGFloat
   }
+
+  /// Ink Wash's ==mark== (themes.css --hl-brush; the Markdown component's own is not public)
+  static let brushPath = "M1 5.2C18 3.6 34 4.6 52 4.1S88 3.2 119 4.4L118.6 5.6C96 6.2 72 5.4 54 6.1S20 6.8 1.4 6.4Z"
 
   /// The small square before a title (.sumhdi::before): 0.55em, 1 px round, set in the line
   static func square(_ ctx: CGContext, x: CGFloat, top: CGFloat, line: CGFloat, side: CGFloat, color: CGColor) {
