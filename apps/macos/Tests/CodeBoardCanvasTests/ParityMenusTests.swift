@@ -153,6 +153,37 @@ private func titles(_ m: NSMenu?) -> [String] { m?.items.map { $0.isSeparatorIte
     #expect(k.hide.blankLines)
   }
 
+  /// A card of a repository's code has Show Annotations in its View menu, on until turned off: then the card is marked
+  /// to show none of its repository's Highlights and sidenotes, one step; free code has none
+  @Test func aRepositoryCodeCardsViewMenuShowsAndHidesItsAnnotations() async throws {
+    var board = menusBoard()
+    let seg = Segment(
+      id: SegmentID(rawValue: "s2"),
+      source: .git(
+        repository: "https://github.com/o/n", commit: String(repeating: "a", count: 40), path: "e.py",
+        uncommitted: false, checkout: nil),
+      language: "python", firstLine: 1, lines: ["def step(batch):"])
+    board.cards.append(
+      Card(
+        id: cid("g1"), x: 500, y: 300, width: 320,
+        content: .own(CardContent(title: "Sourced", body: .code(CodeCard(segments: [seg]))))))
+    let r = try await Rig(board, zoom: 1)
+    defer { r.close() }
+    #expect(item(menu(r, at: r.centre("c1")), "View", "Show Annotations") == nil, "free code")
+    let show = item(menu(r, at: r.centre("g1")), "View", "Show Annotations")
+    #expect(show?.state == .on && titles(item(menu(r, at: r.centre("g1")), "View")?.submenu).last == "Show Annotations")
+    fire(show)
+    guard case .own(let c)? = r.doc.board.card(cid("g1"))?.content, case .code(let k) = c.body else {
+      Issue.record("no code card")
+      return
+    }
+    #expect(k.annotationsHidden == true && r.doc.undoName == "Show Annotations")
+    #expect(item(menu(r, at: r.centre("g1")), "View", "Show Annotations")?.state == .off)
+    fire(item(menu(r, at: r.centre("g1")), "View", "Show Annotations"))
+    guard case .own(let c2)? = r.doc.board.card(cid("g1"))?.content, case .code(let k2) = c2.body else { return }
+    #expect(k2.annotationsHidden == nil, "on again: the field left out")
+  }
+
   /// A sub-board card's: Open, then Arrange and Copy Path, then Remove from This Board (the board stays) and Delete
   /// Board… (actions/subboards.ts deleteFrameBoard: once the shell has asked and the board went, its cards here go)
   @Test func aSubBoardCardsMenuOpensRemovesFromThisBoardAndDeletesTheBoard() async throws {

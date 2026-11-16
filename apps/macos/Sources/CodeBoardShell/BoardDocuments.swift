@@ -10,6 +10,10 @@ import Foundation
     self.session = session
   }
 
+  /// The vault's code annotations (ShellCodeNotes.swift) and where a source's repository key comes from
+  var codeStore: CodeNotes?
+  let codeKeys = CodeKeys()
+
   /// One document per board while the app runs, whichever tabs show it, so its undo history outlives tab switches
   private(set) var open: [BoardID: BoardDocument] = [:]
 
@@ -21,7 +25,7 @@ import Foundation
       file: { [weak session] in
         guard let session, let vault = session.vault, let at = session.board(id) else { return nil }
         return vault.url(of: at.path).appending(path: Vault.boardFileName)
-      }, vault: session.vault)
+      }, vault: session.vault, code: code)
     open[id] = doc
     return doc
   }
@@ -59,7 +63,7 @@ import Foundation
         file: { [weak session] in
           guard let session, let vault = session.vault, let at = session.board(b.id) else { return nil }
           return vault.url(of: at.path).appending(path: Vault.boardFileName)
-        }, vault: session.vault))
+        }, vault: session.vault, code: code))
     doc?.sync { $0.delete([.card(id)], ignoringLock: true) }
     doc?.flush()
   }
@@ -115,6 +119,7 @@ import Foundation
 
   /// The vault changed on disk: every open board takes in what changed there
   func diskChanged() {
+    codeStore?.reload()
     for doc in open.values { doc.diskChanged() }
   }
 
@@ -122,6 +127,7 @@ import Foundation
   /// not be written, by title, with why
   func flush() -> [(title: String, why: String)] {
     var unsaved: [(title: String, why: String)] = []
+    try? codeStore?.flush()
     for (id, doc) in open {
       doc.flush()
       if doc.isDirty, let why = doc.problem { unsaved.append((session.board(id)?.title ?? id.rawValue, why)) }

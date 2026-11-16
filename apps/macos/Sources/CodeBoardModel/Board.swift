@@ -2,7 +2,8 @@
 // A board's title is not in here: it is the package's folder name.
 
 public struct Board: Equatable, Sendable {
-  public static let version = 2
+  /// 3: the annotations of sourced code are their repositories' (FORMAT.md, Code annotations)
+  public static let version = 3
 
   public var id: BoardID
   /// On the canvas, in stacking order, the last one on top
@@ -121,12 +122,18 @@ public struct CodeCard: Codable, Equatable, Sendable {
   public var wrap: Bool
   /// false: the code is drawn on the canvas with no card frame
   public var framed: Bool
+  /// true: it shows none of its repository's Highlights and sidenotes (Show Annotations off); true or absent
+  public var annotationsHidden: Bool?
 
-  public init(segments: [Segment], hide: HideFlags = HideFlags(), wrap: Bool = false, framed: Bool = true) {
+  public init(
+    segments: [Segment], hide: HideFlags = HideFlags(), wrap: Bool = false, framed: Bool = true,
+    annotationsHidden: Bool? = nil
+  ) {
     self.segments = segments
     self.hide = hide
     self.wrap = wrap
     self.framed = framed
+    self.annotationsHidden = annotationsHidden
   }
 }
 
@@ -164,13 +171,20 @@ public struct Segment: Codable, Equatable, Sendable {
   /// Free code: its language was picked by hand, not to be guessed again from what is written (main's `langPicked`);
   /// true or absent
   public var languagePicked: Bool?
+  /// Keep: it stays on its version, no newer version marked until the code changes again; true or absent, only with a
+  /// source
+  public var keep: Bool?
+  /// Keep Old Version: its code is not found any more and it stays as saved, not marked lost; true or absent, only with
+  /// a source
+  public var keepOld: Bool?
 
   public var lastLine: Int { firstLine + lines.count - 1 }
 
   public init(
     id: SegmentID, source: CodeSource?, language: String, firstLine: Int, lines: [String], symbol: Symbol? = nil,
     scope: String? = nil, hidden: [ClosedRange<Int>] = [], highlights: [ClosedRange<Int>] = [],
-    annotations: [Annotation] = [], url: String? = nil, languagePicked: Bool? = nil
+    annotations: [Annotation] = [], url: String? = nil, languagePicked: Bool? = nil, keep: Bool? = nil,
+    keepOld: Bool? = nil
   ) {
     self.id = id
     self.source = source
@@ -184,6 +198,8 @@ public struct Segment: Codable, Equatable, Sendable {
     self.annotations = annotations
     self.url = url
     self.languagePicked = languagePicked
+    self.keep = keep
+    self.keepOld = keepOld
   }
 }
 
@@ -835,7 +851,7 @@ public struct Seal: Codable, Equatable, Sendable {
 
 /// A shared card's content, in .codeboard/shared/<id>.json; every board that shows it has a Card with content .shared
 public struct SharedCard: Equatable, Sendable {
-  public static let version = 2
+  public static let version = 3
 
   public var id: CardID
   public var content: CardContent

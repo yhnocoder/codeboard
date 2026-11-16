@@ -2,6 +2,7 @@ import AppKit
 import CodeBoardCanvas
 import CodeBoardModel
 import CodeBoardResources
+import CodeBoardWorkspace
 
 /// Starts the app; the executable's only call
 @MainActor public func runApp() {
@@ -284,7 +285,8 @@ import CodeBoardResources
       let result = await Task.detached {
         Result {
           try LegacyImport.run(
-            from: source, to: vault.root, cameras: LegacyImport.cameras(for: source), store: store)
+            from: source, to: vault.root, cameras: LegacyImport.cameras(for: source), store: store,
+            key: { if case .git(let r?, _, _, _, _) = $0 { repositoryKey(r) } else { nil } })
         }
       }.value
       shell.importing = false

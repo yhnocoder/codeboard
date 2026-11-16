@@ -138,7 +138,8 @@ extension PDFTabView {
     let pages = Set(ls.compactMap { pdf.document?.index(for: $0.0) }).map { $0 + 1 }.sorted()
     let range = label(shownHighlight.map(\.place), pages: pages)
     let shown = AnnotationPop.Shown(
-      title: title, range: range, notes: notes(of: shownHighlight, in: entry), write: write,
+      title: title, range: range,
+      notes: notes(of: shownHighlight, in: entry).map { AnnotationPop.Note(id: $0.id, note: $0.note) }, write: write,
       folder: vault.url(of: path), look: context.bar, maxHeight: max(120, min(560, floatArea.height - 16)))
     pop?.show(shown)
     placePop()

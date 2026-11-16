@@ -311,6 +311,61 @@ private let engine = fn("schedule") + "\n" + fn("other")
     #expect(r.doc.board.staleCount(r.states) == 50 && r.canvas.versions.count == 50)
   }
 
+  /// Keep: the card stays on its version, no mark, until the code changes again; then marked, kept no more
+  @Test func keepStaysOnTheVersionUntilTheCodeChangesAgain() async throws {
+    let r = try await Rig(try repo(["e.py": engine]))
+    defer { r.close() }
+    try await r.open(Board(id: BoardID(rawValue: "b"), cards: [try await r.card("e.py", "schedule", id: "c")]))
+    let s = r.seg("c")
+    try r.commit("e.py", fn("schedule", "return 1") + "\n" + fn("other"))
+    r.versions.check(r.doc.id)
+    await r.versions.settled()
+    #expect(r.states.count == 1)
+    r.versions.keep(CardID(rawValue: "c"), s.id, in: r.doc.seat(for: r))
+    #expect(r.states.isEmpty && r.canvas.versions.isEmpty && r.seg("c").keep == true)
+    #expect(r.doc.undoName == "Keep Version" && r.seg("c").lines == s.lines)
+    r.versions.check(r.doc.id)
+    await r.versions.settled()
+    #expect(r.states.isEmpty, "checked again: still kept")
+    try r.commit("e.py", fn("schedule", "return 2") + "\n" + fn("other"))
+    let head = try git(r.repo, "rev-parse", "HEAD")
+    r.versions.check(r.doc.id)
+    await r.versions.settled()
+    #expect(r.states[s.id] == .changed(hiddenOnly: false, label: String(head.prefix(7))), "changed again: marked")
+    #expect(r.seg("c").keep == nil && r.doc.undoName == "Keep Version", "kept no more, no step of its own")
+  }
+
+  /// A card whose function was renamed is lost: Relocate's places are the functions of its file, and one picked is
+  /// its code at HEAD, its id kept, in one step; Keep Old Version keeps a deleted one's code unmarked
+  @Test func aLostCardIsRelocatedToAFunctionOfItsFileOrKeptAsItWas() async throws {
+    let r = try await Rig(try repo(["e.py": engine]))
+    defer { r.close() }
+    try await r.open(
+      Board(
+        id: BoardID(rawValue: "b"),
+        cards: [try await r.card("e.py", "schedule", id: "c"), try await r.card("e.py", "other", id: "o")]))
+    let s = r.seg("c")
+    try r.commit("e.py", fn("plan") + "\n# gone: other\n")
+    r.versions.check(r.doc.id)
+    await r.versions.settled()
+    #expect(r.states[s.id] == .lost && r.states[r.seg("o").id] == .lost)
+    let places = await r.versions.places(for: s)
+    #expect(places.map(\.label) == ["plan"] && places.first?.path == "e.py" && places.first?.start == 1)
+    let seat = r.doc.seat(for: r)
+    await r.versions.relocate(CardID(rawValue: "c"), s, to: try #require(places.first), in: seat, on: nil)
+    let now = r.seg("c")
+    #expect(now.id == s.id && now.symbol?.name == "plan" && now.lines.first == "def plan(x):")
+    #expect(r.doc.undoName == "Relocate" && r.states[s.id] == nil)
+    await r.versions.settled()
+    #expect(r.states[s.id] == nil, "checked again: current")
+    // Keep Old Version on the other
+    let o = r.seg("o")
+    seat.edit("Keep Old Version") { $0.keepOldVersion(CardID(rawValue: "o"), [o.id]) }
+    r.versions.check(r.doc.id)
+    await r.versions.settled()
+    #expect(r.seg("o").keepOld == true && r.seg("o").lines == o.lines && r.states.isEmpty)
+  }
+
   @Test func aCommitIsSeenByTheRepositorysWatcher() async throws {
     let r = try await Rig(try repo(["e.py": engine]))
     defer { r.close() }

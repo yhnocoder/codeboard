@@ -161,7 +161,9 @@ import Testing
     #expect(e.sidenotes.allSatisfy { $0.place == e.highlights[0].place && !$0.note.alwaysShow })
     #expect(e.sidenotes[0].note.question.map { !$0.done && $0.answers.isEmpty } == true)
     #expect(e.sidenotes[1].note.question == nil)
-    #expect(fake.shown.last?.notes == e.sidenotes && fake.shown.last?.write == false, "shown again, written in no more")
+    #expect(
+      fake.shown.last?.notes == e.sidenotes.map { AnnotationPop.Note(id: $0.id, note: $0.note) }
+        && fake.shown.last?.write == false, "shown again, written in no more")
     let page = try #require(t.pdf.document?.page(at: 0))
     let mark = try #require(page.annotations.first { $0.type == "Circle" })
     let lit = try #require(page.annotations.first { $0.type == "Highlight" }).bounds
@@ -207,7 +209,7 @@ import Testing
     e = try entry(v)
     #expect(e.sidenotes[0].note.question?.answers.map(\.text) == ["The oldest one"])
     #expect(e.sidenotes[0].note.question?.done == true)
-    #expect(fake.shown.last?.notes == e.sidenotes)
+    #expect(fake.shown.last?.notes == e.sidenotes.map { AnnotationPop.Note(id: $0.id, note: $0.note) })
     fake.act?(.done(q, false))
     #expect(try entry(v).sidenotes[0].note.question?.done == false)
     // written empty: gone

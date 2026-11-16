@@ -159,7 +159,7 @@ private func everything() -> Board {
         "shelf": [],
         "sidenotes": [],
         "stickers": [],
-        "version": 2
+        "version": 3
       }
 
       """)
@@ -198,7 +198,7 @@ private func card(_ json: inout [String: Any], _ i: Int, _ change: (inout [Strin
 
 @Test func decodingRejectsWhatTheWriterWouldNotWrite() throws {
   let newerField =
-    "not in format 2 as this CodeBoard knows it; a newer CodeBoard may have written it. Update CodeBoard to open the "
+    "not in format 3 as this CodeBoard knows it; a newer CodeBoard may have written it. Update CodeBoard to open the "
     + "file (it is left as it is)"
   let cases: [(String, (inout [String: Any]) -> Void)] = [
     ("cards[1].extra: \(newerField)", { j in card(&j, 1) { $0["extra"] = 1 } }),
@@ -219,9 +219,11 @@ private func card(_ json: inout [String: Any], _ i: Int, _ change: (inout [Strin
   #expect(throws: VaultError.olderFormat(file, 1)) {
     try Board(decoding: try edited { $0["version"] = 1 }, file: file)
   }
-  #expect(throws: VaultError.newerFormat(file, 3)) {
-    try Board(decoding: try edited { $0["version"] = 3 }, file: file)
+  #expect(throws: VaultError.newerFormat(file, 4)) {
+    try Board(decoding: try edited { $0["version"] = 4 }, file: file)
   }
+  // the version before reads as this one (its code's annotations move when a document opens it)
+  #expect(try Board(decoding: try edited { $0["version"] = 2 }, file: file) == everything())
   #expect(throws: VaultError.malformed(file, "no format version")) {
     try Board(decoding: try edited { $0["version"] = nil }, file: file)
   }

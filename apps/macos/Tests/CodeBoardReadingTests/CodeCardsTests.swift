@@ -66,6 +66,32 @@ private let source = """
     asked.append((name, scan))
     return defs[name.name] ?? []
   }
+
+  /// The repository's annotations of the file, as the shell keeps them
+  var marked = CodeAnnotations()
+
+  func annotations(_ f: CodeFile, text: String) async -> CodeAnnotations { marked }
+
+  func annotate(_ f: CodeFile, _ pick: CodePick, note: String?, ask: Bool) async -> Bool {
+    if !marked.highlights.contains(where: { $0.lines == pick.lines }) {
+      marked.highlights.append(.init(id: "h\(marked.highlights.count + 1)", lines: pick.lines))
+    }
+    if let note {
+      let n = TextNote(text: note, question: ask ? Question(at: 1) : nil)
+      marked.notes.append(.init(id: SidenoteID(rawValue: "n\(marked.notes.count + 1)"), lines: pick.lines, note: n))
+    }
+    return true
+  }
+
+  func changeNote(_ f: CodeFile, _ id: SidenoteID, _ change: @escaping (TextNote) -> TextNote?) async {
+    guard let i = marked.notes.firstIndex(where: { $0.id == id }) else { return }
+    if let n = change(marked.notes[i].note) { marked.notes[i].note = n } else { marked.notes.remove(at: i) }
+  }
+
+  func remove(_ f: CodeFile, highlights: Set<String>, notes: Set<SidenoteID>) async {
+    marked.highlights.removeAll { highlights.contains($0.id) }
+    marked.notes.removeAll { notes.contains($0.id) }
+  }
 }
 
 @MainActor @Suite struct CodeCardsTests {
@@ -486,6 +512,54 @@ private let source = """
     #expect(v.list.frame.minY >= v.selectionBar.frame.maxY || v.list.frame.maxY <= v.selectionBar.frame.minY)
     try tab.press(try tab.point(20, 2), to: try tab.point(21, 3))
     #expect(v.selectionBar.buttons[1].isHidden, "no card shows these")
+  }
+
+  /// The selection's bar highlights its lines in the repository's file, tinted behind the code; S opens the sidenote
+  /// popup on them, and what is written there is the repository's, a dot beside its first line; a click on the dot
+  /// shows it again; Remove takes both away
+  @Test func aCodeTabHighlightsAndWritesSidenotesOnTheRepositorysFile() async throws {
+    let box = FakeHostBox()
+    let tab = try await Tab(box)
+    defer { tab.close() }
+    let pop = FakePop(tab.pane)
+    let v = tab.view
+    try tab.press(try tab.point(3, 6), to: try tab.point(4, 8))
+    v.layoutSubtreeIfNeeded()
+    let highlight = v.selectionBar.buttons[2]
+    #expect(!highlight.isHidden && highlight.toolTip == "Highlight")
+    highlight.performClick(nil)
+    try await until("highlighted") { v.highlightView.bands.path?.isEmpty == false }
+    #expect(box.host.marked.highlights.map(\.lines) == [3...4])
+    let band = try #require(v.highlightView.bands.path?.boundingBoxOfPath)
+    let lines = try #require(v.code?.frame(ofLines: 3...4)?.rect)
+    #expect(abs(band.minY - lines.minY) < 1 && abs(band.maxY - lines.maxY) < 1, "on its two lines")
+    #expect(v.marks.notes.path?.isEmpty != false, "no sidenote, no dot")
+    // S: the popup, ready to write
+    try tab.press(try tab.point(3, 6), to: try tab.point(4, 8))
+    let s = try #require(
+      NSEvent.keyEvent(
+        with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: tab.window.windowNumber,
+        context: nil, characters: "s", charactersIgnoringModifiers: "s", isARepeat: false, keyCode: 1))
+    v.keyDown(with: s)
+    #expect(pop.made == 1 && pop.shown.last?.write == true && pop.shown.last?.notes.isEmpty == true)
+    #expect(pop.focused == 1 && pop.shown.last?.range == "3–4")
+    pop.act?(.add("Why plus one?", ask: false))
+    try await until("its dot") { v.marks.notes.path?.isEmpty == false }
+    #expect(box.host.marked.notes.map(\.note.text) == ["Why plus one?"])
+    #expect(box.host.marked.highlights.count == 1, "the same lines: one Highlight")
+    pop.act?(.close)
+    #expect(pop.ended == 1)
+    // the dot, beside the first line's number
+    let dot = try #require(v.marks.notes.path?.boundingBoxOfPath)
+    let code = try #require(v.code)
+    let at = code.convert(CGPoint(x: dot.midX, y: dot.midY), to: nil)
+    #expect(abs(dot.midY - (code.frame(ofLines: 3...3)?.rect.midY ?? 0)) < 1)
+    try tab.press(at)
+    #expect(pop.made == 2 && pop.shown.last?.notes.map(\.note.text) == ["Why plus one?"])
+    #expect(pop.shown.last?.write == false && pop.shown.last?.range == "3–4")
+    pop.act?(.remove)
+    try await until("gone") { v.highlightView.bands.path?.isEmpty != false && v.marks.notes.path?.isEmpty != false }
+    #expect(box.host.marked == CodeAnnotations())
   }
 
   /// A card's lines located in its file's tab: brought into view and marked a moment, the bar's quiet line saying
