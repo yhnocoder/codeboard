@@ -414,7 +414,10 @@ public enum Tex {
   }
 
   /// The macro definitions of a TeX file's preamble (before `\begin{document}`): `\newcommand`, `\renewcommand`,
-  /// `\providecommand`, `\def` and `\DeclareMathOperator`, each whole, one a line; nil when there are none
+  /// `\providecommand`, `\def` and `\DeclareMathOperator`, each whole, one a line, but those with an `@` (a class's
+  /// or a package's internals, which no formula uses and the math engine cannot read: one it cannot read loses every
+  /// definition after it); with the bm package and no `\bm` of the author's, `\bm` as `\boldsymbol` (the math engine
+  /// has no bm package); nil when there are none
   public static func macros(_ tex: String) -> String? {
     let head = tex.range(of: "\\begin{document}").map { tex[..<$0.lowerBound] } ?? tex[...]
     let u = Array(uncommented(String(head)).utf16)
@@ -465,11 +468,17 @@ public enum Tex {
       default: break
       }
       if ok {
-        out.append(String(decoding: u[i..<j], as: UTF16.self))
+        let d = String(decoding: u[i..<j], as: UTF16.self)
+        if !d.contains("@") { out.append(d) }
         i = j
       } else {
         i = max(j, i + 1)
       }
+    }
+    if head.contains(/\\usepackage(\[[^\]]*\])?\{([^}]*,)?\s*bm\s*(,[^}]*)?\}/),
+      !out.contains(where: { $0.contains(/^\\[a-z]+\*?\s*\{?\\bm[{}\[\s]/) })
+    {
+      out.insert("\\newcommand{\\bm}[1]{\\boldsymbol{#1}}", at: 0)
     }
     return out.isEmpty ? nil : out.joined(separator: "\n")
   }

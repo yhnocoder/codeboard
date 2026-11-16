@@ -171,6 +171,16 @@ func samplePaper(source: String? = paperTeX) throws -> Paper {
         == "\\newcommand{\\R}{\\mathbb{R}}\n\\DeclareMathOperator*{\\argmax}{arg\\,max}\n\\def\\vx#1{\\mathbf{x}_{#1}}")
     #expect(Tex.macros("\\begin{document}\\newcommand{\\x}{y}") == nil, "only the preamble")
     #expect(Tex.macros("\\newcommand\\x[1][a]{#1}") == "\\newcommand\\x[1][a]{#1}")
+    // a class's internals left out: the engine cannot read them, and would lose what comes after
+    #expect(
+      Tex.macros(
+        "\\makeatletter\\renewcommand{\\float@makebox}{x}\\def\\a@b{y}\\makeatother\\newcommand{\\tr}{\\operatorname{tr}}"
+      )
+        == "\\newcommand{\\tr}{\\operatorname{tr}}")
+    // the bm package's \bm as \boldsymbol, unless the author has one
+    #expect(Tex.macros("\\usepackage{amsmath, bm}") == "\\newcommand{\\bm}[1]{\\boldsymbol{#1}}")
+    #expect(Tex.macros("\\usepackage{bm}\\newcommand{\\bm}{\\mathbf}") == "\\newcommand{\\bm}{\\mathbf}")
+    #expect(Tex.macros("\\usepackage{bbm}") == nil)
   }
 
   @Test func aSupplementsCountersSubequationsAndAlgorithmsAreNumberedAsPrinted() throws {
