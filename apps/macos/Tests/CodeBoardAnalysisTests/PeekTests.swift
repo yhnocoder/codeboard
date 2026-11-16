@@ -104,6 +104,15 @@ private let module = #"""
 }
 
 @Suite struct DocstringTests {
+  @Test func docstringsAreExtractedAndCleaned() {
+    #expect(
+      cleanDoc("\"\"\"Creates a block.\n\n    Every block is named.\n    \"\"\"")
+        == "Creates a block.\n\nEvery block is named.")
+    let a = analyze(
+      "python", "class A:\n    \"\"\"Doc A.\"\"\"\n    x = 1\n    def f(self):\n        'f doc'\n        return 1\n")
+    #expect(a.symbols.map(\.doc) == ["Doc A.", "f doc"])
+  }
+
   @Test func docToMdKeepsArgumentListsAndExamples() {
     #expect(
       docToMd("Load it.\n\nArgs:\n    model: the model\n    path: dir\n\n>>> load(m, p)")
@@ -130,3 +139,20 @@ private let module = #"""
   }
 }
 
+@Suite struct ImportPackageTests {
+  @Test func callsMapToThePackageTheyWereImportedFrom() throws {
+    let (a, _) = nano("nanovllm/engine/model_runner.py")
+    func pkg(_ name: String) throws -> String? {
+      let c = try #require(a.calls.first { $0.name == name })
+      return importPkg(a.imports, name: c.name, recv: c.recv)
+    }
+    // dist.init_process_group
+    #expect(try pkg("init_process_group") == "torch")
+    #expect(try pkg("SharedMemory") == "multiprocessing")
+    #expect(try pkg("Qwen3ForCausalLM") == "nanovllm")
+    #expect(try pkg("load_model") == "nanovllm")
+    // self.warmup_model
+    #expect(try pkg("warmup_model") == nil)
+    #expect(a.imports.first { $0.name == "dist" }?.module == "torch.distributed")
+  }
+}
