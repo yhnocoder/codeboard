@@ -12,6 +12,8 @@ extension CanvasView {
   static var sharedList: QuestionListView?
   /// Watches for a press outside the list while it is open
   static var listOutside: Any?
+  /// The canvas the list is open on: opening it on another closes it there first, as there is one list
+  static weak var listOwner: CanvasView?
 
   package var questionList: QuestionListView {
     if let l = CanvasView.sharedList { return l }
@@ -86,6 +88,10 @@ extension CanvasView {
   public func toggleQuestionList(under button: CGRect) {
     if listShown { return closeQuestionList() }
     guard let doc = document, let (vb, vault) = shown, let host = superview else { return }
+    // else that canvas would go on believing it shows the list: its next press would close this one's, and what it
+    // was still reading would be shown in it
+    CanvasView.listOwner?.closeQuestionList()
+    CanvasView.listOwner = self
     let list = questionList
     if list.view.superview !== host { host.addSubview(list.view, positioned: .above, relativeTo: self) }
     listShown = true
@@ -139,6 +145,7 @@ extension CanvasView {
   public func closeQuestionList() {
     guard listShown else { return }
     listShown = false
+    CanvasView.listOwner = nil
     if let m = CanvasView.listOutside { NSEvent.removeMonitor(m) }
     CanvasView.listOutside = nil
     listOthers = []
