@@ -233,7 +233,7 @@ extension CardContent {
 
 extension WebMeta {
   /// Its picture or icon names a resource's block: never written (a page's pictures are files or addresses)
-  fileprivate var fromResource: Bool {
+  package var fromResource: Bool {
     [image, icon].contains { if case .resource? = $0 { true } else { false } }
   }
 }

@@ -1,6 +1,8 @@
 import AppKit
 import CodeBoardModel
+import CodeBoardReading
 import CodeBoardResources
+import UniformTypeIdentifiers
 
 // The sidebar's changes to the vault's files (VaultFiles.swift does each one): what open boards have not written yet is
 // written first, then the one rename or new name, then the tree is read again at once, so tabs and documents follow
@@ -45,10 +47,13 @@ extension Shell {
     ]
   }
 
-  /// A resource's row menu: what a board's has that a resource has too
+  /// A resource's row menu: what a board's has that a resource has too, and adding PDFs to it
   public func menu(resource: VaultResource) -> [MenuEntry] {
     let n = resource.entryCount
-    return [("Rename", { self.renaming = .resource(resource.id) }), ("Move to", {}), nil]
+    return [
+      ("Add PDF…", { Task { self.addPDFs(await self.askPDFs(), to: resource) } }), nil,
+      ("Rename", { self.renaming = .resource(resource.id) }), ("Move to", {}), nil,
+    ]
       + fileEntries(resource.path, Vault.resourceFileName) + [
         nil,
         (
@@ -171,6 +176,20 @@ extension Shell {
     if !folder.isEmpty { expanded.insert(folder) }
     openResource(made)
     renaming = .resource(made.id)
+  }
+
+  /// PDF files (chosen in Add PDF…'s panel, or dropped on the resource's row) copied into the resource, each an entry
+  /// alone under a name nothing there has, never over anything, then opened in the reading pane; whether any was
+  @discardableResult
+  public func addPDFs(_ urls: [URL], to resource: VaultResource) -> Bool {
+    let pdfs = urls.filter { UTType(filenameExtension: $0.pathExtension)?.conforms(to: .pdf) == true }
+    guard !pdfs.isEmpty else { return false }
+    var added: [String] = []
+    files { v in
+      for url in pdfs { added.append(try v.addFile(url, to: resource.path)) }
+    }
+    for path in added { openPDF(.file(path)) }
+    return !added.isEmpty
   }
 
   /// Rename Board… (the toolbar's ⋯): the open board's row shown in the sidebar, its name written in place there; a
