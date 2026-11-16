@@ -1,0 +1,18 @@
+# 共享的子白板卡（PR 277）：开两个预览，点“两列”变成两列；设置存在共享卡的文件里，不在白板文件里（和 VS Code 版一样）
+# only: mac
+# storage: storage-sub
+zoom 1
+center @cshsub:c+200,0
+wait 600
+click @cshsub+59,78
+wait 300
+click @cshsub+180,78
+wait 1000
+expect subpv = cshsub open kalpha,kbeta exp kalpha,kbeta tit - fold false cols 1
+expect cols:cshsub = 1
+click @cshsub+289,-33
+wait 1000
+expect cols:cshsub = 2
+expect file:.codeboard/shared/cshsub.json has "previewColumns":2
+expect file:board lacks previewColumns
+shot shared

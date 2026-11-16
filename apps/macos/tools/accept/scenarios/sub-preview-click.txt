@@ -1,0 +1,35 @@
+# 子白板卡的地图（PR 277）：点一块打开它的预览，再点一下关掉；多点几块，第四块排到卡下面的标题行；光打开预览不写 vault；双击一块照旧进入子白板，落在那张卡上，预览随换白板消失
+# only: mac
+# storage: storage-sub
+zoom 1
+center @csub:c+200,0
+wait 600
+mark vaultstamp
+rec click
+click @csub+59,78
+wait 800
+expect subpv = csub open kalpha exp kalpha tit - fold false cols 1
+shot one
+click @csub+59,78
+wait 800
+expect subpv = none
+click @csub+59,78
+wait 300
+click @csub+180,78
+wait 300
+click @csub+300,122
+wait 300
+click @csub+59,168
+wait 1000
+stop
+expect subpv = csub open kalpha,kbeta,kepsilon,kgamma exp kalpha,kbeta,kepsilon tit kgamma fold false cols 1
+shot four
+expect vaultstamp = was
+rec enter
+dbl @csub+180,168
+wait 1500
+stop
+expect ui.crumbcur.w > 30
+expect kdelta.x = 400
+expect subpv = none
+shot entered
