@@ -80,6 +80,13 @@ struct ReportMeta: Codable, Sendable {
 }
 
 enum ReportLog {
+  /// The app's own subsystem, logged at every level; the system's frameworks only when they report an error
+  static let own: Set<String> = ["CodeBoard", Bundle.main.bundleIdentifier ?? "CodeBoard"]
+
+  static func kept(subsystem: String, level: OSLogEntryLog.Level) -> Bool {
+    own.contains(subsystem) || level == .error || level == .fault
+  }
+
   /// The app's log entries from `from` to `to` (the two minutes before the press and the recording), one per line
   static func text(from: Date, to: Date) -> String {
     guard let store = try? OSLogStore(scope: .currentProcessIdentifier) else { return "(the log could not be read)\n" }
@@ -89,6 +96,7 @@ enum ReportLog {
     let entries = (try? store.getEntries(at: store.position(date: from))) ?? AnySequence([])
     for case let e as OSLogEntryLog in entries {
       if e.date > to { break }
+      guard kept(subsystem: e.subsystem, level: e.level) else { continue }
       let level =
         switch e.level {
         case .debug: "debug"
@@ -100,7 +108,7 @@ enum ReportLog {
         }
       out += "\(fmt.string(from: e.date)) \(level) [\(e.subsystem):\(e.category)] \(e.composedMessage)\n"
     }
-    return out.isEmpty ? "(nothing was logged)\n" : out
+    return out.isEmpty ? "(nothing was logged by CodeBoard, and no errors by the system)\n" : out
   }
 }
 
@@ -141,7 +149,11 @@ enum Timeline {
       out += "- Most CPU: \(cpu) % (main thread \(mainCPU) %); most memory: \(mem) MB\n"
     }
     if !s.boards.isEmpty {
-      out += "- Boards shown: " + s.boards.map { "“\($0.title)”" }.joined(separator: ", ") + "\n"
+      out +=
+        "- Boards shown: "
+        + s.boards.map { "“\($0.title)”" + ($0.end == $0.start ? " (unchanged)" : " (changed)") }.joined(
+          separator: ", ")
+        + "\n"
     }
     for n in s.notes { out += "- \(n)\n" }
     if !s.left.isEmpty {
@@ -158,10 +170,10 @@ enum Timeline {
       - `frames.jsonl`: each display callback on the window (`ms` since the one before, `dropped` frames missed)
       - `stalls.jsonl`: main thread stalls over 50 ms
       - `metrics.jsonl`: CPU (of one core) and memory every 250 ms
-      - `log.txt`: the app's log from two minutes before the recording to its end
+      - `log.txt`: the app's log from two minutes before the recording to its end (the system's errors only)
       - `meta.json`: the app, the Mac, its displays, the theme
-      - `boards/`: each board shown, at its first showing (`start.json`) and at the end (`end.json`), the shared cards
-        on them, `index.json` with the sub-boards never entered
+      - `boards/`: each board shown, at its first showing (`start.json`) and at the end (`end.json`; none when it did
+        not change, `unchanged` in `index.json`), the shared cards on them, `index.json` with the sub-boards never entered
       - `code/`: per repository of the code cards: `repo.json`, `uncommitted.diff`, each file as it is now
         (`current/`) and as a card read it when that differs (`at-<commit>/`)
       - `resources/`: the boards' images, and the resource entries the cards come from or the reading pane opened
@@ -178,9 +190,14 @@ enum Timeline {
       guard let text = describe(r) else { continue }
       rows.append((r.t, 0, text))
     }
+    var last: (t: Double, text: String)?
     for a in app {
       let fields = a.fields.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: " ")
-      rows.append((a.t, 1, "app    \(a.name)\(fields.isEmpty ? "" : " " + fields)"))
+      let text = "app    \(a.name)\(fields.isEmpty ? "" : " " + fields)"
+      // a menu item is checked more than once per key: the same line again at once says nothing more
+      if let l = last, l.text == text, a.t - l.t < 0.05 { continue }
+      last = (a.t, text)
+      rows.append((a.t, 1, text))
     }
     for st in s.stalls { rows.append((st.t, 2, "STALL  main thread blocked \(Int(st.ms)) ms")) }
     // runs of missed frames, one line each

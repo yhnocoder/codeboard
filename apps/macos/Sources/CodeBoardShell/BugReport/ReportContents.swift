@@ -62,6 +62,8 @@ enum ReportContents {
     /// Seconds after the recording began that it came on screen; nil: never entered (a sub-board card's board)
     var shownAt: Double?
     var folder: String?
+    /// The board at the end was as at its first showing: there is no end.json
+    var unchanged: Bool?
   }
 
   static func folderName(_ b: BoardShot) -> String { reportName("\(b.title) (\(b.id.rawValue))") }
@@ -77,9 +79,11 @@ enum ReportContents {
       listing.append(
         BoardListing(
           id: b.id.rawValue, title: b.title, path: b.path, shownAt: ((b.shownAt - t0) * 1000).rounded() / 1000,
-          folder: folder))
+          folder: folder, unchanged: b.end == b.start ? true : nil))
       if let d = try? b.start.encoded() { out.files.append(ReportFile("\(folder)/start.json", d)) }
-      if let end = b.end, let d = try? end.encoded() { out.files.append(ReportFile("\(folder)/end.json", d)) }
+      if let end = b.end, end != b.start, let d = try? end.encoded() {
+        out.files.append(ReportFile("\(folder)/end.json", d))
+      }
       for board in [b.start, b.end].compactMap({ $0 }) {
         for c in allCards(board) {
           if c.isShared { shared.insert(c.id) }

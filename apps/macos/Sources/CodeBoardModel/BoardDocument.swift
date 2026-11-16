@@ -31,7 +31,22 @@ import Foundation
   public let id: BoardID
   public private(set) var board: Board
   /// The selection on the canvas, kept with the board so undo restores it
-  public var selection: Set<Item> = []
+  public var selection: Set<Item> = [] {
+    didSet { if selection != oldValue { Diag.event("selection", ["items": Self.describe(selection)]) } }
+  }
+
+  /// What is selected, for a bug report: the ids in order
+  static func describe(_ items: Set<Item>) -> String {
+    guard !items.isEmpty else { return "none" }
+    return items.map { i -> String in
+      switch i {
+      case .card(let id): "card \(id.rawValue)"
+      case .section(let id): "section \(id.rawValue)"
+      case .arrow(let id): "arrow \(id.rawValue)"
+      case .sticker(let id): "sticker \(id.rawValue)"
+      }
+    }.sorted().joined(separator: ", ")
+  }
   public private(set) var history = History()
   /// Why the file on disk cannot be read now; saving waits while it is set
   public private(set) var problem: String? {
@@ -290,7 +305,7 @@ import Foundation
   public func undo() {
     var b = board
     let epoch = history.undoSteps.last?.epoch ?? derived
-    guard let sel = history.undo(&b) else { return }
+    guard let sel = history.undo(&b) else { return Diag.event("undo", ["name": "nothing to undo"]) }
     Diag.event("undo", ["name": history.redoSteps.last?.name ?? ""])
     replayDerived(after: epoch, on: &b)
     board = b
@@ -301,7 +316,7 @@ import Foundation
   public func redo() {
     var b = board
     let epoch = history.redoSteps.last?.epoch ?? derived
-    guard let sel = history.redo(&b) else { return }
+    guard let sel = history.redo(&b) else { return Diag.event("redo", ["name": "nothing to redo"]) }
     Diag.event("redo", ["name": history.undoSteps.last?.name ?? ""])
     replayDerived(after: epoch, on: &b)
     board = b

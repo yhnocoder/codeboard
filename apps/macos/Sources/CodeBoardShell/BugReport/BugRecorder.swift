@@ -54,6 +54,7 @@ import CodeBoardResources
     var observers: [NSObjectProtocol] = []
     var limit: Task<Void, Never>?
     var temp: URL
+    var menuChosen: String?
   }
   private var run: Run?
 
@@ -136,13 +137,13 @@ import CodeBoardResources
     run = r
   }
 
-  /// Panels, popovers, menus and sheets coming and going, into app.jsonl
+  /// Panels, popovers, menus and sheets coming and going, into app.jsonl. A menu's tracking is a loop of its own that
+  /// the input log does not see: what it was opened on, and the item chosen or that it was dismissed, are said here
   private func watchPanels(_ window: NSWindow) -> [NSObjectProtocol] {
     let nc = NotificationCenter.default
     var out: [NSObjectProtocol] = []
     let named: [(Notification.Name, String)] = [
       (NSPopover.didShowNotification, "popover.shown"), (NSPopover.didCloseNotification, "popover.closed"),
-      (NSMenu.didBeginTrackingNotification, "menu.opened"), (NSMenu.didEndTrackingNotification, "menu.closed"),
       (NSWindow.willBeginSheetNotification, "sheet.shown"), (NSWindow.didEndSheetNotification, "sheet.closed"),
     ]
     for (name, event) in named {
@@ -152,9 +153,7 @@ import CodeBoardResources
           nonisolated(unsafe) let o = n.object
           MainActor.assumeIsolated {
             let what: String
-            if let m = o as? NSMenu {
-              what = m.title.isEmpty ? "menu" : m.title
-            } else if let p = o as? NSPopover {
+            if let p = o as? NSPopover {
               what = p.contentViewController.map { String(describing: type(of: $0)) } ?? "popover"
             } else {
               what = o.map { String(describing: type(of: $0)) } ?? ""
@@ -164,11 +163,42 @@ import CodeBoardResources
         })
     }
     out.append(
-      nc.addObserver(forName: NSMenu.didSendActionNotification, object: nil, queue: .main) { n in
+      nc.addObserver(forName: NSMenu.didBeginTrackingNotification, object: nil, queue: .main) { [weak self] n in
+        nonisolated(unsafe) let menu = n.object as? NSMenu
+        MainActor.assumeIsolated {
+          guard let menu, var r = self?.run else { return }
+          r.menuChosen = nil
+          self?.run = r
+          Diag.event("menu.opened", Self.describe(menu))
+        }
+      })
+    out.append(
+      nc.addObserver(forName: NSMenu.didSendActionNotification, object: nil, queue: .main) { [weak self] n in
         nonisolated(unsafe) let item = n.userInfo?["MenuItem"] as? NSMenuItem
         MainActor.assumeIsolated {
-          Diag.event(
-            "menu.action", ["item": item?.title ?? "", "action": item?.action.map { NSStringFromSelector($0) } ?? ""])
+          let title = item?.title ?? ""
+          if var r = self?.run {
+            r.menuChosen = title
+            self?.run = r
+          }
+          Diag.event("menu.chosen", ["item": title, "action": item?.action.map { NSStringFromSelector($0) } ?? ""])
+        }
+      })
+    out.append(
+      nc.addObserver(forName: NSMenu.didEndTrackingNotification, object: nil, queue: .main) { [weak self] n in
+        nonisolated(unsafe) let menu = n.object as? NSMenu
+        MainActor.assumeIsolated {
+          let what = menu.map { Self.describe($0)["menu"] ?? "" } ?? ""
+          // the chosen item's action is sent after tracking ends: decided on the next turn
+          DispatchQueue.main.async {
+            MainActor.assumeIsolated {
+              guard var r = self?.run else { return }
+              let chosen = r.menuChosen
+              r.menuChosen = nil
+              self?.run = r
+              Diag.event("menu.closed", ["menu": what, "result": chosen.map { "chose \($0)" } ?? "dismissed"])
+            }
+          }
         }
       })
     for name in [NSWindow.didMoveNotification, NSWindow.didResizeNotification] {
@@ -183,6 +213,23 @@ import CodeBoardResources
         })
     }
     return out
+  }
+
+  /// A menu for app.jsonl: the menu bar's, or a context menu with the view under the pointer, and its first items
+  static func describe(_ menu: NSMenu) -> [String: String] {
+    let name: String
+    if menu === NSApp.mainMenu || NSApp.mainMenu?.items.contains(where: { $0.submenu === menu }) == true {
+      name = "menu bar" + (menu.title.isEmpty ? "" : " › \(menu.title)")
+    } else {
+      let w = NSApp.keyWindow ?? NSApp.mainWindow
+      let target = w.flatMap { w -> String? in
+        let p = w.mouseLocationOutsideOfEventStream
+        return (w.contentView?.superview ?? w.contentView)?.hitTest(p).map { String(describing: type(of: $0)) }
+      }
+      name = "context menu" + (menu.title.isEmpty ? "" : " “\(menu.title)”") + (target.map { " on \($0)" } ?? "")
+    }
+    let items = menu.items.filter { !$0.isSeparatorItem && !$0.isHidden }.prefix(12).map(\.title)
+    return ["menu": name, "items": items.joined(separator: " | ")]
   }
 
   func stop(by why: String) {
@@ -229,7 +276,8 @@ import CodeBoardResources
         case .success(let v):
           if let url = await v.stop() {
             files.append(ReportFile("video.mp4", copying: url))
-            meta.video = "video.mp4, \(v.frames) frames, the first at \(String(format: "%.3f", v.firstFrame ?? 0)) s"
+            meta.video =
+              "video.mp4, \(v.frames) frames; its time is the report's: the first frame came \(String(format: "%.3f", v.firstFrame ?? 0)) s after the press and is shown from 0"
           } else {
             notes.append("No video: \(v.error ?? "no frame was recorded")")
           }

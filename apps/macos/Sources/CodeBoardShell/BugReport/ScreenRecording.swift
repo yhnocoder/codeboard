@@ -147,8 +147,20 @@ final class ScreenRecording: NSObject, SCStreamOutput, SCStreamDelegate, @unchec
       // time the report's
       let pts = buffer.presentationTimeStamp.seconds
       state.withLock { $0.first = pts - t0 }
-      let start = min(t0, pts)
-      writer.startSession(atSourceTime: CMTime(seconds: start, preferredTimescale: 1_000_000))
+      let start = CMTime(seconds: min(t0, pts), preferredTimescale: 1_000_000)
+      writer.startSession(atSourceTime: start)
+      // players start a video at its first frame, not at the session's start: the first frame is shown from the press
+      // too, so that the video's time is the report's from 0
+      var timing = CMSampleTimingInfo(duration: .invalid, presentationTimeStamp: start, decodeTimeStamp: .invalid)
+      var lead: CMSampleBuffer?
+      if pts > start.seconds,
+        CMSampleBufferCreateCopyWithNewTiming(
+          allocator: nil, sampleBuffer: buffer, sampleTimingEntryCount: 1, sampleTimingArray: &timing,
+          sampleBufferOut: &lead) == noErr, let lead
+      {
+        nonisolated(unsafe) let first = lead
+        _ = try? input.appendImmediately(CMReadySampleBuffer(unsafeBuffer: first))
+      }
     }
     // handed on and never touched here again
     nonisolated(unsafe) let frame = buffer

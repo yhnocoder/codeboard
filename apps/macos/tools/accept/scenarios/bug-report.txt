@@ -1,4 +1,5 @@
-# A bug report (⌃⌥⌘B, here its menu item): recording starts, a card is dragged and the move undone, the item stops it, and
+# A bug report (⌃⌥⌘B, here its menu item): recording starts, a card is dragged and the move undone (and
+# undone again with nothing left), a context menu is dismissed, the item stops it, and
 # the report's zip is shown in Finder
 # only: mac
 menubar CodeBoard/Record Bug Report
@@ -9,6 +10,9 @@ drag @cnote @cnote+300,54 400
 expect cnote.x > was
 key cmd+z
 expect cnote.x = was
+key cmd+z
+menu
+key esc
 menubar CodeBoard/Stop Recording Bug Report
 wait 4000
 expect opened has CodeBoard-bug-

@@ -109,7 +109,7 @@ struct InputRecord: Codable, Equatable, Sendable {
     return "\(type(of: w))#\(w.windowNumber)\(title)"
   }
 
-  private func take(_ e: NSEvent) {
+  func take(_ e: NSEvent) {
     let t = e.timestamp - t0
     var r = InputRecord(t: t, type: Self.name(e.type))
     switch e.type {
@@ -122,6 +122,7 @@ struct InputRecord: Codable, Equatable, Sendable {
       r.button = e.buttonNumber
       r.clicks = e.clickCount
       r.mods = Self.mods(e.modifierFlags)
+      if e.type != .leftMouseUp, e.type != .rightMouseUp, e.type != .otherMouseUp { r.detail = Self.hit(e) }
     case .scrollWheel:
       // a gesture's every step is kept: what the canvas does follows each
       place(e, &r)
@@ -178,6 +179,18 @@ struct InputRecord: Codable, Equatable, Sendable {
     let screen = e.window.map { $0.convertPoint(toScreen: e.locationInWindow) } ?? NSEvent.mouseLocation
     r.x = (screen.x - window.frame.minX).rounded()
     r.y = (window.frame.maxY - screen.y).rounded()
+  }
+
+  /// The view a press lands on and the two around it, innermost first
+  static func hit(_ e: NSEvent) -> String? {
+    guard let root = e.window?.contentView?.superview ?? e.window?.contentView else { return nil }
+    var v = root.hitTest(e.locationInWindow)
+    var chain: [String] = []
+    while let view = v, chain.count < 3 {
+      chain.append(String(describing: type(of: view)))
+      v = view.superview
+    }
+    return chain.isEmpty ? nil : chain.joined(separator: " < ")
   }
 
   static func mods(_ f: NSEvent.ModifierFlags) -> String? {

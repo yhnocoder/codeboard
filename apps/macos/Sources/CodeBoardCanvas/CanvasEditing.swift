@@ -1,4 +1,5 @@
 import AppKit
+import CodeBoardDiagnostics
 import CodeBoardModel
 import CodeBoardNotes
 import QuartzCore
@@ -2455,10 +2456,21 @@ extension CanvasView: NSMenuItemValidation {
     switch item.action {
     case #selector(undo(_:)):
       item.title = doc.undoName.map { "Undo \($0)" } ?? "Undo"
-      return doc.history.canUndo && gesture == nil && editing == nil
+      let can = doc.history.canUndo && gesture == nil && editing == nil
+      // ⌘Z with the item off reaches nothing else: a report says why it did nothing
+      if !can {
+        Diag.event(
+          "undo.unavailable", ["why": doc.history.canUndo ? "a gesture or edit is under way" : "nothing to undo"])
+      }
+      return can
     case #selector(redo(_:)):
       item.title = doc.redoName.map { "Redo \($0)" } ?? "Redo"
-      return doc.history.canRedo && gesture == nil && editing == nil
+      let can = doc.history.canRedo && gesture == nil && editing == nil
+      if !can {
+        Diag.event(
+          "redo.unavailable", ["why": doc.history.canRedo ? "a gesture or edit is under way" : "nothing to redo"])
+      }
+      return can
     case #selector(copy(_:)), #selector(duplicate(_:)): return !sel.isEmpty
     case #selector(cut(_:)), #selector(delete(_:)): return sel.contains { !doc.board.isLocked($0) }
     case #selector(paste(_:)), #selector(pasteAsCopy(_:)):

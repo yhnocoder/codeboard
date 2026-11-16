@@ -129,7 +129,10 @@ extension CanvasView {
     let mods = e.modifierFlags.intersection([.command, .control, .option, .shift])
     let key = e.charactersIgnoringModifiers?.lowercased() ?? ""
     for k in BoardKey.all where k.presses.contains(where: { $0.matches(mods, key, e.keyCode) }) {
-      if let a = k.action, run(a, e) { return true }
+      if let a = k.action, run(a, e) {
+        Diag.event("key.command", ["action": "\(a)"])
+        return true
+      }
     }
     return false
   }

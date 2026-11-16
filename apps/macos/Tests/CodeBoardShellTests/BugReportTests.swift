@@ -1,7 +1,9 @@
+import AppKit
 import CodeBoardDiagnostics
 import CodeBoardModel
 import CodeBoardResources
 import Foundation
+import OSLog
 import Testing
 
 @testable import CodeBoardShell
@@ -22,6 +24,55 @@ import Testing
     #expect(built == 1)
     #expect(kept.map(\.name) == ["edit"])
     #expect(kept.first?.fields == ["name": "Move"])
+  }
+
+  /// What a person does to a board is told in app.jsonl, a ⌘Z with nothing to undo too
+  @MainActor @Test func editsSelectionsAndUndoAreAppEvents() throws {
+    let dir = FileManager.default.temporaryDirectory.appending(path: "bug-report-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: dir) }
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    let file = dir.appending(path: "board.json")
+    let c = CardID(rawValue: "c1")
+    let note = CardContent(body: .note(Note(text: "x")))
+    try Board(id: BoardID(rawValue: "b"), cards: [Card(id: c, x: 0, y: 0, width: 100, content: .own(note))]).encoded()
+      .write(to: file)
+    let doc = try BoardDocument(file: { file })
+    Diag.start()
+    doc.undo()
+    doc.select([.card(c)])
+    doc.edit("Move") { $0.cards[0].x += 10 }
+    doc.undo()
+    let events = Diag.stop().map { "\($0.name) \($0.fields.values.sorted().joined(separator: ","))" }
+    #expect(
+      events == [
+        "undo nothing to undo", "selection card c1", "edit Move", "undo Move",
+      ])
+  }
+
+  /// Each press carries its own modifiers and its release is kept
+  @MainActor @Test func aPlainClickIsADownAndAnUpWithoutModifiers() throws {
+    let w = NSWindow(
+      contentRect: NSRect(x: 0, y: 0, width: 200, height: 100), styleMask: [], backing: .buffered, defer: true)
+    let log = InputLog(window: w, t0: 0)
+    func press(_ t: NSEvent.EventType, _ f: NSEvent.ModifierFlags) throws {
+      log.take(
+        try #require(
+          NSEvent.mouseEvent(
+            with: t, location: NSPoint(x: 10, y: 10), modifierFlags: f, timestamp: 1, windowNumber: w.windowNumber,
+            context: nil, eventNumber: 0, clickCount: 1, pressure: 1)))
+    }
+    try press(.leftMouseDown, [])
+    try press(.leftMouseUp, [])
+    try press(.leftMouseDown, .control)
+    #expect(log.records.map(\.type) == ["down", "up", "down"])
+    #expect(log.records.map(\.mods) == [nil, nil, "⌃"])
+  }
+
+  @Test func theLogKeepsTheAppsOwnLinesAndOnlyTheSystemsErrors() {
+    #expect(ReportLog.kept(subsystem: "CodeBoard", level: .debug))
+    #expect(!ReportLog.kept(subsystem: "com.apple.xpc", level: .info))
+    #expect(ReportLog.kept(subsystem: "com.apple.WebKit", level: .error))
+    #expect(ReportLog.kept(subsystem: "com.apple.launchservices", level: .fault))
   }
 
   @Test func framesMissedAreCountedAgainstTheScreensRate() {
@@ -133,7 +184,7 @@ import Testing
     let short = String(commit.prefix(12))
     #expect(
       paths == [
-        "boards/Engine (b1)/start.json", "boards/Engine (b1)/end.json", "boards/index.json",
+        "boards/Engine (b1)/start.json", "boards/index.json",
         "code/engine/repo.json", "code/engine/uncommitted.diff", "code/engine/current/src/step.py",
         "code/engine/at-\(short)/src/step.py", "resources/images/Engine (b1)/shot.png",
       ])
@@ -144,6 +195,8 @@ import Testing
     #expect(text("code/engine/at-\(short)/src/step.py").contains("return 1"))
     #expect(text("code/engine/uncommitted.diff").contains("+    return 2"))
     #expect(text("boards/index.json").contains("\"title\" : \"Scheduler\""))
+    // the board did not change: no second copy of it
+    #expect(text("boards/index.json").contains("\"unchanged\" : true"))
     #expect(out.notes.isEmpty)
   }
 }
