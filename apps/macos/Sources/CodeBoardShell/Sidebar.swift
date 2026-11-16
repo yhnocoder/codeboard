@@ -145,11 +145,7 @@ private struct RootRow: View {
           } action: {
             shell.newFolder(in: "")
           }
-          RowButton {
-            Image(systemName: "text.badge.plus")
-          } action: {
-            shell.newResource(in: "")
-          }
+          NewResourceButton(shell: shell, folder: "")
         }
       }
       .padding(.leading, 8)
@@ -205,11 +201,7 @@ private struct FolderRow: View {
           } action: {
             shell.newFolder(in: folder.path)
           }
-          RowButton {
-            Image(systemName: "text.badge.plus")
-          } action: {
-            shell.newResource(in: folder.path)
-          }
+          NewResourceButton(shell: shell, folder: folder.path)
           if own == nil {
             RowButton {
               BoardIcon().stroke(lineWidth: 1.2).frame(width: 14, height: 14)
@@ -236,7 +228,9 @@ private struct FolderRow: View {
     } isTargeted: {
       target = $0
     }
-    .contextMenu { MenuItems(entries: shell.menu(folder: folder)) }
+    .contextMenu {
+      MenuItems(entries: shell.menu(folder: folder), newResource: shell.newResourceKinds(in: folder.path))
+    }
   }
 
   private func toggle() {
@@ -323,6 +317,8 @@ private struct MenuItems: View {
   let entries: [Shell.MenuEntry]
   /// What "Move to" opens
   var moveTo: [(title: String, run: () -> Void)] = []
+  /// What "New Resource" opens
+  var newResource: [(title: String, run: () -> Void)] = []
 
   var body: some View {
     ForEach(entries.indices, id: \.self) { i in
@@ -330,6 +326,10 @@ private struct MenuItems: View {
         if e.title == "Move to" {
           Menu("Move to") {
             ForEach(moveTo.indices, id: \.self) { k in Button(moveTo[k].title, action: moveTo[k].run) }
+          }
+        } else if e.title == "New Resource" {
+          Menu("New Resource") {
+            ForEach(newResource.indices, id: \.self) { k in Button(newResource[k].title, action: newResource[k].run) }
           }
         } else {
           Button(e.title, action: e.run)
@@ -440,6 +440,25 @@ struct RowButton<Label: View>: View {
   var body: some View {
     Button(action: action) { label.font(.system(size: 11.5, weight: .medium)) }
       .buttonStyle(RowButtonStyle())
+  }
+}
+
+/// A row's New Resource button: a menu of the presets
+private struct NewResourceButton: View {
+  let shell: Shell
+  let folder: String
+
+  var body: some View {
+    Menu {
+      let kinds = shell.newResourceKinds(in: folder)
+      ForEach(kinds.indices, id: \.self) { k in Button(kinds[k].title, action: kinds[k].run) }
+    } label: {
+      Image(systemName: "text.badge.plus").font(.system(size: 11.5, weight: .medium))
+    }
+    .menuStyle(.button)
+    .buttonStyle(RowButtonStyle())
+    .menuIndicator(.hidden)
+    .fixedSize()
   }
 }
 
