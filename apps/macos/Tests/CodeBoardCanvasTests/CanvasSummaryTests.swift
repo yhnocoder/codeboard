@@ -324,6 +324,146 @@ final class FakeWriter: SummaryWriter, @unchecked Sendable {
     #expect(w.asked.count == 2)
   }
 
+  /// Summaries.tsx rich: a title's and a body's [[refs]] show their targets' names now (one that finds nothing its
+  /// label, in ink-3), a ==mark== is marked; the editor has both as written, and keeps them
+  @Test func refsShowTheirTargetsNamesMarksAreMarkedAndTheEditorKeepsBothAsWritten() async throws {
+    var b = summaryBoard()
+    let k = SummaryKey.card(cid("loose"))
+    let text = "从 [[旧名#^a2]] 讲起，==重点==在 [[无此卡]]。"
+    _ = b.putSummary(Summary(text: text, at: 1, sig: b.summarySig(k) ?? "", input: b.summaryInput(k)), for: k)
+    b.sections[1].title = "流与 [[旧的#^b1]]"
+    let r = try await Rig(b, zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    let col = try column(r, k)
+    #expect(col.text.refs["旧名#^a2"] == .init(name: "bank 冲突", found: true))
+    #expect(col.text.refs["无此卡"] == .init(name: "无此卡", found: false))
+    #expect(try column(r, sec2).text.refs["旧的#^b1"] == .init(name: "流和事件", found: true))
+    let look = SummaryLook(c.theme)
+    let s = SummaryArt.bodyString(text, look: look, font: 60, refs: col.text.refs)
+    let ns = s.string as NSString
+    #expect(s.string == "从 bank 冲突 讲起，重点在 无此卡。")
+    var marked = NSRange()
+    #expect(s.attribute(SummaryArt.markKey, at: ns.range(of: "重点").location, effectiveRange: &marked) != nil)
+    #expect(marked == ns.range(of: "重点"))
+    func color(_ word: String) -> CGColor? {
+      s.attribute(.foregroundColor, at: ns.range(of: word).location, effectiveRange: nil).map { $0 as! CGColor }
+    }
+    #expect(color("bank") == look.link && color("无此卡") == look.ink3 && color("讲起") == look.grey)
+    #expect(s.attribute(SummaryArt.refKey, at: ns.range(of: "bank").location, effectiveRange: nil) != nil)
+    // written as it is stored, and kept so
+    atSummaries(r)
+    let at = try column(r, k)
+    r.click(CGPoint(x: at.rect.minX + 2 * CGFloat(c.summaryLayout!.padding), y: at.rect.minY + at.bodyTop + 30))
+    let ed = try #require(c.summaryEditor)
+    #expect(ed.string == "从 [[旧名#^a2]] 讲起，==重点==在 [[无此卡]]。" && ed.markdown() == text)
+    ed.insertText("补", replacementRange: NSRange(location: ed.string.utf16.count, length: 0))
+    ed.onEnd?(true)
+    #expect(r.doc.board.summary(for: k)?.text == text + "补")
+  }
+
+  /// Summaries.tsx tip: ↻ says what the summary is (never that it is rewritten by itself), ✓ 保留 what it does; the
+  /// canvas's one tip shows them, and goes when the pointer leaves
+  @Test func theRewriteAndKeepButtonsSayWhatTheyDoInTheirTips() async throws {
+    let r = try await Rig(summaryBoard(), zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    let tips = ownTips(c)
+    atSummaries(r)
+    func move(_ p: CGPoint) { c.mouseMoved(with: r.mouse(.mouseMoved, p)) }
+    func button(_ i: Int) throws -> CGPoint {
+      let b = try #require(c.summaryButtons.sublayers?[i])
+      return c.summaryButtons.convert(CGPoint(x: b.frame.midX, y: b.frame.midY), to: c.summaryLayer)
+    }
+    func over(_ key: SummaryKey, _ i: Int = 0) throws -> Tip? {
+      let col = try column(r, key)
+      move(CGPoint(x: col.rect.midX, y: col.rect.minY + col.bodyTop + 10))
+      move(try button(i))
+      return tips.shown?.tip
+    }
+    #expect(try over(sec2) == Tip("AI summary · Not written yet · ↻ writes it now"))
+    // off the column: gone
+    move(CGPoint(x: -5000, y: -5000))
+    #expect(tips.shown == nil && c.summaryButtonHover == nil)
+    let at = try #require(r.doc.board.summary(for: sec1)).at
+    #expect(c.summaryTip(sec1, keep: false, now: at + 20_000) == Tip("AI summary · just now"))
+    #expect(c.summaryTip(sec1, keep: false, now: at + 5 * 60_000) == Tip("AI summary · 5 min ago"))
+    #expect(c.summaryTip(sec1, keep: false, now: at + 3 * 3_600_000) == Tip("AI summary · 3 h ago"))
+    c.summaryWriting.insert(sec1)
+    #expect(c.summaryTip(sec1, keep: false) == Tip("AI summary · Writing…"))
+    c.summaryWriting.remove(sec1)
+    var b = r.doc.board
+    _ = b.editSummary(sec1, text: "我自己写的。", now: 2)
+    r.doc.edit("Edit Summary") { $0 = b }
+    await r.settle()
+    #expect(c.summaryTip(sec1, keep: false) == Tip("AI summary · Edited by hand · rewrites follow your edits"))
+    // its cards changed: says so, and that ✓ 保留 keeps it, whose own tip says what it does
+    b = r.doc.board
+    b.cards[0].content = .own(CardContent(body: .note(Note(text: "## 合并访存与对齐\n\n改了。"))))
+    r.doc.edit("Edit") { $0 = b }
+    await r.settle()
+    move(CGPoint(x: -5000, y: -5000))
+    #expect(try over(sec1) == Tip("AI summary · Cards changed since it was written · ✓ 保留 keeps it"))
+    #expect(try over(sec1, 1) == Tip("保留 · Keep this summary as it is for these changes"))
+  }
+
+  /// .sumnone: a column with no title of its own yet and nothing written (an untitled loose Note) is hidden at rest,
+  /// though its picture has its square; hovered it shows, with its ↻, and it stays while it is being written
+  @Test func aColumnWithNothingToShowIsHiddenUntilHovered() async throws {
+    var b = summaryBoard()
+    b.cards.append(
+      Card(
+        id: cid("plain"), x: 3000, y: 1400, width: 600, content: .own(CardContent(body: .note(Note(text: "随手记一句。"))))))
+    let r = try await Rig(b, zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    atSummaries(r)
+    let k = SummaryKey.card(cid("plain"))
+    let col = try column(r, k)
+    #expect(col.none && col.layer.opacity == 0)
+    #expect(c.summaryColumns.filter { $0.col.key != k }.allSatisfy { !$0.none && $0.layer.opacity == 1 })
+    // what it would show: its square alone
+    let px = try #require(col.image.dataProvider?.data as Data?)
+    #expect(px.contains { $0 != 0 })
+    c.hoverSummary(k)
+    #expect(col.layer.opacity == 1 && c.summaryButtons.sublayers?.count == 1)
+    c.hoverSummary(nil)
+    #expect(col.layer.opacity == 0)
+    c.hoverSummary(k)
+    c.summaryWriting.insert(k)
+    c.hoverSummary(nil)
+    #expect(col.layer.opacity == 1)
+    c.summaryWriting.remove(k)
+    c.showNone(col)
+    #expect(col.layer.opacity == 0)
+  }
+
+  /// imageai.ts aiFailed: a failed ↻ says why, per cause, and the text stays as it was
+  @Test func aFailedRewriteSaysWhyInAToast() async throws {
+    let r = try await Rig(summaryBoard(), zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    atSummaries(r)
+    let w = FakeWriter()
+    c.summaryWriter = w
+    let before = r.doc.board.summary(for: sec1)
+    for (f, said) in [
+      (SummaryFailure.badKey("Authentication Fails"), "DeepSeek rejected the API key"),
+      (.balance(nil), "DeepSeek: the account balance is used up"),
+      (.http("HTTP 500"), "DeepSeek: HTTP 500"),
+      (.timeout, "DeepSeek didn't answer in time"),
+      (.network("offline"), "Couldn't reach api.deepseek.com: check the network or proxy"),
+      (.noKey, "No DeepSeek API key · Set it in Settings… (⌘,)"),
+    ] {
+      c.toastText = nil
+      w.answer = .failure(f)
+      c.rewriteSummary(sec1)
+      await r.until("failed") { !c.summaryWriting.contains(sec1) }
+      #expect(c.toastText == said)
+      #expect(r.doc.board.summary(for: sec1) == before)
+    }
+  }
+
   @Test func aSectionWhoseCardsChangedShowsItsDotAndKeepClearsItAsOneStep() async throws {
     let r = try await Rig(summaryBoard(), zoom: 1)
     defer { r.close() }

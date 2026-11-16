@@ -1,0 +1,14 @@
+# 点 Settings 窗口里的输入框再打字：按下让那个窗口接键（像真的点击一样），字进了那个框，不进白板。最后删掉，不存 key
+# only: mac
+key cmd+,
+wait 600
+click @view:NSSecureTextField
+wait 300
+expect focus has Secure
+type abc
+wait 200
+expect sel.around = "abc[]"
+key cmd+a
+key delete
+wait 200
+expect sel = "" 0-0
