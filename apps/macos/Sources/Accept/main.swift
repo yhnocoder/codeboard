@@ -1443,13 +1443,20 @@ func strings(_ x: Any) -> [String] {
     return menu.map { describe($0) } ?? "none"
   }
 
-  func pick(_ path: String) {
+  /// pick Item[/Item…]: that item of the menu read last, as a person picks it; one the menu shows greyed (the app's
+  /// validation, as `menu` lists it) is not chosen, and neither is one missing: the line fails saying so
+  func pick(_ path: String) -> String {
     var m = lastMenu
     let parts = path.split(separator: "/").map(String.init)
     for (i, title) in parts.enumerated() {
+      m?.update()
       guard let menu = m, let idx = menu.items.firstIndex(where: { $0.title == title }) else {
         log("pick: no item \(title)")
-        return
+        return "no item \(title)"
+      }
+      guard menu.items[idx].isEnabled else {
+        log("pick: \(path) is disabled")
+        return "\(path) is disabled"
       }
       if i == parts.count - 1 {
         // after this command has answered: an item that opens an app-modal dialog runs it from inside its action, and
@@ -1457,10 +1464,11 @@ func strings(_ x: Any) -> [String] {
         // the main queue: a main-queue block that runs a modal session holds the queue, and the next command with it
         menu.perform(#selector(NSMenu.accPerform(_:)), with: menu.items[idx], afterDelay: 0, inModes: [.common])
         log("picked \(path)")
-      } else {
-        m = menu.items[idx].submenu
+        return "picked \(path)"
       }
+      m = menu.items[idx].submenu
     }
+    return "no item"
   }
 
   /// menubar Menu/Item[/Item…]: that item of the menu bar chosen as the menu does it when a person picks it (its action
@@ -1610,7 +1618,7 @@ func strings(_ x: Any) -> [String] {
       panelAnswer.withLock { $0 = .some(url) }
     case "pick":
       menuOpen = false
-      pick(String(line.dropFirst(5)))
+      return pick(String(line.dropFirst(5)))
     case "menubar": return menubar(String(line.dropFirst(8)))
     case "find":  // find x0 y0 x1 y1 before|mid|after words: where those words are on screen inside that box
       let box = CGRect(x: d(1), y: d(2), width: d(3) - d(1), height: d(4) - d(2))

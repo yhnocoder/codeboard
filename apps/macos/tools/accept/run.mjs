@@ -1155,7 +1155,12 @@ for (const file of scenarios) {
             // clip image <file> / drop <file> <point>: the file from the tools folder (storage/assets/…) or absolute
             const file = (f) => path.resolve(here, f);
             if (verb === "clip" && arg === "image") return void (await d.send(`clip image ${file(cmd.split(" ").slice(2).join(" "))}`));
-            // menubar Menu/Item: a line that did not choose it (no such item, disabled) fails
+            // menubar Menu/Item, and pick on the Mac: a line that did not choose it (no such item, disabled) fails
+            if (verb === "pick" && d.side === "mac") {
+              const r = await d.send(cmd);
+              if (!r.startsWith("picked ")) throw new Error(r);
+              return;
+            }
             if (verb === "menubar") {
               const r = await d.send(cmd);
               if (!r.startsWith("chose ")) throw new Error(r);
