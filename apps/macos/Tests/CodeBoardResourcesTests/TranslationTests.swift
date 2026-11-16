@@ -172,11 +172,12 @@ struct FakeTongtu {
     r.tongtu.mark("fail")
     r.queue.add(r.job)
     try await r.until("translating") {
-      r.queue.state(of: r.job) == .running(TranslationProgress(stage: "translate", fraction: 0.75))
+      r.queue.state(of: r.job)
+        == .running(TranslationProgress(stage: "translate", fraction: 0.75, chunks: .init(done: 3, total: 4)))
     }
     FileManager.default.createFile(atPath: r.machine.appending(path: "1706.03762v7/go").path, contents: nil)
     await r.queue.settled()
-    #expect(r.queue.state(of: r.job) == .failed("compile: compile_failed: 47 pages against a baseline of 31"))
+    #expect(r.queue.state(of: r.job) == .failed(.init(stage: "compile", "47 pages against a baseline of 31")))
     #expect(try r.vault.entry(at: r.path) == r.entry, "nothing written")
     // retried: it runs again and goes through
     r.tongtu.mark("fail", false)
@@ -197,14 +198,15 @@ struct FakeTongtu {
       Issue.record("not failed")
       return
     }
-    #expect(why.hasPrefix("tongtu doctor:") && why.contains("environment incomplete: xelatex"))
+    #expect(why.stage == "doctor" && why.message.hasPrefix("[missing] xelatex"))
+    #expect(why.message.hasSuffix("environment incomplete: xelatex"))
     #expect(r.tongtu.calls == ["doctor"])
     // without tongtu at all
     let none = Translations(folder: r.machine.appending(path: "other"), tongtu: { nil })
     #expect(none.missing != nil)
     none.add(r.job)
     await none.settled()
-    #expect(none.state(of: r.job) == .failed(none.missing!))
+    #expect(none.state(of: r.job) == .failed(.init(none.missing!)))
   }
 
   @Test func jobsRunOneAtATimeAndCancelEndsOnlyTheProcessItStarted() async throws {
@@ -256,7 +258,7 @@ struct FakeTongtu {
       Issue.record("not offered again")
       return
     }
-    #expect(why.contains("Retry"))
+    #expect(why.stage == nil && why.message.contains("Retry"))
     #expect(r.tongtu.calls.filter { $0 == "run" }.count == 1, "not started alone")
     r.queue.cancel(r.job)
     await r.queue.settled()
@@ -272,7 +274,8 @@ struct FakeTongtu {
       Issue.record("not failed")
       return
     }
-    #expect(why.hasPrefix("tongtu doctor: [missing] api key") && why.hasSuffix("configuration incomplete: api key"))
+    #expect(why.stage == "doctor" && why.message.hasPrefix("[missing] api key"))
+    #expect(why.message.hasSuffix("configuration incomplete: api key"))
     #expect(r.tongtu.calls == ["doctor"])
   }
 
@@ -280,7 +283,8 @@ struct FakeTongtu {
     let stages = #"[{"name":"fetch","status":"ok"},{"name":"translate","status":"absent","message":""}]"#
     let old = try #require(
       Tongtu.read(status: Data(#"{"stages":\#(stages),"translate_chunks":{"total":4,"done":1},"pdf":null}"#.utf8)))
-    #expect(old.progress == TranslationProgress(stage: "translate", fraction: 0.25) && old.running == nil)
+    #expect(old.progress == TranslationProgress(stage: "translate", fraction: 0.25, chunks: .init(done: 1, total: 4)))
+    #expect(old.running == nil)
     let new = try #require(
       Tongtu.read(
         status: Data(
@@ -308,7 +312,8 @@ struct FakeTongtu {
     try status("absent", done: 3, running: true)
     let after = Translations(folder: r.machine, tongtu: { r.tongtu.exe }, poll: .milliseconds(20))
     try await r.until("shown running") {
-      after.state(of: r.job) == .running(TranslationProgress(stage: "translate", fraction: 0.75))
+      after.state(of: r.job)
+        == .running(TranslationProgress(stage: "translate", fraction: 0.75, chunks: .init(done: 3, total: 4)))
     }
     #expect(!r.tongtu.calls.contains("run"), "not started again")
     // its run ends: taken in as a version

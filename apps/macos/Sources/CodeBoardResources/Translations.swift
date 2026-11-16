@@ -7,14 +7,32 @@ import Foundation
 // `out/<paper>.zh.anchors.json`, `build/zh.tex`) are copied into the entry's folder and named by a new Version. Nothing of tongtu's is ever in the vault. Jobs not finished
 // are kept in a file beside the work folders, so after a relaunch they are offered again (never restarted alone).
 
-/// Where a job is: tongtu's stage now, and how far through it when that is known
+/// Where a job is: tongtu's stage now, and how far through it when that is known (translate: its chunks done of all)
 public struct TranslationProgress: Equatable, Sendable {
+  public struct Chunks: Equatable, Sendable {
+    public var done: Int
+    public var total: Int
+  }
+
   public var stage: String
   public var fraction: Double?
+  public var chunks: Chunks?
 
-  public init(stage: String, fraction: Double? = nil) {
+  public init(stage: String, fraction: Double? = nil, chunks: Chunks? = nil) {
     self.stage = stage
     self.fraction = fraction
+    self.chunks = chunks
+  }
+}
+
+/// Why a job failed: the stage of tongtu's that failed, when it was one, and what tongtu or CodeBoard said
+public struct TranslationFailure: Codable, Equatable, Sendable {
+  public var stage: String?
+  public var message: String
+
+  public init(stage: String? = nil, _ message: String) {
+    self.stage = stage
+    self.message = message
   }
 }
 
@@ -56,7 +74,7 @@ public enum TranslationState: Equatable, Sendable {
   case waiting
   case running(TranslationProgress)
   /// Why, in tongtu's words; Retry runs it again from where tongtu stopped
-  case failed(String)
+  case failed(TranslationFailure)
 }
 
 /// Finding tongtu and reading what it says
@@ -81,9 +99,12 @@ public enum Tongtu {
   }
 
   /// From `tongtu status --json`: the first stage not done (the one running while a run goes on; translate with its
-  /// chunks done out of all), and, for a run that stopped, the first stage that failed and its message; whether a run
-  /// is going on, when the status says (`running`, newer tongtus). Keys not known here are passed over
-  public static func read(status data: Data) -> (progress: TranslationProgress, failure: String?, running: Bool?)? {
+  /// chunks done out of all), and, for a run that stopped, the first stage that failed and its message (its status
+  /// code when it gives none); whether a run is going on, when the status says (`running`, newer tongtus). Keys not
+  /// known here are passed over
+  public static func read(status data: Data) -> (
+    progress: TranslationProgress, failure: TranslationFailure?, running: Bool?
+  )? {
     struct Stage: Decodable {
       var name: String
       var status: String
@@ -107,12 +128,14 @@ public enum Tongtu {
     guard let at = s.stages.first(where: { $0.status != "ok" }) else {
       return (TranslationProgress(stage: "done", fraction: 1), nil, s.running)
     }
-    var fraction: Double?
-    if at.name == "translate", let c = s.chunks, c.total > 0 { fraction = Double(c.done) / Double(c.total) }
-    let failure =
-      at.status == "absent"
-      ? nil : [at.name, at.status, at.message ?? ""].filter { !$0.isEmpty }.joined(separator: ": ")
-    return (TranslationProgress(stage: at.name, fraction: fraction), failure, s.running)
+    var progress = TranslationProgress(stage: at.name)
+    if at.name == "translate", let c = s.chunks, c.total > 0 {
+      progress.fraction = Double(c.done) / Double(c.total)
+      progress.chunks = .init(done: c.done, total: c.total)
+    }
+    let said = at.message?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    let failure = at.status == "absent" ? nil : TranslationFailure(stage: at.name, said.isEmpty ? at.status : said)
+    return (progress, failure, s.running)
   }
 
   /// What a child is given: this process's environment with the usual places and TeX's in PATH (an app started from
@@ -171,7 +194,7 @@ public enum Tongtu {
 
   private struct Saved: Codable {
     var job: TranslationJob
-    var failed: String?
+    var failed: TranslationFailure?
   }
 
   /// Jobs left from the last run are offered again as failed: started then, they are not started alone now; one that
@@ -183,7 +206,8 @@ public enum Tongtu {
     let saved = (try? Data(contentsOf: jobsFile)).flatMap { try? JSONDecoder().decode([Saved].self, from: $0) } ?? []
     for s in saved where states[s.job] == nil {
       jobs.append(s.job)
-      states[s.job] = .failed(s.failed ?? "CodeBoard quit before this translation was done. Retry to go on.")
+      states[s.job] = .failed(
+        s.failed ?? TranslationFailure("CodeBoard quit before this translation was done. Retry to go on."))
     }
     if !jobs.isEmpty { Task { [weak self] in await self?.followRunning() } }
   }
@@ -205,7 +229,7 @@ public enum Tongtu {
       }
       guard states[job] != nil else { continue }
       guard read?.progress.stage == "done" else {
-        fail(job, read?.failure ?? why)
+        set(job, .failed(read?.failure ?? why))
         continue
       }
       do {
@@ -219,7 +243,7 @@ public enum Tongtu {
 
   /// What `tongtu status` says of a job's work folder; nil when it says nothing readable
   private func status(_ exe: URL, _ job: TranslationJob, _ dir: URL) async -> (
-    progress: TranslationProgress, failure: String?, running: Bool?
+    progress: TranslationProgress, failure: TranslationFailure?, running: Bool?
   )? {
     Tongtu.read(status: Data(await Tongtu.exec(exe, ["status", job.paper, "--workdir", dir.path, "--json"]).1.utf8))
   }
@@ -282,7 +306,10 @@ public enum Tongtu {
     set(job, .running(TranslationProgress(stage: "doctor")))
     if !checked {
       let (code, out) = await Tongtu.exec(exe, ["doctor"], errors: true)
-      guard code == 0 else { return fail(job, "tongtu doctor: " + out.trimmingCharacters(in: .whitespacesAndNewlines)) }
+      guard code == 0 else {
+        let said = out.trimmingCharacters(in: .whitespacesAndNewlines)
+        return fail(job, said.isEmpty ? "tongtu doctor stopped (exit status \(code))." : said, stage: "doctor")
+      }
       checked = true
     }
     let dir = folder.appending(path: job.name, directoryHint: .isDirectory)
@@ -303,7 +330,7 @@ public enum Tongtu {
     }
     process = p
     set(job, .running(TranslationProgress(stage: "fetch")))
-    var failure: String?
+    var failure: TranslationFailure?
     while p.isRunning {
       try? await Task.sleep(for: poll)
       if let read = await status(exe, job, dir) {
@@ -320,7 +347,8 @@ public enum Tongtu {
       let said = await status(exe, job, dir)?.failure ?? failure
       let tail = (try? String(contentsOf: log, encoding: .utf8))?.split(separator: "\n").suffix(3).joined(
         separator: "\n")
-      return fail(job, said ?? tail ?? "tongtu stopped (exit status \(p.terminationStatus)).")
+      if let said { return set(job, .failed(said)) }
+      return fail(job, tail ?? "tongtu stopped (exit status \(p.terminationStatus)).")
     }
     do {
       try finish(job, dir)
@@ -370,7 +398,9 @@ public enum Tongtu {
     changed()
   }
 
-  private func fail(_ job: TranslationJob, _ why: String) { set(job, .failed(why)) }
+  private func fail(_ job: TranslationJob, _ why: String, stage: String? = nil) {
+    set(job, .failed(TranslationFailure(stage: stage, why)))
+  }
 
   private func drop(_ job: TranslationJob) {
     jobs.removeAll { $0 == job }

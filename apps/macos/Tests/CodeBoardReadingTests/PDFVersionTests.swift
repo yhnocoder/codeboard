@@ -95,6 +95,17 @@ func fakeArxiv(latest: Int) -> Arxiv {
     #expect(w.pane.tabs[0].payload["version"] == p.entry.versions[0].id.rawValue)
   }
 
+  @Test func aNoteWithAStageAndNothingMoreIsOneLineWithItsButton() {
+    let note = VersionNote()
+    let look = ReadingBarLook.warmInk(dark: false)
+    note.show("", title: "translate", action: ("Cancel", "ui-versioncancel", {}), look: look)
+    #expect(note.text.isHidden && !note.heading.isHidden && note.frame.width < 320)
+    #expect(abs(note.heading.frame.midY - note.button.frame.midY) <= 1)
+    note.show("3 / 4 chunks", title: "translate", action: ("Cancel", "ui-versioncancel", {}), look: look)
+    #expect(!note.text.isHidden && note.text.frame.minY > note.heading.frame.maxY)
+    #expect(note.button.frame.minY > note.text.frame.maxY)
+  }
+
   @Test func translatingIsAskedFromTheBarAndAFailureShowsWhyWithRetry() async throws {
     let p = try PaperVault()
     defer { p.v.remove() }
@@ -122,7 +133,9 @@ func fakeArxiv(latest: Int) -> Arxiv {
     // red from the moment it fails, before any hover or press
     #expect(item.layer?.backgroundColor == NSColor.systemRed.withAlphaComponent(0.14).cgColor)
     item.performClick(nil)
-    #expect(!t.note.isHidden && t.note.text.stringValue.hasPrefix("tongtu doctor:"))
+    // the stage tongtu names over its own words, with no code before them
+    #expect(!t.note.isHidden && !t.note.heading.isHidden && t.note.heading.stringValue == "doctor")
+    #expect(t.note.text.stringValue == "tongtu doctor stopped (exit status 1).")
     #expect(t.note.button.accessibilityIdentifier() == "ui-versionretry")
     t.note.button.performClick(nil)
     #expect(t.note.isHidden)

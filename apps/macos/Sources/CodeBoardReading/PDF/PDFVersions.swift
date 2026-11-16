@@ -180,8 +180,10 @@ final class VersionsBar: NSView {
 }
 
 /// A few words above the versions bar: why a translation failed (with Retry), how one is going (with Cancel), what
-/// Check for New Version found. A click on its button does that and it goes
+/// Check for New Version found, under a small heading (the stage of tongtu's it speaks of) when there is one. A click
+/// on its button does that and it goes
 final class VersionNote: NSView {
+  let heading = NSTextField(labelWithString: "")
   let text = NSTextField(wrappingLabelWithString: "")
   let button = NSButton(title: "", target: nil, action: nil)
   private var run: () -> Void = {}
@@ -192,11 +194,12 @@ final class VersionNote: NSView {
     setAccessibilityIdentifier("ui-versionnote")
     text.isSelectable = true
     text.font = .systemFont(ofSize: 12)
+    heading.font = .systemFont(ofSize: 11, weight: .medium)
     button.bezelStyle = .push
     button.controlSize = .small
     button.target = self
     button.action = #selector(pressed)
-    for v in [text, button] { addSubview(v) }
+    for v in [heading, text, button] { addSubview(v) }
   }
 
   @available(*, unavailable)
@@ -204,10 +207,19 @@ final class VersionNote: NSView {
 
   override var isFlipped: Bool { true }
 
-  /// `message`, and a button `action` (its title, identifier and what it does) when there is one
-  func show(_ message: String, action: (title: String, id: String, run: () -> Void)?, look: ReadingBarLook) {
+  /// `message` under `title`, and a button `action` (its title, identifier and what it does) when there is one; a
+  /// title without a message sits on one line with the button
+  func show(
+    _ message: String, title: String? = nil, action: (title: String, id: String, run: () -> Void)?,
+    look: ReadingBarLook
+  ) {
+    let ink = NSColor(cgColor: look.ink) ?? .labelColor
     text.stringValue = message
-    text.textColor = NSColor(cgColor: look.ink)
+    text.textColor = ink
+    heading.stringValue = title ?? ""
+    heading.textColor = ink.withAlphaComponent(0.6)
+    heading.isHidden = title == nil
+    text.isHidden = message.isEmpty
     layer?.backgroundColor = look.paper
     layer?.borderColor = look.ring
     layer?.borderWidth = 0.5
@@ -217,13 +229,28 @@ final class VersionNote: NSView {
     button.title = action?.title ?? ""
     button.setAccessibilityIdentifier(action?.id)
     run = action?.run ?? {}
+    button.sizeToFit()
+    heading.sizeToFit()
+    if message.isEmpty, title != nil {
+      let h = max(heading.frame.height, button.frame.height)
+      let w = (12 + heading.frame.width + (action == nil ? 0 : 16 + button.frame.width) + 12).rounded(.up)
+      heading.frame.origin = CGPoint(x: 12, y: 10 + ((h - heading.frame.height) / 2).rounded())
+      button.frame.origin = CGPoint(x: w - 12 - button.frame.width, y: 10 + ((h - button.frame.height) / 2).rounded())
+      setFrameSize(CGSize(width: w, height: 10 + h + 10))
+      return
+    }
     let w: CGFloat = 320
+    var y: CGFloat = 10
+    if title != nil {
+      heading.frame = CGRect(x: 12, y: y, width: w - 24, height: heading.frame.height)
+      y += heading.frame.height + 3
+    }
     text.preferredMaxLayoutWidth = w - 24
     let h = text.sizeThatFits(CGSize(width: w - 24, height: 1000)).height
-    text.frame = CGRect(x: 12, y: 10, width: w - 24, height: h)
-    button.sizeToFit()
-    button.frame.origin = CGPoint(x: w - 12 - button.frame.width, y: 10 + h + 8)
-    setFrameSize(CGSize(width: w, height: 10 + h + (action == nil ? 10 : 8 + button.frame.height + 10)))
+    text.frame = CGRect(x: 12, y: y, width: w - 24, height: h)
+    y += h
+    button.frame.origin = CGPoint(x: w - 12 - button.frame.width, y: y + 8)
+    setFrameSize(CGSize(width: w, height: y + (action == nil ? 10 : 8 + button.frame.height + 10)))
   }
 
   @objc private func pressed() { run() }
@@ -281,8 +308,8 @@ extension PDFTabView {
       CGPoint(x: ((bounds.width - note.frame.width) / 2).rounded(), y: versions.frame.minY - 8 - note.frame.height))
   }
 
-  func showNote(_ message: String, action: (title: String, id: String, run: () -> Void)? = nil) {
-    note.show(message, action: action, look: versions.look)
+  func showNote(_ message: String, title: String? = nil, action: (title: String, id: String, run: () -> Void)? = nil) {
+    note.show(message, title: title, action: action, look: versions.look)
     note.isHidden = false
     placeVersions()
   }
@@ -325,7 +352,7 @@ extension PDFTabView {
     switch state {
     case .failed(let why):
       showNote(
-        why,
+        why.message, title: why.stage,
         action: (
           "Retry", "ui-versionretry",
           { [weak self] in
@@ -334,8 +361,15 @@ extension PDFTabView {
           }
         ))
     case .waiting, .running:
+      // the stage, and the chunks done of all when tongtu says; nothing the item does not already say beside that
+      var stage = "waiting"
+      var more = ""
+      if case .running(let p) = state {
+        stage = p.stage
+        if let c = p.chunks { more = "\(c.done) / \(c.total) chunks" }
+      }
       showNote(
-        VersionsBar.jobTitle(state),
+        more, title: stage,
         action: (
           "Cancel", "ui-versioncancel",
           { [weak self] in
