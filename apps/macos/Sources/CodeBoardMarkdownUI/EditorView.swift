@@ -508,11 +508,17 @@ public final class MarkdownEditorView: NSView {
   /// and made anew at every new size, so the first key after a pause and the three after a line wrapped drew the
   /// whole editor (35-45 ms each)
   public override var wantsUpdateLayer: Bool { !caching && !drawnByAppKit }
-  /// strips it cannot have (an IOSurface not made, or wider than Core Animation shows as one texture): AppKit's own
-  /// backing store, tiled as for any view, rather than a blank editor
-  private var drawnByAppKit = false
-  /// the widest strip, in pixels: Metal's largest texture, which an IOSurface shown as contents is
-  static let stripPixelsMax = 16384
+  /// strips it cannot have (an IOSurface not made) or should not (wider than `stripPixelsMax`): AppKit's own backing
+  /// store, tiled as for any view and kept only where it shows, rather than a blank editor or strips of tens of megabytes
+  private var drawnByAppKit: Bool {
+    surfaceFailed || bounds.width * (window?.backingScaleFactor ?? 2) > CGFloat(Self.stripPixelsMax)
+  }
+  private var surfaceFailed = false
+  /// the widest strip, in pixels. A strip is the editor's whole width, shown or not, and two surfaces of it are kept for
+  /// each band in view and one around (five or six in a window): 4096 pixels by a 2x band is 8 MB a surface, some 100 MB
+  /// at most, against AppKit's store of only what shows; at Metal's largest texture (16384) a Text thousands of points
+  /// wide, zoomed in, kept 300-400 MB. A Note of up to 2048 points on a 2x display, as zoomed, keeps its strips
+  static let stripPixelsMax = 4096
   /// a picture asked of it (cacheDisplay): drawn by `draw`, as AppKit draws a view that has no pictures of its own
   private var caching = false
   public override func cacheDisplay(in r: NSRect, to rep: NSBitmapImageRep) {
@@ -607,6 +613,21 @@ public final class MarkdownEditorView: NSView {
     placeStrips()
   }
 
+  /// grown past `stripPixelsMax` (zoomed in), drawn by AppKit, and back to strips once narrower again
+  public override func setFrameSize(_ s: NSSize) {
+    let was = drawnByAppKit
+    super.setFrameSize(s)
+    if drawnByAppKit != was {
+      letGoOfStrips()
+      needsDisplay = true
+    }
+  }
+
+  private func letGoOfStrips() {
+    for s in strips.values { s.layer.removeFromSuperlayer() }
+    strips = [:]
+  }
+
   /// What shows of it in its window changed without a display pass: it moved (its frame set, also out of the window and
   /// back, when it had no strips left), or what holds it moved or was resized (a tray scrolled, the window grew). The
   /// bands now in view are made and those out of it let go; what changed in the others waits for the display pass, so
@@ -648,8 +669,7 @@ public final class MarkdownEditorView: NSView {
     let scale = window?.backingScaleFactor ?? 2
     let h = Self.stripHeight
     if stripsMadeAt.map({ $0.width != bounds.width || $0.scale != scale }) ?? true {
-      for s in strips.values { s.layer.removeFromSuperlayer() }
-      strips = [:]
+      letGoOfStrips()
       stripsMadeAt = (bounds.width, scale)
     }
     let shown = visibleRect.insetBy(dx: 0, dy: -h).intersection(bounds)
@@ -666,10 +686,9 @@ public final class MarkdownEditorView: NSView {
         continue
       }
       let w = max(1, Int((bounds.width * scale).rounded(.up)))
-      guard w <= Self.stripPixelsMax, let s = Strip(width: w, height: Int(h * scale)) else {
-        for s in strips.values { s.layer.removeFromSuperlayer() }
-        strips = [:]
-        drawnByAppKit = true
+      guard let s = Strip(width: w, height: Int(h * scale)) else {
+        letGoOfStrips()
+        surfaceFailed = true
         needsDisplay = true
         return
       }

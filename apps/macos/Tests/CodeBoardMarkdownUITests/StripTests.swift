@@ -59,7 +59,8 @@ private final class Flipped: NSView {
     let h = MarkdownEditorView.stripHeight
     let band = CGRect(x: 0, y: CGFloat(i) * h, width: view.bounds.width, height: h)
     let ctx = CGContext(
-      data: nil, width: s.ctx.width, height: s.ctx.height, bitsPerComponent: 8, bytesPerRow: 0,
+      // rows as long as the surface's, which pads them
+      data: nil, width: s.ctx.width, height: s.ctx.height, bitsPerComponent: 8, bytesPerRow: s.ctx.bytesPerRow,
       space: CGColorSpace(name: CGColorSpace.sRGB)!,
       bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)!
     ctx.setShouldSmoothFonts(false)
@@ -168,5 +169,19 @@ private final class Flipped: NSView {
     r.view.insertText("A new paragraph", replacementRange: NSRange(location: NSNotFound, length: 0))
     r.show()
     #expect(r.wrong().isEmpty, "\(r.wrong())")
+  }
+
+  /// A Text of thousands of points at a high zoom: AppKit's backing store, not strips of tens of megabytes each
+  @Test func aVeryWideEditorIsDrawnByAppKit() {
+    let r = StripRig(width: 3000, zoom: 2, text: "A wide line of text")
+    defer { r.close() }
+    #expect(r.view.strips.isEmpty && !r.view.wantsUpdateLayer)
+    // zoomed out it has strips again, and zoomed in AppKit draws it again
+    r.view.zoom = 0.5
+    r.show()
+    #expect(!r.view.strips.isEmpty && r.wrong().isEmpty, "\(r.wrong())")
+    r.view.zoom = 2
+    r.show()
+    #expect(r.view.strips.isEmpty && !r.view.wantsUpdateLayer)
   }
 }
