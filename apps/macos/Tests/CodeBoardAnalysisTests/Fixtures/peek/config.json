@@ -1,0 +1,103 @@
+{
+ "lang": "python",
+ "symbols": [
+  {
+   "name": "Config",
+   "qual": "Config",
+   "kind": "class",
+   "start": 6,
+   "defLine": 7,
+   "end": 25,
+   "sig": "class Config",
+   "params": []
+  },
+  {
+   "name": "__post_init__",
+   "qual": "Config.__post_init__",
+   "kind": "def",
+   "start": 20,
+   "defLine": 20,
+   "end": 25,
+   "sig": "def __post_init__(self)",
+   "params": [
+    {
+     "name": "self",
+     "kind": "self"
+    }
+   ],
+   "parent": "Config"
+  }
+ ],
+ "flags": [
+  0,
+  0,
+  0,
+  1,
+  1,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  1,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  1
+ ],
+ "calls": [
+  {
+   "line": 6,
+   "col": 1,
+   "end": 10,
+   "name": "dataclass",
+   "loop": false,
+   "args": [
+    {
+     "kw": "slots",
+     "text": "True"
+    }
+   ]
+  },
+  {
+   "line": 21,
+   "col": 23,
+   "end": 28,
+   "name": "isdir",
+   "recv": "os.path",
+   "loop": false,
+   "args": [
+    {
+     "text": "self.model"
+    }
+   ]
+  },
+  {
+   "line": 24,
+   "col": 36,
+   "end": 51,
+   "name": "from_pretrained",
+   "recv": "AutoConfig",
+   "loop": false,
+   "args": [
+    {
+     "text": "self.model"
+    }
+   ],
+   "assigned": [
+    "self.hf_config"
+   ]
+  }
+ ]
+}

@@ -1,0 +1,31 @@
+{
+ "lang": "python",
+ "symbols": [
+  {
+   "name": "Qwen3ForCausalLM",
+   "qual": "Qwen3ForCausalLM",
+   "kind": "class",
+   "start": 1,
+   "defLine": 1,
+   "end": 6,
+   "sig": "class Qwen3ForCausalLM",
+   "params": []
+  }
+ ],
+ "flags": [
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  1,
+  0,
+  0,
+  0,
+  0,
+  0,
+  1
+ ],
+ "calls": []
+}
