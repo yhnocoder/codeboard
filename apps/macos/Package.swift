@@ -41,7 +41,8 @@ let package = Package(
     // the acceptance driver (tools/accept/README.md): it runs CodeBoard, or with ACCEPT_APP=demo the Markdown demo, in
     // its own process
     .executableTarget(
-      name: "Accept", dependencies: ["CodeBoardShell", "CodeBoardCanvas", "CodeBoardModel", "MarkdownDemoKit"]),
+      name: "Accept",
+      dependencies: ["CodeBoardShell", "CodeBoardCanvas", "CodeBoardModel", "CodeBoardResources", "MarkdownDemoKit"]),
     .executableTarget(
       name: "LookCompare",
       dependencies: [
