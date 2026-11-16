@@ -23,10 +23,12 @@ public enum BoardSearch {
     }
   }
 
-  /// The preview pane's: the card or sidenote as Markdown, and where it sits (board › Section › …)
+  /// The preview pane's: the card or sidenote as Markdown, and where it sits (board › Section › …); Related by
+  /// Meaning's passage that matched, marked there
   public struct Preview: Encodable, Equatable, Sendable {
     public var md: String
     public var `where`: String
+    public var hit: String?
   }
 
   /// A result (protocol.ts SearchItem, its card and sidenote kinds)
@@ -42,6 +44,8 @@ public enum BoardSearch {
     public var shelf: String?
     public var preview: Preview
     public var images: String
+    /// Related by Meaning: shown as a "maybe"
+    public var faint: Bool?
   }
 
   /// What `q` (trimmed, not empty) finds, best first, 60 at most
@@ -228,7 +232,7 @@ public enum BoardSearch {
     return [c.description ?? "", own].filter { !$0.isEmpty }.joined(separator: "\n\n")
   }
 
-  private static func sidenoteMarkdown(_ n: Sidenote) -> String {
+  static func sidenoteMarkdown(_ n: Sidenote) -> String {
     switch n.body {
     case .text(let t): t.text
     case .code(let s): fence(s.language, s.lines.joined(separator: "\n"))
@@ -238,9 +242,9 @@ public enum BoardSearch {
   /// Enough of a card to read in the pane; the rest is cut (the card is one Return away)
   private static let previewChars = 2000
 
-  private static func preview(_ md: String, _ w: String) -> Preview {
-    guard md.utf16.count > previewChars else { return Preview(md: md, where: w) }
-    return Preview(md: "\(utf16Prefix(md, previewChars))\n\n…", where: w)
+  static func preview(_ md: String, _ w: String, hit: String? = nil) -> Preview {
+    guard md.utf16.count > previewChars else { return Preview(md: md, where: w, hit: hit) }
+    return Preview(md: "\(utf16Prefix(md, previewChars))\n\n…", where: w, hit: hit)
   }
 
   /// The first `n` UTF-16 units, as String.slice cuts
