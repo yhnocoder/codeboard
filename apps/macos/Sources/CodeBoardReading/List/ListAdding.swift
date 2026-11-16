@@ -98,15 +98,21 @@ extension ListTabView {
 
   override func draggingEnded(_ info: NSDraggingInfo) { dropRing.isHidden = true }
 
+  /// What a drop would add; nil for a row dragged out of this list, which is not added to it again
+  private func dropped(_ info: NSDraggingInfo) -> ListAdd? {
+    guard (info.draggingSource as AnyObject?) !== table else { return nil }
+    return preset.flatMap { ListAdd.reading(info.draggingPasteboard, for: $0) }
+  }
+
   private func dropOperation(_ info: NSDraggingInfo) -> NSDragOperation {
-    let ok = preset.flatMap { ListAdd.reading(info.draggingPasteboard, for: $0) } != nil
+    let ok = dropped(info) != nil
     dropRing.isHidden = !ok
     return ok ? .copy : []
   }
 
   override func performDragOperation(_ info: NSDraggingInfo) -> Bool {
     dropRing.isHidden = true
-    guard let plan = preset.flatMap({ ListAdd.reading(info.draggingPasteboard, for: $0) }) else { return false }
+    guard let plan = dropped(info) else { return false }
     add(plan)
     window?.makeFirstResponder(table)
     return true
@@ -187,7 +193,7 @@ extension ListTabView {
     if let i = shown.firstIndex(where: { $0.key == path }) { select(i) }
   }
 
-  private func failed(_ why: String) {
+  func failed(_ why: String) {
     Self.log.error("\(why, privacy: .public)")
     NSSound.beep()
     say(why)

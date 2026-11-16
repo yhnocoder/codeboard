@@ -73,19 +73,9 @@ import PDFKit
   }
 
   public func reveal(_ a: SourceAnchor) {
-    guard let place = a.place else { return revealEntry(a.entry) }
+    guard let place = a.place else { return pane.openEntry(a.entry) }
     guard let tab = pane.openPDF(.entry(a.entry, version: place.version)) else { return }
     PDFTabView.reveal(place, in: tab)
-  }
-
-  /// The entry as a whole shown: a page's address in a web tab, else its first version that is a PDF
-  private func revealEntry(_ id: EntryID) {
-    guard let e = pane.entries[id]?.entry else { return }
-    if case .web(let address) = e.origin, let url = URL(string: address) {
-      pane.open(url.host() ?? e.title, kind: "web", payload: ["url": url.absoluteString])
-    } else if let v = e.versions.first(where: { if case .pdf = $0.content { true } else { false } }) {
-      pane.openPDF(.entry(id, version: v.id))
-    }
   }
 
   /// The page a page block is on and its region (in the page's space, from its crop box's bottom left; the whole box

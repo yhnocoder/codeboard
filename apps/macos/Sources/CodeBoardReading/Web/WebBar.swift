@@ -85,8 +85,8 @@ class WebGlass: NSView {
 }
 
 /// The bar floating over a web page: back and forward through the page's history, the address, body or full page,
-/// saving, and what is to come, shown but not working yet: original, side by side or translation. Its buttons are the
-/// board toolbar's: flat icons in the look's ink, groups apart by its hairline separator
+/// original, side by side or translation, and saving. Its buttons are the board toolbar's: flat icons in the look's
+/// ink, groups apart by its hairline separator
 final class WebBar: WebGlass {
   let back = WebBarButton("chevron.backward", "Back", "ui-webback")
   let forward = WebBarButton("chevron.forward", "Forward", "ui-webforward")
@@ -100,11 +100,16 @@ final class WebBar: WebGlass {
   let separators = [NSView(), NSView()]
   /// Over the save button while a saving is under way
   private let saving = NSProgressIndicator()
+  /// A hairline under the language buttons: how much of the page is translated while that is under way, the whole
+  /// width in red when some of it could not be
+  let translated = NSView()
   /// The address keeps this much before what is to come gives way, the translation first
   static let addressMinWidth: CGFloat = 96
 
   /// What the save button says now
   private var state = Save.off("")
+  /// What the language buttons say now
+  private(set) var translation = Translate.off("")
 
   /// Where the address starts: after back and forward, 6 from them
   static func addressX(_ look: ReadingBarLook) -> CGFloat { 4 + 2 * look.button.width + 2 + 6 }
@@ -113,8 +118,11 @@ final class WebBar: WebGlass {
     super.init(look: look)
     setAccessibilityIdentifier("ui-webbar")
     for c in [extract, translate, save] { c.isEnabled = false }
-    for s in separators { s.wantsLayer = true }
-    for v in [back, forward, address.tint, address, extract, translate, save] + separators { content.addSubview(v) }
+    for s in separators + [translated] { s.wantsLayer = true }
+    translated.isHidden = true
+    for v in [back, forward, address.tint, address, extract, translate, translated, save] + separators {
+      content.addSubview(v)
+    }
     saving.style = .spinning
     saving.controlSize = .small
     saving.isDisplayedWhenStopped = false
@@ -155,6 +163,32 @@ final class WebBar: WebGlass {
     if case .saving = state { saving.startAnimation(nil) } else { saving.stopAnimation(nil) }
   }
 
+  /// What the language buttons say
+  enum Translate: Equatable {
+    /// No translation here, and why
+    case off(String)
+    case ready
+    /// Under way: blocks translated of those asked for
+    case translating(done: Int, of: Int)
+    /// The last translating left some blocks out, and why
+    case failed(String)
+  }
+
+  func show(_ state: Translate) {
+    translation = state
+    translate.isEnabled = if case .off = state { false } else { true }
+    translate.toolTip =
+      switch state {
+      case .off(let why): why
+      case .ready: nil
+      case .translating(let done, let of): "Translating: \(done) of \(of) blocks"
+      case .failed(let why): why
+      }
+    translated.layer?.backgroundColor =
+      if case .failed = state { NSColor.systemRed.cgColor.copy(alpha: 0.7) } else { look.accent }
+    needsLayout = true
+  }
+
   static func stageName(_ stage: String) -> String {
     switch stage {
     case "prepare": "getting the page ready"
@@ -175,6 +209,7 @@ final class WebBar: WebGlass {
     address.tint.layer?.cornerRadius = look.buttonRadius
     address.textColor = NSColor(cgColor: look.ink)
     show(state)
+    show(translation)
   }
 
   /// The buttons the size of the board toolbar's, 4 in and 2 apart as there; a group the toolbar's separator (0.5 ×
@@ -205,6 +240,16 @@ final class WebBar: WebGlass {
       right -= c.width(look)
       place(c, x: right, width: c.width(look), height: button.height)
     }
+    let part: CGFloat? =
+      switch translation {
+      case .translating(let done, let of): of > 0 ? CGFloat(done) / CGFloat(of) : 0
+      case .failed: 1
+      default: nil
+      }
+    translated.isHidden = translate.isHidden || part == nil
+    translated.frame = CGRect(
+      x: translate.frame.minX + 4, y: translate.frame.minY + 1, width: (translate.frame.width - 8) * (part ?? 0),
+      height: 1.5)
     place(address, x: start, width: max(0, right - 6 - start), height: address.intrinsicContentSize.height)
     address.tint.frame = CGRect(
       x: start - 2, y: ((h - button.height) / 2).rounded(), width: address.frame.width + 4,

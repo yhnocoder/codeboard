@@ -1,5 +1,6 @@
 import AppKit
 import CodeBoardCanvas
+import CodeBoardDiagnostics
 import CodeBoardModel
 import CodeBoardNotes
 
@@ -287,6 +288,7 @@ import CodeBoardNotes
     let now = Focus(tab: id, board: pane.document?.id)
     if now != focused {
       focused = now
+      Diag.event("board.shown", ["board": now.board?.rawValue ?? "", "tab": id.uuidString])
       // what the search palette found was on the board that was in front
       closeSearch()
       pane.takeKeys()
@@ -464,6 +466,7 @@ final class Pane: NSView {
   }
 
   func fail(_ error: any Error) {
+    Diag.event("error", ["where": "board", "what": String(describing: error)])
     failed = true
     document = nil
     shown = nil

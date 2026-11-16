@@ -1,5 +1,6 @@
 import CodeBoardModel
 import CoreGraphics
+import Foundation
 
 /// What the view shows: the board point at the view's top-left corner and the zoom (view points per board unit). View
 /// and board are both y-down.
@@ -78,5 +79,15 @@ struct ZoomLimits: Equatable {
     if raw > max { return max * (1 + 0.15 * tanh(log(raw / max) / 0.3)) }
     if raw < min { return min / (1 + 0.15 * tanh(log(min / raw) / 0.3)) }
     return raw
+  }
+}
+
+extension Camera {
+  /// Where it is, for a bug report's app.jsonl
+  var diag: [String: String] {
+    [
+      "x": String(format: "%.1f", origin.x), "y": String(format: "%.1f", origin.y),
+      "zoom": String(format: "%.3f", zoom),
+    ]
   }
 }

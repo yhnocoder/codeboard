@@ -167,12 +167,21 @@ extension Shell {
     renaming = .board(made.id)
   }
 
-  /// A new resource in `folder`, a list of files to begin with, its tab opened, its name written in place
-  public func newResource(in folder: String) {
+  /// New Resource ▸ (its row menu entry and row button): one item per preset, each making one of that preset
+  public func newResourceKinds(in folder: String) -> [(title: String, run: () -> Void)] {
+    let kinds: [(String, ResourcePreset)] = [
+      ("Papers", .papers), ("Web Pages", .web), ("Files", .files), ("Images", .images), ("Blank", .blank),
+    ]
+    return kinds.map { t, p in (t, { self.newResource(in: folder, preset: p) }) }
+  }
+
+  /// A new resource in `folder` (a list of files unless another preset is chosen), its tab opened, its name written in
+  /// place
+  public func newResource(in folder: String, preset: ResourcePreset = .files) {
     var made: VaultResource?
     files { v in
       made = try v.newResource(
-        in: folder, title: v.freeName(in: folder, "New Resource", extension: Vault.resourceExtension), preset: .files)
+        in: folder, title: v.freeName(in: folder, "New Resource", extension: Vault.resourceExtension), preset: preset)
     }
     guard let made else { return }
     if !folder.isEmpty { expanded.insert(folder) }

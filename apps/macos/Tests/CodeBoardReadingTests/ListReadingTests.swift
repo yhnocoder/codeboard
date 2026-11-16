@@ -25,7 +25,8 @@ import Testing
       Version(id: VersionID(rawValue: "v2-zh"), added: 3, of: VersionID(rawValue: "v2"), content: .pdf(file: "zh.pdf")),
     ])
   let estuary = Entry(
-    id: EntryID(rawValue: "e-estuary"), title: "Estuary flows", added: 4, authors: ["Cai Lun"], year: 2023)
+    id: EntryID(rawValue: "e-estuary"), title: "Estuary flows", added: 4, authors: ["Cai Lun"], year: 2023,
+    venue: "J. Coast. Res. 12")
   let weirs = Entry(id: EntryID(rawValue: "e-weirs"), title: "Weirs", added: 5, authors: ["Dee Okafor"], year: 2021)
   let link = Entry(
     id: EntryID(rawValue: "e-link"), title: "Harbour log", added: 2, origin: .web("http://127.0.0.1:9/harbour"))
@@ -162,6 +163,8 @@ import Testing
     let title = try cell(list, "title", 1)
     #expect(title.line.stringValue == "Tidal mills" && title.detail.stringValue == "Ana Ruíz, Bo Chen")
     #expect(!title.detail.isHidden && title.detail.frame.minY >= title.line.frame.maxY && title.status.isHidden)
+    // where it was published follows the authors
+    #expect(try cell(list, "title", 0).detail.stringValue == "Cai Lun · J. Coast. Res. 12")
     #expect(try cell(list, "year", 1).line.stringValue == "2021")
     let ink = try #require(NSColor(cgColor: ReadingBarLook.warmInk(dark: false).ink))
     #expect(title.line.textColor == ink && title.detail.textColor == ink.withAlphaComponent(0.5))
@@ -346,7 +349,11 @@ import Testing
     v.pane.select(listTab)
     v.paneView.sync()
     doubleClick(list, row: at("Harbour log"))
-    #expect(v.pane.tabs.contains { $0.kind == "web" && $0.payload == ["url": "http://127.0.0.1:9/harbour"] })
+    #expect(
+      v.pane.tabs.contains {
+        $0.kind == "web" && $0.payload == ["url": "http://127.0.0.1:9/harbour"]
+          && $0.key == "web:http://127.0.0.1:9/harbour"
+      })
 
     let page = ["url": "http://127.0.0.1:9/quay", "hash": ListVault.newer, "title": "Quay plans"]
     for _ in 0..<2 {
@@ -442,6 +449,27 @@ import Testing
     list.open(1)
     #expect(v.pane.tabs.last?.kind == "web" && v.pane.tabs.last?.payload == ["url": "https://doi.org/10.1000/xyz"])
     #expect(list.shown[0].opens == .web(.online(URL(string: "https://arxiv.org/abs/2402.00002"))))
+  }
+
+  /// A board's source that is a whole entry with its PDF and a translation listed first opens what its row opens: the
+  /// PDF, not the translation
+  @Test func aWholeEntryRevealedFromTheBoardOpensWhatItsRowOpens() async throws {
+    let v = try ListVault(empty: true)
+    defer { v.remove() }
+    let e = Entry(
+      id: EntryID(rawValue: "e-mill"), title: "Mill races", added: 1,
+      versions: [
+        Version(id: VersionID(rawValue: "zh"), added: 2, of: VersionID(rawValue: "v1"), content: .pdf(file: "zh.pdf")),
+        Version(id: VersionID(rawValue: "v1"), added: 1, content: .pdf(file: "v1.pdf")),
+      ])
+    let path = try v.vault.newEntry(e, in: v.resource.path)
+    for f in ["v1.pdf", "zh.pdf"] { try makePDF(["Page of \(f)"]).write(to: v.vault.url(of: "\(path)/\(f)")) }
+    v.pane.entries = EntryIndex(v.vault, try v.vault.tree())
+    let (_, list) = try await v.openList()
+    let original = PDFTarget.entry(e.id, version: VersionID(rawValue: "v1"))
+    #expect(list.shown.first?.opens == .pdf(original))
+    ReadingSources(pane: v.pane).reveal(SourceAnchor(entry: e.id))
+    #expect(v.pane.tabs.last?.key == original.key && v.pane.selected == v.pane.tabs.last?.id)
   }
 
   /// A PDF opened from the list and closed: the list shown again has what the resource holds now
