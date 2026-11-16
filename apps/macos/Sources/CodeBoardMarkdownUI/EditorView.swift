@@ -608,11 +608,12 @@ public final class MarkdownEditorView: NSView {
   }
 
   /// What shows of it in its window changed without a display pass: it moved (its frame set, also out of the window and
-  /// back, when it had no strips left), or what holds it moved or was resized (a tray scrolled, the window grew): the
-  /// bands now in view are made and those out of it let go
+  /// back, when it had no strips left), or what holds it moved or was resized (a tray scrolled, the window grew). The
+  /// bands now in view are made and those out of it let go; what changed in the others waits for the display pass, so
+  /// that a strip takes one new picture a pass and none is drawn into while it shows
   private func placeStrips() {
     guard stripsMadeAt != nil else { return }
-    paintStrips()
+    paintStrips(changes: false)
   }
 
   public override func viewDidMoveToWindow() {
@@ -641,8 +642,8 @@ public final class MarkdownEditorView: NSView {
 
   @objc private func ancestorMoved(_ n: Notification) { placeStrips() }
 
-  /// The strips in view made (drawn whole), those out of it let go, and what changed drawn into the others
-  private func paintStrips() {
+  /// The strips in view made (drawn whole), those out of it let go, and (`changes`) what changed drawn into the others
+  private func paintStrips(changes: Bool = true) {
     guard let layer, window != nil, !drawnByAppKit else { return }
     let scale = window?.backingScaleFactor ?? 2
     let h = Self.stripHeight
@@ -661,7 +662,7 @@ public final class MarkdownEditorView: NSView {
       let band = CGRect(x: 0, y: CGFloat(i) * h, width: bounds.width, height: h)
       if let s = strips[i] {
         let r = unpainted.intersection(band)
-        if !r.isNull { paint(s, r, band) }
+        if changes, !r.isNull { paint(s, r, band) }
         continue
       }
       let w = max(1, Int((bounds.width * scale).rounded(.up)))
@@ -683,7 +684,7 @@ public final class MarkdownEditorView: NSView {
       paint(s, band, band)
       s.mirror()
     }
-    unpainted = .null
+    if changes { unpainted = .null }
   }
 
   /// Draws `r` (the view's points) into the strip covering `band`

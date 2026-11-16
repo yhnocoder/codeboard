@@ -141,4 +141,19 @@ private final class Flipped: NSView {
     r.show()
     #expect(Set(r.view.strips.keys) == r.wanted() && r.wrong().isEmpty, "a taller window")
   }
+
+  /// A key and a move in the same pass: each strip shown takes one new picture, in the display pass, never drawn into
+  /// while it shows (moved, only the bands new in view are made)
+  @Test func aStripTurnsOnceAPass() {
+    let r = StripRig()
+    defer { r.close() }
+    let before = r.view.strips.mapValues { $0.surface }
+    r.view.insertText("x", replacementRange: NSRange(location: NSNotFound, length: 0))
+    r.view.frame.origin.y = -300
+    for (i, s) in before where r.view.strips[i] != nil {
+      #expect(r.view.strips[i]!.surface === s, "strip \(i) turned on the move")
+    }
+    r.show()
+    #expect(r.wrong().isEmpty, "\(r.wrong())")
+  }
 }
