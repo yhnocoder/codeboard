@@ -824,8 +824,8 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
   }
 
   /// The reader said what is selected on the saved page; its blocks give the heading before it
-  func readerSelected(_ m: [String: Any]) {
-    selected(WebSelection(reader: m, scrollY: scrollY, blocks: blocks?.list ?? []))
+  func readerSelected(_ m: [String: Any]?) {
+    selected(m.flatMap { WebSelection(reader: $0, scrollY: scrollY, blocks: blocks?.list ?? []) })
   }
 
   /// The selection's lines in this view, where the page has scrolled them since it said

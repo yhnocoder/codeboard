@@ -391,8 +391,8 @@ enum StandInScripts {
       document.addEventListener("selectionchange", () => {
         const ranges = shiyiReader.selection()
         const r = ranges.length ? getSelection().getRangeAt(0).getBoundingClientRect() : null
-        webkit.messageHandlers.shiyi.postMessage({ type: "selection", ranges,
-          rect: r && { x: r.x, y: r.y, width: r.width, height: r.height } })
+        webkit.messageHandlers.shiyi.postMessage({ type: "selection", selection: r && { ranges,
+          rect: { x: r.x, y: r.y, width: r.width, height: r.height } } })
       })
       """
 
