@@ -1,0 +1,105 @@
+{
+ "lang": "python",
+ "symbols": [
+  {
+   "name": "Base",
+   "qual": "Base",
+   "kind": "class",
+   "start": 1,
+   "defLine": 1,
+   "end": 13,
+   "sig": "class Base",
+   "params": []
+  },
+  {
+   "name": "forward",
+   "qual": "Base.forward",
+   "kind": "def",
+   "start": 2,
+   "defLine": 2,
+   "end": 4,
+   "sig": "def forward(self, x)",
+   "params": [
+    {
+     "name": "self",
+     "kind": "self"
+    },
+    {
+     "name": "x",
+     "kind": "pos"
+    }
+   ],
+   "parent": "Base",
+   "doc": "Run it."
+  },
+  {
+   "name": "other",
+   "qual": "Base.other",
+   "kind": "def",
+   "start": 6,
+   "defLine": 7,
+   "end": 8,
+   "sig": "def other(self)",
+   "params": [
+    {
+     "name": "self",
+     "kind": "self"
+    }
+   ],
+   "parent": "Base"
+  },
+  {
+   "name": "real",
+   "qual": "Base.real",
+   "kind": "def",
+   "start": 10,
+   "defLine": 10,
+   "end": 11,
+   "sig": "def real(self, x)",
+   "params": [
+    {
+     "name": "self",
+     "kind": "self"
+    },
+    {
+     "name": "x",
+     "kind": "pos"
+    }
+   ],
+   "parent": "Base"
+  },
+  {
+   "name": "dots",
+   "qual": "Base.dots",
+   "kind": "def",
+   "start": 13,
+   "defLine": 13,
+   "end": 13,
+   "sig": "def dots(self)",
+   "params": [
+    {
+     "name": "self",
+     "kind": "self"
+    }
+   ],
+   "parent": "Base"
+  }
+ ],
+ "flags": [
+  0,
+  0,
+  4,
+  0,
+  1,
+  0,
+  0,
+  0,
+  1,
+  0,
+  0,
+  1,
+  0,
+  1
+ ],
+ "calls": []
+}

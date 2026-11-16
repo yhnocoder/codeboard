@@ -1,0 +1,183 @@
+{
+ "lang": "python",
+ "symbols": [
+  {
+   "name": "fused_kernel",
+   "qual": "fused_kernel",
+   "kind": "def",
+   "start": 4,
+   "defLine": 12,
+   "end": 13,
+   "sig": "def fused_kernel(a_ptr, N, group_n: tl.constexpr, BLOCK_K: tl.constexpr, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr)",
+   "params": [
+    {
+     "name": "a_ptr",
+     "kind": "pos"
+    },
+    {
+     "name": "N",
+     "kind": "pos"
+    },
+    {
+     "name": "group_n",
+     "kind": "pos"
+    },
+    {
+     "name": "BLOCK_K",
+     "kind": "pos"
+    },
+    {
+     "name": "BLOCK_M",
+     "kind": "pos"
+    },
+    {
+     "name": "BLOCK_N",
+     "kind": "pos"
+    }
+   ]
+  },
+  {
+   "name": "launch",
+   "qual": "launch",
+   "kind": "def",
+   "start": 16,
+   "defLine": 16,
+   "end": 18,
+   "sig": "def launch(a, n)",
+   "params": [
+    {
+     "name": "a",
+     "kind": "pos"
+    },
+    {
+     "name": "n",
+     "kind": "pos"
+    }
+   ]
+  }
+ ],
+ "flags": [
+  0,
+  0,
+  1,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  1,
+  1,
+  0,
+  0,
+  0,
+  1
+ ],
+ "calls": [
+  {
+   "line": 4,
+   "col": 8,
+   "end": 16,
+   "name": "autotune",
+   "recv": "triton",
+   "loop": false,
+   "args": [
+    {
+     "kw": "configs",
+     "text": "[ triton.Config({\"BLOCK_M\": 64, \"BLOCK_N\": 128}, num_stages=3, num_warps=4), triton.Config({\"BLOCK_M\": 128, \"BLOCK_N\": 64}, num_stages=4, num_warps=8), ]"
+    },
+    {
+     "kw": "key",
+     "text": "[\"N\"]"
+    }
+   ]
+  },
+  {
+   "line": 6,
+   "col": 15,
+   "end": 21,
+   "name": "Config",
+   "recv": "triton",
+   "loop": false,
+   "args": [
+    {
+     "text": "{\"BLOCK_M\": 64, \"BLOCK_N\": 128}"
+    },
+    {
+     "kw": "num_stages",
+     "text": "3"
+    },
+    {
+     "kw": "num_warps",
+     "text": "4"
+    }
+   ]
+  },
+  {
+   "line": 7,
+   "col": 15,
+   "end": 21,
+   "name": "Config",
+   "recv": "triton",
+   "loop": false,
+   "args": [
+    {
+     "text": "{\"BLOCK_M\": 128, \"BLOCK_N\": 64}"
+    },
+    {
+     "kw": "num_stages",
+     "text": "4"
+    },
+    {
+     "kw": "num_warps",
+     "text": "8"
+    }
+   ]
+  },
+  {
+   "line": 13,
+   "col": 13,
+   "end": 23,
+   "name": "program_id",
+   "recv": "tl",
+   "loop": false,
+   "args": [
+    {
+     "text": "0"
+    }
+   ],
+   "assigned": [
+    "pid"
+   ]
+  },
+  {
+   "line": 18,
+   "col": 4,
+   "end": 16,
+   "name": "fused_kernel",
+   "loop": false,
+   "args": [
+    {
+     "text": "a",
+     "name": "a"
+    },
+    {
+     "text": "n",
+     "name": "n"
+    },
+    {
+     "text": "0"
+    },
+    {
+     "kw": "BLOCK_K",
+     "text": "32"
+    }
+   ],
+   "launch": "grid"
+  }
+ ]
+}

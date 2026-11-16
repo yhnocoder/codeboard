@@ -1,0 +1,113 @@
+{
+ "lang": "cuda-cpp",
+ "symbols": [
+  {
+   "name": "dispatch",
+   "qual": "dispatch",
+   "kind": "def",
+   "start": 1,
+   "defLine": 2,
+   "end": 4,
+   "sig": "__global__ void __launch_bounds__(kNumThreads, 1) dispatch(int4* recv_x, int num_tokens)",
+   "params": [
+    {
+     "name": "recv_x",
+     "kind": "pos"
+    },
+    {
+     "name": "num_tokens",
+     "kind": "pos"
+    }
+   ]
+  },
+  {
+   "name": "dispatch",
+   "qual": "dispatch",
+   "kind": "def",
+   "start": 6,
+   "defLine": 6,
+   "end": 19,
+   "sig": "void dispatch(void* recv_x, int num_tokens, int num_ranks, cudaStream_t stream, int num_sms)",
+   "params": [
+    {
+     "name": "recv_x",
+     "kind": "pos"
+    },
+    {
+     "name": "num_tokens",
+     "kind": "pos"
+    },
+    {
+     "name": "num_ranks",
+     "kind": "pos"
+    },
+    {
+     "name": "stream",
+     "kind": "pos"
+    },
+    {
+     "name": "num_sms",
+     "kind": "pos"
+    }
+   ]
+  }
+ ],
+ "flags": [
+  0,
+  0,
+  0,
+  0,
+  1,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  1,
+  0,
+  0,
+  0,
+  0,
+  1
+ ],
+ "calls": [
+  {
+   "line": 16,
+   "col": 4,
+   "end": 23,
+   "name": "SETUP_LAUNCH_CONFIG",
+   "loop": false,
+   "args": [
+    {
+     "text": "num_sms",
+     "name": "num_sms"
+    },
+    {
+     "text": "kNumThreads",
+     "name": "kNumThreads"
+    },
+    {
+     "text": "stream",
+     "name": "stream"
+    }
+   ]
+  },
+  {
+   "line": 17,
+   "col": 4,
+   "end": 16,
+   "name": "SWITCH_RANKS",
+   "loop": false,
+   "args": [
+    {
+     "text": "DISPATCH_LAUNCH_CASE",
+     "name": "DISPATCH_LAUNCH_CASE"
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,144 @@
+{
+ "lang": "python",
+ "symbols": [
+  {
+   "name": "flashmla_decode",
+   "qual": "flashmla_decode",
+   "kind": "def",
+   "start": 4,
+   "defLine": 5,
+   "end": 13,
+   "sig": "def flashmla_decode(h, block_N=64, num_stages=2)",
+   "params": [
+    {
+     "name": "h",
+     "kind": "pos"
+    },
+    {
+     "name": "block_N",
+     "kind": "pos"
+    },
+    {
+     "name": "num_stages",
+     "kind": "pos"
+    }
+   ]
+  },
+  {
+   "name": "main",
+   "qual": "flashmla_decode.main",
+   "kind": "def",
+   "start": 8,
+   "defLine": 9,
+   "end": 11,
+   "sig": "def main(Q: T.Tensor)",
+   "params": [
+    {
+     "name": "Q",
+     "kind": "pos"
+    }
+   ]
+  },
+  {
+   "name": "run",
+   "qual": "run",
+   "kind": "def",
+   "start": 16,
+   "defLine": 16,
+   "end": 18,
+   "sig": "def run(q)",
+   "params": [
+    {
+     "name": "q",
+     "kind": "pos"
+    }
+   ]
+  }
+ ],
+ "flags": [
+  0,
+  0,
+  1,
+  0,
+  0,
+  0,
+  1,
+  0,
+  0,
+  0,
+  0,
+  1,
+  0,
+  1,
+  1,
+  0,
+  0,
+  0,
+  1
+ ],
+ "calls": [
+  {
+   "line": 4,
+   "col": 10,
+   "end": 13,
+   "name": "jit",
+   "recv": "tilelang",
+   "loop": false,
+   "args": [
+    {
+     "kw": "out_idx",
+     "text": "[-1]"
+    }
+   ]
+  },
+  {
+   "line": 10,
+   "col": 15,
+   "end": 21,
+   "name": "Kernel",
+   "recv": "T",
+   "loop": false,
+   "args": [
+    {
+     "text": "1"
+    }
+   ]
+  },
+  {
+   "line": 17,
+   "col": 13,
+   "end": 28,
+   "name": "flashmla_decode",
+   "loop": false,
+   "args": [
+    {
+     "text": "16"
+    },
+    {
+     "kw": "block_N",
+     "text": "128"
+    },
+    {
+     "kw": "num_stages",
+     "text": "2"
+    }
+   ],
+   "assigned": [
+    "kernel"
+   ]
+  },
+  {
+   "line": 18,
+   "col": 11,
+   "end": 17,
+   "name": "kernel",
+   "loop": false,
+   "args": [
+    {
+     "text": "q",
+     "name": "q"
+    }
+   ]
+  }
+ ]
+}
