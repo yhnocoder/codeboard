@@ -535,6 +535,9 @@ public final class MarkdownEditorView: NSView {
     var ctx: CGContext { contexts[front] }
 
     init?(width: Int, height: Int) {
+      // a new picture shows at once: a layer of its own fades `contents` in a quarter of a second, keeping the surface
+      // drawn into next on the screen meanwhile
+      layer.actions = ["contents": NSNull()]
       guard let space = CGColorSpace(name: CGColorSpace.sRGB) else { return nil }
       for _ in 0..<2 {
         guard
