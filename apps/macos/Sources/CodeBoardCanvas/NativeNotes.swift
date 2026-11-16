@@ -59,13 +59,14 @@ package final class NativeNotes: NoteDisplay {
   private let math = Mutex<(any MathTypesetter)?>(nil)
   /// The layout an editor of the Note starts from: the one shown, laying out what is typed with the formula engines
   /// whether or not the Note had a formula (one may be typed)
-  func editorLayout(_ l: Laid, folder: URL, refs: [NoteRef], dark: Bool) -> BlockLayout {
-    editorLayout(l.layout, folder: folder, refs: refs, dark: dark)
+  func editorLayout(_ l: Laid, folder: URL, refs: [NoteRef], dark: Bool, preamble: String = "") -> BlockLayout {
+    editorLayout(l.layout, folder: folder, refs: refs, dark: dark, preamble: preamble)
   }
 
-  func editorLayout(_ l: BlockLayout, folder: URL, refs: [NoteRef], dark: Bool) -> BlockLayout {
+  func editorLayout(_ l: BlockLayout, folder: URL, refs: [NoteRef], dark: Bool, preamble: String = "") -> BlockLayout {
     let math = try? engines()
-    return l.copy(resources: Resources(folder: folder, pictures: pictures, refs: refs, math: math, dark: dark))
+    return l.copy(
+      resources: Resources(folder: folder, pictures: pictures, refs: refs, math: math, dark: dark, preamble: preamble))
   }
 
   private func engines() throws -> any MathTypesetter {
@@ -132,16 +133,18 @@ package final class NativeNotes: NoteDisplay {
 
   package func snapshot(
     of note: NoteBody, width: Double, height: Double?, folder: URL, scale: Double, look: String, dark: Bool,
-    refs: [NoteRef], hideHead: Bool, priority: Int
+    refs: [NoteRef], hideHead: Bool, preamble: String = "", priority: Int
   ) async throws -> NoteSnapshot {
-    let k = key(note, width: width, folder: folder, look: look, dark: dark, refs: refs, hideHead: hideHead)
+    let k = key(
+      note, width: width, folder: folder, look: look, dark: dark, refs: refs, hideHead: hideHead, preamble: preamble)
     if let early = drawnAhead.withLock({ $0.removeValue(forKey: Ahead(key: k, height: height, scale: scale)) }),
       let s = await early.value
     {
       return s
     }
     let r = NoteSizeRequest(
-      note: note, width: width, folder: folder, look: look, dark: dark, refs: refs, hideHead: hideHead)
+      note: note, width: width, folder: folder, look: look, dark: dark, refs: refs, hideHead: hideHead,
+      preamble: preamble)
     try Task.checkCancellation()
     guard let s = picture(r, height: height, scale: scale) else { throw CancellationError() }
     return s
@@ -150,10 +153,11 @@ package final class NativeNotes: NoteDisplay {
   /// Only one kept on disk, as the web renderer's `cached`
   package func cached(
     of note: NoteBody, width: Double, height: Double?, folder: URL, scale: Double, look: String, dark: Bool,
-    refs: [NoteRef], hideHead: Bool
+    refs: [NoteRef], hideHead: Bool, preamble: String = ""
   ) async -> NoteSnapshot? {
     let r = NoteSizeRequest(
-      note: note, width: width, folder: folder, look: look, dark: dark, refs: refs, hideHead: hideHead)
+      note: note, width: width, folder: folder, look: look, dark: dark, refs: refs, hideHead: hideHead,
+      preamble: preamble)
     return keptKey(r, height: height, scale: scale).flatMap { drawn?.readPicture($0) }
   }
 
@@ -162,8 +166,7 @@ package final class NativeNotes: NoteDisplay {
     let kept = keptKey(r, height: height, scale: scale)
     if let kept, let s = drawn?.readPicture(kept) { return s }
     guard
-      let l = try? laid(
-        r.note, width: r.width, folder: r.folder, look: r.look, dark: r.dark, refs: r.refs, hideHead: r.hideHead),
+      let l = try? laid(r),
       let s = draw(l, height: height, scale: CGFloat(scale), folder: r.folder, dark: r.dark)
     else { return nil }
     if let kept { drawn?.writePicture(s, kept) }
@@ -230,10 +233,7 @@ package final class NativeNotes: NoteDisplay {
 
   package func firstGlyphs(of notes: [NoteSizeRequest]) async throws -> [(size: CGSize, first: CGPoint?)?] {
     notes.map { n in
-      guard
-        let l = try? laid(
-          n.note, width: n.width, folder: n.folder, look: n.look, dark: n.dark, refs: n.refs, hideHead: n.hideHead)
-      else { return nil }
+      guard let l = try? laid(n) else { return nil }
       let size = l.size(height: nil)
       let o = l.origin(in: size)
       return (size, l.layout.firstGlyph.map { CGPoint(x: $0.x + o.x, y: $0.y + o.y) })
@@ -247,7 +247,8 @@ package final class NativeNotes: NoteDisplay {
   func prepare(_ notes: [(note: NoteSizeRequest, height: Double?, scale: Double)]) {
     let tasks = notes.map { r, height, scale in
       let k = key(
-        r.note, width: r.width, folder: r.folder, look: r.look, dark: r.dark, refs: r.refs, hideHead: r.hideHead)
+        r.note, width: r.width, folder: r.folder, look: r.look, dark: r.dark, refs: r.refs, hideHead: r.hideHead,
+        preamble: r.preamble)
       let task = Task.detached(priority: .userInitiated) { self.picture(r, height: height, scale: scale) }
       return (Ahead(key: k, height: height, scale: scale), task)
     }
@@ -265,11 +266,11 @@ package final class NativeNotes: NoteDisplay {
   /// What a Note is laid out by: whether its pictures at web addresses (`remote`: remoteState) are read changes it
   private func key(
     _ note: NoteBody, width: Double, folder: URL, look: String, dark: Bool, refs: [NoteRef], hideHead: Bool,
-    _ remote: [(String, Remote)]? = nil
+    preamble: String, _ remote: [(String, Remote)]? = nil
   ) -> Key {
     Key(
       note: note, width: width, folder: folder, look: look, dark: dark, refs: refs, hideHead: hideHead,
-      read: (remote ?? remoteState(note.markdown)).map(\.1))
+      preamble: preamble, read: (remote ?? remoteState(note.markdown)).map(\.1))
   }
 
   // MARK: laying out
@@ -321,24 +322,35 @@ package final class NativeNotes: NoteDisplay {
   }
 
   func laid(
-    _ note: NoteBody, width: Double, folder: URL, look: String, dark: Bool, refs: [NoteRef], hideHead: Bool
+    _ note: NoteBody, width: Double, folder: URL, look: String, dark: Bool, refs: [NoteRef], hideHead: Bool,
+    preamble: String = ""
   ) throws -> Laid {
     // the only errors a layout has: its assets' (every caller skips the card; said once here)
     do {
-      return try laidOut(note, width: width, folder: folder, look: look, dark: dark, refs: refs, hideHead: hideHead)
+      return try laidOut(
+        note, width: width, folder: folder, look: look, dark: dark, refs: refs, hideHead: hideHead, preamble: preamble)
     } catch {
       Self.report(error)
       throw error
     }
   }
 
+  func laid(_ r: NoteSizeRequest) throws -> Laid {
+    try laid(
+      r.note, width: r.width, folder: r.folder, look: r.look, dark: r.dark, refs: r.refs, hideHead: r.hideHead,
+      preamble: r.preamble)
+  }
+
   private func laidOut(
-    _ note: NoteBody, width: Double, folder: URL, look: String, dark: Bool, refs: [NoteRef], hideHead: Bool
+    _ note: NoteBody, width: Double, folder: URL, look: String, dark: Bool, refs: [NoteRef], hideHead: Bool,
+    preamble: String
   ) throws -> Laid {
     try MarkdownLooks.fonts.get()
     // its pictures at web addresses: laid out again once one is read or fails
     let remote = remoteState(note.markdown)
-    let key = key(note, width: width, folder: folder, look: look, dark: dark, refs: refs, hideHead: hideHead, remote)
+    let key = key(
+      note, width: width, folder: folder, look: look, dark: dark, refs: refs, hideHead: hideHead, preamble: preamble,
+      remote)
     if let hit = layouts.take(key) { return hit }
     var made = false
     defer { if !made { layouts.drop(key) } }
@@ -362,7 +374,7 @@ package final class NativeNotes: NoteDisplay {
     }
     let loading = Set(remote.filter { $0.1 == .loading }.map(\.0))
     let resources = Resources(
-      folder: folder, pictures: pictures, refs: refs, math: math, dark: dark, loading: loading)
+      folder: folder, pictures: pictures, refs: refs, math: math, dark: dark, loading: loading, preamble: preamble)
     var inner = max(1, CGFloat(width) - card.padding[1] - card.padding[3])
     // what the card's content measures across: its width, or the text's own when that sets the card's
     var across: CGFloat?
@@ -420,10 +432,7 @@ package final class NativeNotes: NoteDisplay {
   // MARK: measuring
 
   func measure(_ n: NoteSizeRequest) -> NoteMetrics? {
-    guard
-      let l = try? laid(
-        n.note, width: n.width, folder: n.folder, look: n.look, dark: n.dark, refs: n.refs, hideHead: n.hideHead)
-    else { return nil }
+    guard let l = try? laid(n) else { return nil }
     let size = l.size(height: nil)
     let o = l.origin(in: size)
     let refs = l.layout.drawnRefs.map {
@@ -576,6 +585,8 @@ package final class NativeNotes: NoteDisplay {
     let dark: Bool
     /// its pictures at web addresses still being read
     var loading: Set<String> = []
+    /// the macro definitions its formulas are typeset with (a Note collected from a paper: the paper's)
+    var preamble = ""
     var diagrams: DiagramRenderer? { math as? DiagramRenderer }
 
     func imageLoading(_ src: String) -> Bool { loading.contains(src) }
@@ -633,7 +644,7 @@ package final class NativeNotes: NoteDisplay {
       }
     }
 
-    var mathPreamble: String { "" }
+    var mathPreamble: String { preamble }
   }
 
   /// One for the app, every Note's and the canvas's code cards' (CanvasView.highlighter): its grammars' queries are
@@ -657,6 +668,7 @@ package final class NativeNotes: NoteDisplay {
     let dark: Bool
     let refs: [NoteRef]
     let hideHead: Bool
+    let preamble: String
     let read: [Remote]
 
     func hash(into h: inout Hasher) {

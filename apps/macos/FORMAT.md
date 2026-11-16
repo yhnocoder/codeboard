@@ -141,6 +141,12 @@ may be); neither is on a segment with a source. `language` is a VS Code language
 - `package: {name, version, path}`: an installed package (pip, conda), `path` inside its install folder.
 - `file: {path, hash?}`: a file in no git repository, `hash` a fingerprint of its content.
 
+Where a source's code is on a machine is not part of the format: the app keeps the repositories added there (a folder
+read in place, or a GitHub repository cloned into `repositories/<owner>/<name>`, whole or blobless) in its own data
+folder (Application Support/<its id>, `repositories.json`), never in the vault, and finds a `git` source by its
+`repository` (remote URLs compared without scheme, user, `.git` or the case of their host, and on GitHub of owner and
+name), else by the origin or folder of an absolute `checkout`, else by the commit (`CodeBoardWorkspace`, `Repositories`).
+
 What a card took from a resource is not a segment's source: it is the card's `source` (CardContent, a SourceAnchor).
 
 **note**: `text, layout?`: a card with a frame, a header and the board's Note text size. `text` is Markdown. `layout` is
@@ -239,13 +245,15 @@ Papers.resource/
 Both files are written and read like `board.json` (deterministic, strict, the same rules for growing: Versions, above),
 each with its own `version`, now 1. Names starting with `.` are not entries. Opening a vault writes nothing.
 
-**resource.json**: `version, id, preset: papers|web|files, fields: [Field]`. The preset says which columns and actions
-the list starts with; it does not limit what an entry may be. **Field** (a column the user added): `id, name, type:
+**resource.json**: `version, id, preset: papers|web|files|images|blank, fields: [Field]`. The preset says which columns
+and actions the list starts with (`images`: a grid of pictures; `blank`: the title and only the columns the user adds);
+it does not limit what an entry may be. **Field** (a column the user added): `id, name, type:
 text|number|date|checkbox`; an entry's value for it is in its `entry.json`.
 
-**entry.json**: `version, id, title, added, origin?, authors?: [String], year?, meta?: WebMeta, versions: [Version],
-highlights: [Highlight], sidenotes: [EntrySidenote], fields: {<field id>: String | Number | Bool}`. `added` and every
-time: ms since 1970. `origin` (where it came from, one of): `arxiv: {id}` (without a version: `1706.03762`), `doi: {doi}`,
+**entry.json**: `version, id, title, added, origin?, authors?: [String], year?, venue?, meta?: WebMeta, versions:
+[Version], highlights: [Highlight], sidenotes: [EntrySidenote], fields: {<field id>: String | Number | Bool}`. `added`
+and every time: ms since 1970. `venue`: where it was published, as its metadata says it (an arXiv paper's journal
+reference), absent when unknown. `origin` (where it came from, one of): `arxiv: {id}` (without a version: `1706.03762`), `doi: {doi}`,
 `web: {url}`. `meta` is what a page saved as a link keeps, exactly what a Web card keeps (its WebMeta), so a Web card made
 from the entry copies it as it is; its picture and icon are `{file}` (in `images/` in the entry's folder, as in a board
 package) or `{url}`, never a resource's. The web line saves one entry per address (the exact string, without its

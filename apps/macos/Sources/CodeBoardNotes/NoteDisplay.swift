@@ -10,17 +10,18 @@ public protocol NoteDisplay: AnyObject, Sendable {
 
   /// `note` on a card `width` wide (and `height` tall; nil: as tall as its content), its images resolving against
   /// `folder` (the board package or `.codeboard/shared`), as `scale` device pixels per point, in the board theme `look`
-  /// (its id: warm-ink, ink-wash) and its `dark` variant or not, its [[refs]] drawn as `refs` resolve them. Among the
-  /// requests waiting a higher `priority` goes first; a request cancelled before its turn draws nothing.
+  /// (its id: warm-ink, ink-wash) and its `dark` variant or not, its [[refs]] drawn as `refs` resolve them, its formulas
+  /// with `preamble`'s macros (a Note collected from a paper: the paper's). Among the requests waiting a higher
+  /// `priority` goes first; a request cancelled before its turn draws nothing.
   func snapshot(
     of note: NoteBody, width: Double, height: Double?, folder: URL, scale: Double, look: String, dark: Bool,
-    refs: [NoteRef], hideHead: Bool, priority: Int
+    refs: [NoteRef], hideHead: Bool, preamble: String, priority: Int
   ) async throws -> NoteSnapshot
 
   /// The picture `snapshot` would give, when it can be had without waiting for a turn
   func cached(
     of note: NoteBody, width: Double, height: Double?, folder: URL, scale: Double, look: String, dark: Bool,
-    refs: [NoteRef], hideHead: Bool
+    refs: [NoteRef], hideHead: Bool, preamble: String
   ) async -> NoteSnapshot?
 
   /// An SVG file drawn as the board's image card shows it, `width` pixels wide and as tall as its proportions make it, on
@@ -56,9 +57,12 @@ public struct NoteSizeRequest: Sendable {
   public var dark: Bool
   public var refs: [NoteRef]
   public var hideHead: Bool
+  /// The macro definitions its formulas are typeset with (a Note collected from a paper: the paper's)
+  public var preamble: String
 
   public init(
-    note: NoteBody, width: Double, folder: URL, look: String, dark: Bool, refs: [NoteRef] = [], hideHead: Bool = false
+    note: NoteBody, width: Double, folder: URL, look: String, dark: Bool, refs: [NoteRef] = [], hideHead: Bool = false,
+    preamble: String = ""
   ) {
     self.note = note
     self.width = width
@@ -67,5 +71,6 @@ public struct NoteSizeRequest: Sendable {
     self.dark = dark
     self.refs = refs
     self.hideHead = hideHead
+    self.preamble = preamble
   }
 }
