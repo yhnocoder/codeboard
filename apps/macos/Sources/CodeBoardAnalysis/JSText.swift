@@ -36,7 +36,7 @@ func jsTrimEnd(_ u: Units) -> Units {
 }
 
 package func jsTrim(_ s: String) -> String { string(jsTrim(s.units)) }
-func jsTrimStart(_ s: String) -> String { string(jsTrimStart(s.units)) }
+package func jsTrimStart(_ s: String) -> String { string(jsTrimStart(s.units)) }
 func jsTrimEnd(_ s: String) -> String { string(jsTrimEnd(s.units)) }
 
 /// `s.replace(/\s+/g, " ").trim()`: a text on one line

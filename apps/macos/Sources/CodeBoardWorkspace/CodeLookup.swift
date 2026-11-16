@@ -57,4 +57,11 @@ public final class CodeLookup: Sendable {
   public var recentFiles: [String] { recent.withLock { $0.keys } }
 
   public func langOf(_ abs: String) -> String { ws.langOf(abs) }
+
+  /// A path as shown and sent to the board: relative under the first root, else absolute
+  public func hostPath(_ abs: String) -> String {
+    let root0 = ws.roots.first ?? ""
+    let r = root0.isEmpty ? abs : NodePath.relative(root0, abs)
+    return !r.isEmpty && !r.hasPrefix("..") && !NodePath.isAbsolute(r) ? r : abs
+  }
 }

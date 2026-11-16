@@ -15,9 +15,9 @@ struct CallerText: Hashable, Sendable {
 }
 
 /// The next hop of a definition line: the expression assigned and the column of its last name
-struct Follow: Hashable, Sendable {
-  var expr: String
-  var col: Int
+public struct Follow: Hashable, Sendable {
+  public var expr: String
+  public var col: Int
 }
 
 extension CodeLookup {

@@ -88,8 +88,9 @@ let package = Package(
       dependencies: ["CodeBoardAnalysis", .product(name: "TreeSitterCore", package: "better-swift-markdown")],
       resources: [.copy("Fixtures")]),
     // What the host knows of the code folders a board reads, a port of packages/host's code logic: analyses kept by
-    // content, the workspace's name index, the background work's priorities, git and the segments' versions, over a
-    // CodeWorkspace (a folder on disk, FolderWorkspace). Foundation and CodeBoardAnalysis only
+    // content, the workspace's name index, the background work's priorities, git and the segments' versions, the
+    // language servers' answers and what the host makes of them, over a CodeWorkspace (a folder on disk,
+    // FolderWorkspace). Foundation and CodeBoardAnalysis only
     .target(name: "CodeBoardWorkspace", dependencies: ["CodeBoardAnalysis"]),
     .testTarget(
       name: "CodeBoardWorkspaceTests", dependencies: ["CodeBoardWorkspace", "CodeBoardAnalysis"], exclude: ["Fixtures"]),
