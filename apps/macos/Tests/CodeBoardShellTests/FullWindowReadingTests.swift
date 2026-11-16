@@ -2,6 +2,7 @@ import AppKit
 import CodeBoardModel
 import CodeBoardReading
 import Foundation
+import PDFKit
 import Testing
 
 @testable import CodeBoardCanvas
@@ -263,6 +264,30 @@ import Testing
     for doc in w.panes.documents.values { doc.flush() }
     w.close(keepingVault: true)
     #expect(writes.changed(before, writes.files(v.root)) == [])
+  }
+
+  /// A PDF added to a resource opens in a tab whose view takes the keys: Edit ▸ Copy copies its selection, and the tab
+  /// keys still reach the pane through it
+  @Test func aPDFTabTakesTheKeysAndCopyAndCloseTabReachItThere() async throws {
+    let w = try await env.opened()
+    defer { w.close() }
+    let p = try parts(w)
+    w.shell.pasteboard = NSPasteboard(name: NSPasteboard.Name("window-pdf-\(UUID().uuidString)"))
+    let pdf = try ShellPDFTests().outside("Field notes.pdf", "The river runs north.")
+    defer { try? FileManager.default.removeItem(at: pdf.deletingLastPathComponent()) }
+    let r = try w.vault.newResource(in: "", title: "Papers", preset: .papers)
+    w.shell.apply(.success(try w.vault.tree()))
+    #expect(w.shell.addPDFs([pdf], to: r))
+    await settle(w, "the PDF tab shown") { visible(p, w) && p.pane.subviews.count == 1 }
+    await env.until("the keys in its view", in: w) { p.pane.hasKeys && w.window.firstResponder !== p.pane }
+    let pages = try #require(view("ui-pdfview", in: p.pane) as? PDFView)
+    let page = try #require(pages.document?.page(at: 0))
+    pages.setCurrentSelection(page.selection(for: (page.string! as NSString).range(of: "river")), animate: false)
+    #expect(w.window.firstResponder?.tryToPerform(#selector(NSText.copy(_:)), with: nil) == true)
+    #expect(w.shell.pasteboard.string(forType: .string) == "river")
+    #expect(w.window.firstResponder?.tryToPerform(NSSelectorFromString("closeTab:"), with: nil) == true)
+    await settle(w, "closed") { p.pane.subviews.isEmpty }
+    #expect(w.shell.reading.tabs.isEmpty && !w.shell.tabs.isEmpty)
   }
 
   /// View ▸ Show Reading Pane is ⌃⌘R, which nothing else takes; moving it to the other side has no key

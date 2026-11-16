@@ -2,6 +2,7 @@ import AppKit
 import CodeBoardCanvas
 import CodeBoardReading
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// The D2 window: sidebar on the window's own warm-grey ground, the board and the reading pane as floating rounded
 /// panels, each with its tabs in its top bar. Traffic lights, the sidebar toggle, back / forward and both panels' tabs
@@ -23,6 +24,14 @@ import SwiftUI
   window.contentView = root
   let panes = root.panes
   shell.confirm = { [weak window, weak panes] alert in await panes?.confirm(alert, window) ?? false }
+  shell.askPDFs = { [weak window] in
+    guard let window else { return [] }
+    let panel = NSOpenPanel()
+    panel.allowedContentTypes = [.pdf]
+    panel.allowsMultipleSelection = true
+    panel.prompt = "Add"
+    return await panel.beginSheetModal(for: window) == .OK ? panel.urls : []
+  }
   if !window.setFrameUsingName("main") { window.center() }
   window.setFrameAutosaveName("main")
   return (window, panes)
@@ -80,7 +89,13 @@ private final class RootView: NSView {
     readingView = ReadingPaneView(pane: shell.reading)
     reading = Panel(
       shell: shell, content: readingView, tabs: ReadingTabRow(rootView: TabStrip(source: shell.reading)),
-      sync: { [weak readingView] in readingView?.sync() })
+      sync: { [weak readingView] in
+        // the board's bar look reaches the tabs' bars
+        let t = shell.look
+        let look = t.id == .inkWash ? ReadingBarLook.inkWash(dark: t.dark) : .warmInk(dark: t.dark)
+        if shell.reading.barLook != look { shell.reading.barLook = look }
+        readingView?.sync()
+      })
     sidebar = ChromeHost(rootView: Sidebar(shell: shell))
     controls = ChromeHost(rootView: TitleControls(shell: shell))
     edge = SidebarEdge(shell: shell)

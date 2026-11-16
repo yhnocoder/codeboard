@@ -278,8 +278,10 @@ import Testing
     let r = try #require(shell.tree?.resources.first)
     let menu = shell.menu(resource: r)
     #expect(
-      menu.map { $0?.title ?? "-" } == ["Rename", "Move to", "-", "Reveal in Finder", "Copy Path", "-", "Delete"])
-    menu[4]?.run()
+      menu.map { $0?.title ?? "-" } == [
+        "Add PDF…", "-", "Rename", "Move to", "-", "Reveal in Finder", "Copy Path", "-", "Delete",
+      ])
+    menu[6]?.run()
     #expect(
       pb.string(forType: .string)
         == vault.url(of: r.path).appending(path: Vault.resourceFileName).path(percentEncoded: false))
@@ -288,7 +290,7 @@ import Testing
     #expect(pb.string(forType: .string) == broken.appending(path: Vault.resourceFileName).path(percentEncoded: false))
 
     // renamed in place
-    menu[0]?.run()
+    menu[2]?.run()
     #expect(shell.renaming == .resource(r.id))
     shell.renaming = nil
     shell.rename(resource: r, to: "Papers 2017")
