@@ -238,7 +238,8 @@ extension WebPageView {
     }
     highlightBar.isHidden = true
     let shown = AnnotationPop.Shown(
-      title: web.title.flatMap { $0.isEmpty ? nil : $0 } ?? e.title, range: nil, notes: notes(of: id, in: e),
+      title: web.title.flatMap { $0.isEmpty ? nil : $0 } ?? e.title, range: nil,
+      notes: notes(of: id, in: e).map { AnnotationPop.Note(id: $0.id, note: $0.note) },
       write: write, folder: vault.url(of: path), look: context.bar,
       maxHeight: max(120, min(560, floatArea.height - 16)))
     pop?.show(shown)
