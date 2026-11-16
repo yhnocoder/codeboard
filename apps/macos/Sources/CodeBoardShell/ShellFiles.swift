@@ -181,93 +181,55 @@ extension Shell {
   }
 
   /// PDF files (chosen in Add PDF…'s panel, or dropped on the resource's row) copied into the resource, never over
-  /// anything, then opened in the reading pane; whether any was. In a resource of papers each is a paper entry at once
-  /// (`ReadingPane.addPaper`), titled from the PDF; elsewhere each is an entry alone under a name nothing there has
+  /// anything, then opened in the reading pane; whether any was. In a resource of papers they are paper entries at once,
+  /// all or none (`ReadingPane.addPapers`); elsewhere each is an entry alone under a name nothing there has
   @discardableResult
   public func addPDFs(_ urls: [URL], to resource: VaultResource) -> Bool {
     let pdfs = urls.filter { UTType(filenameExtension: $0.pathExtension)?.conforms(to: .pdf) == true }
     guard !pdfs.isEmpty else { return false }
     var added: [PDFTarget] = []
     files { v in
-      for url in pdfs {
-        if resource.preset == .papers {
-          let e = try reading.addPaper(pdf: url, to: resource).found.entry
-          added.append(.entry(e.id, version: e.versions[0].id))
-        } else {
-          added.append(.file(try v.addFile(url, to: resource.path)))
+      if resource.preset == .papers {
+        added = try reading.addPapers(pdfs: pdfs, to: resource).map {
+          .entry($0.found.entry.id, version: $0.found.entry.versions[0].id)
         }
+      } else {
+        for url in pdfs { added.append(.file(try v.addFile(url, to: resource.path))) }
       }
     }
     for t in added { openPDF(t) }
     return !added.isEmpty
   }
 
-  /// Add arXiv or DOI Paper…'s Add: the paper `text` names (an arXiv id or address, or a DOI) added to `resource`. One
-  /// the vault has an entry for is that entry, opened at the version asked for (else its newest), never a second
-  /// entry; else its metadata (and an arXiv paper's PDF) come from arXiv (`reading.arxiv`) or doi.org (`reading.doi`)
-  /// and make a new entry of `resource`. An arXiv paper opens in a PDF tab, `translate`: that version's translation
-  /// queued too; a DOI's entry has no PDF, so its resource's list opens. Nil when it went through, else what went wrong
-  /// in plain words
+  /// Add arXiv or DOI Paper…'s Add: the paper `text` names (an arXiv id or address, or a DOI) added to `resource` by
+  /// `ReadingPane.addPaper`: one the vault has an entry for is that entry, wherever it is, never a second one. It opens
+  /// at the version asked for (else its newest PDF), `translate`: an arXiv version's translation queued too; an entry
+  /// with no PDF (a DOI's) has the list of its resource opened. Nil when it went through, else what went wrong in plain
+  /// words
   public func addPaper(_ text: String, translate: Bool, to resource: VaultResource) async -> String? {
     guard vault != nil else { return "No vault is open." }
-    switch PaperID.parse(text) {
-    case .arxiv(let id, let asked)?: return await addArxiv(id, asked, translate: translate, to: resource)
-    case .doi(let doi)?: return await addDOI(doi, to: resource)
-    case nil: return "“\(text)” is not an arXiv id, a DOI or an address of either."
+    guard let id = PaperID.parse(text) else { return "“\(text)” is not an arXiv id, a DOI or an address of either." }
+    let found: EntryIndex.Found
+    do {
+      let (f, isNew) = try await reading.addPaper(id, to: resource)
+      // the tree read again, as after any change of the vault's files
+      if isNew { files { _ in } }
+      found = f
+    } catch {
+      return "\(error)"
     }
-  }
-
-  private func addArxiv(_ id: String, _ asked: Int?, translate: Bool, to resource: VaultResource) async -> String? {
-    if let found = reading.entries.arxiv(id) {
-      let originals = found.entry.versions.filter { $0.of == nil }
-      guard
-        let v = originals.first(where: { asked != nil && Arxiv.number($0) == asked })
-          ?? originals.max(by: { (Arxiv.number($0) ?? 0) < (Arxiv.number($1) ?? 0) })
-      else { return "\(found.entry.title) has no version to open." }
+    let asked: Int? = if case .arxiv(_, let v) = id { v } else { nil }
+    let originals = found.entry.versions.filter { v in if case .pdf = v.content { v.of == nil } else { false } }
+    if let v = originals.first(where: { asked != nil && Arxiv.number($0) == asked })
+      ?? originals.max(by: { (Arxiv.number($0) ?? 0, $0.added) < (Arxiv.number($1) ?? 0, $1.added) })
+    {
       openPDF(.entry(found.entry.id, version: v.id))
-      if translate, !found.entry.versions.contains(where: { $0.of == v.id }) { queueTranslation(found.entry, v) }
-      return nil
-    }
-    let arxiv = reading.arxiv
-    let made: (Entry, String)
-    do {
-      let paper = try await arxiv.paper(id)
-      let n = asked ?? paper.latest
-      let pdf = try await arxiv.pdf(id, version: n)
-      var out: (Entry, String)?
-      guard files({ v in out = try v.newEntry(paper, version: n, pdf: pdf, in: resource.path) }), let out else {
-        return fileError ?? "The paper could not be added."
+      if translate, case .arxiv = id, !found.entry.versions.contains(where: { $0.of == v.id }) {
+        queueTranslation(found.entry, v)
       }
-      made = out
-    } catch {
-      return error.description
+    } else if let r = tree?.allFolders.flatMap(\.resources).first(where: { found.path.hasPrefix($0.path + "/") }) {
+      openResource(r)
     }
-    openPDF(.entry(made.0.id, version: made.0.versions[0].id))
-    if translate { queueTranslation(made.0, made.0.versions[0]) }
-    return nil
-  }
-
-  /// A DOI's paper: the entry the vault has for it (its newest PDF opened, when it has one), else a new one without a
-  /// version; the list of the resource it is in opened
-  private func addDOI(_ doi: String, to resource: VaultResource) async -> String? {
-    if let found = reading.entries.doi(doi) {
-      let pdf = found.entry.versions.last { v in if case .pdf = v.content { v.of == nil } else { false } }
-      if let pdf {
-        openPDF(.entry(found.entry.id, version: pdf.id))
-      } else if let r = tree?.allFolders.flatMap(\.resources).first(where: { found.path.hasPrefix($0.path + "/") }) {
-        openResource(r)
-      }
-      return nil
-    }
-    do {
-      let paper = try await reading.doi.paper(doi)
-      guard files({ v in _ = try v.newEntry(paper, in: resource.path) }) else {
-        return fileError ?? "The paper could not be added."
-      }
-    } catch {
-      return error.description
-    }
-    openResource(resource)
     return nil
   }
 

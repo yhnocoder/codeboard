@@ -43,11 +43,18 @@ public enum DOIError: Error, Equatable, CustomStringConvertible {
   }
 }
 
-/// What a paper is known by, read from what the user typed or pasted
-public enum PaperID: Equatable, Sendable {
+/// What a paper is known by, read from what the user typed or pasted; said as `arXiv 1706.03762`, `DOI 10.1145/…`
+public enum PaperID: Equatable, Sendable, CustomStringConvertible {
   /// An arXiv id without its version, and the version asked for
   case arxiv(String, version: Int?)
   case doi(String)
+
+  public var description: String {
+    switch self {
+    case .arxiv(let id, _): "arXiv \(id)"
+    case .doi(let doi): "DOI \(doi)"
+    }
+  }
 
   /// An arXiv id or address, or a DOI (an arXiv DOI, `10.48550/arXiv.<id>`, is that arXiv paper); nil when it is
   /// neither

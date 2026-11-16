@@ -6,6 +6,15 @@ import Testing
 
 @testable import CodeBoardReading
 
+extension ReadingPane {
+  /// One PDF, as a drop of one adds it
+  fileprivate func addPaper(pdf url: URL, to r: VaultResource) throws -> (
+    found: EntryIndex.Found, lookup: Task<Void, Never>?
+  ) {
+    try addPapers(pdfs: [url], to: r)[0]
+  }
+}
+
 // A PDF added to a resource of papers: an entry at once, titled from the PDF, then filled in from arXiv in the
 // background when it carries an id. Made-up papers only; no network
 @MainActor @Suite(.serialized) struct PaperPDFTests {
@@ -114,5 +123,35 @@ import Testing
     try v.vault.write(mine, at: renamed.found.path)
     await renamed.lookup?.value
     #expect(try v.vault.entry(at: renamed.found.path) == mine)
+  }
+
+  @Test func aPDFThatCannotBeReadAddsNoneAndAFileAloneGoesBackWhereItWas() throws {
+    let v = try PDFVault()
+    defer { v.remove() }
+    let pane = try pane(v)
+    let fine = try outside(makePDF(["Rivers run north."]))
+    let locked = try outside(makePDF(["Birds rest."]), "locked.pdf")
+    defer { for u in [fine, locked] { try? fm.removeItem(at: u.deletingLastPathComponent()) } }
+    try fm.setAttributes([.posixPermissions: 0], ofItemAtPath: locked.path)
+    let before = v.files()
+    #expect(throws: VaultError.self) {
+      try pane.addPapers(pdfs: [fine, v.vault.url(of: v.file), locked], to: v.resource)
+    }
+    #expect(v.files() == before && pane.entries.all.isEmpty)
+    #expect(try v.vault.items(in: v.resource.path) == [.file(path: v.file)])
+  }
+
+  @Test func aPaperTheVaultHasIsFoundWhereverItIsAndNothingIsAsked() async throws {
+    let v = try PDFVault()
+    defer { v.remove() }
+    let other = try v.vault.newResource(in: "", title: "Reading", preset: .papers)
+    let (e, path) = try v.vault.newEntry(
+      DOIPaper(doi: "10.1145/Quiet", title: "Quiet Rivers", authors: [], year: nil), in: other.path)
+    let pane = try pane(v)
+    pane.doi = DOI { _ in throw URLError(.notConnectedToInternet) }
+    let (found, isNew) = try await pane.addPaper(.doi("10.1145/quiet"), to: v.resource)
+    #expect(!isNew && found == EntryIndex.Found(entry: e, path: path))
+    await #expect(throws: DOIError.self) { try await pane.addPaper(.doi("10.1145/other"), to: v.resource) }
+    #expect(try v.vault.items(in: v.resource.path) == [.file(path: v.file)])
   }
 }
