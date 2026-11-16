@@ -10,6 +10,10 @@
       "changed": "whole",
       "important": "whole"
     },
+    "CodeBoardAnalysisTests": {
+      "changed": "whole",
+      "important": "whole"
+    },
     "CodeBoardMarkdownTests": {
       "changed": "whole",
       "important": [
