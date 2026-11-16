@@ -1,0 +1,596 @@
+{
+  "calls": [
+    {
+      "args": [
+        {
+          "text": "a[k]"
+        },
+        {
+          "text": "b[k]"
+        }
+      ],
+      "assigned": [
+        "out[k]"
+      ],
+      "col": 13,
+      "end": 20,
+      "line": 12,
+      "loop": true,
+      "name": "combine"
+    },
+    {
+      "args": [
+        {
+          "name": "out",
+          "text": "out"
+        },
+        {
+          "text": "a[k]"
+        }
+      ],
+      "col": 17,
+      "end": 26,
+      "line": 13,
+      "loop": true,
+      "name": "atomicAdd"
+    },
+    {
+      "args": [
+        {
+          "name": "i",
+          "text": "i"
+        }
+      ],
+      "assigned": [
+        "i"
+      ],
+      "col": 22,
+      "end": 26,
+      "line": 15,
+      "loop": true,
+      "name": "next"
+    },
+    {
+      "args": [],
+      "col": 7,
+      "end": 11,
+      "line": 16,
+      "loop": true,
+      "name": "sync"
+    },
+    {
+      "args": [
+        {
+          "name": "i",
+          "text": "i"
+        }
+      ],
+      "col": 24,
+      "end": 28,
+      "line": 16,
+      "loop": true,
+      "name": "cond"
+    },
+    {
+      "args": [
+        {
+          "name": "x",
+          "text": "x"
+        }
+      ],
+      "col": 42,
+      "end": 48,
+      "line": 17,
+      "loop": true,
+      "name": "helper"
+    },
+    {
+      "args": [
+        {
+          "text": "f(1)"
+        },
+        {
+          "text": "compute(a, b)"
+        }
+      ],
+      "assigned": [
+        "r"
+      ],
+      "col": 15,
+      "end": 18,
+      "line": 18,
+      "loop": false,
+      "name": "max",
+      "recv": "std"
+    },
+    {
+      "args": [
+        {
+          "text": "1"
+        }
+      ],
+      "col": 19,
+      "end": 20,
+      "line": 18,
+      "loop": false,
+      "name": "f"
+    },
+    {
+      "args": [
+        {
+          "name": "a",
+          "text": "a"
+        },
+        {
+          "name": "b",
+          "text": "b"
+        }
+      ],
+      "col": 25,
+      "end": 32,
+      "line": 18,
+      "loop": false,
+      "name": "compute"
+    },
+    {
+      "args": [],
+      "col": 16,
+      "end": 29,
+      "line": 25,
+      "loop": false,
+      "name": "default_scale"
+    },
+    {
+      "args": [],
+      "col": 32,
+      "end": 38,
+      "line": 26,
+      "loop": false,
+      "name": "stride"
+    },
+    {
+      "args": [],
+      "col": 28,
+      "end": 29,
+      "line": 27,
+      "loop": false,
+      "name": "h"
+    },
+    {
+      "args": [
+        {
+          "name": "n",
+          "text": "n"
+        },
+        {
+          "text": "256"
+        }
+      ],
+      "col": 12,
+      "end": 18,
+      "line": 33,
+      "loop": false,
+      "name": "div_up"
+    },
+    {
+      "args": [
+        {
+          "name": "out",
+          "text": "out"
+        },
+        {
+          "name": "a",
+          "text": "a"
+        },
+        {
+          "name": "b",
+          "text": "b"
+        },
+        {
+          "name": "n",
+          "text": "n"
+        }
+      ],
+      "col": 10,
+      "end": 20,
+      "launch": "<<<",
+      "line": 34,
+      "loop": false,
+      "name": "add_kernel",
+      "recv": "detail"
+    },
+    {
+      "args": [],
+      "col": 2,
+      "end": 30,
+      "line": 35,
+      "loop": false,
+      "name": "C10_CUDA_KERNEL_LAUNCH_CHECK"
+    },
+    {
+      "args": [
+        {
+          "name": "n",
+          "text": "n"
+        }
+      ],
+      "col": 17,
+      "end": 22,
+      "line": 36,
+      "loop": false,
+      "name": "items"
+    },
+    {
+      "args": [
+        {
+          "name": "x",
+          "text": "x"
+        }
+      ],
+      "col": 27,
+      "end": 34,
+      "line": 36,
+      "loop": true,
+      "name": "process"
+    },
+    {
+      "args": [],
+      "col": 14,
+      "end": 18,
+      "line": 37,
+      "loop": false,
+      "name": "size",
+      "recv": "p"
+    },
+    {
+      "args": [
+        {
+          "name": "n",
+          "text": "n"
+        }
+      ],
+      "assigned": [
+        "q"
+      ],
+      "col": 12,
+      "end": 20,
+      "line": 38,
+      "loop": false,
+      "name": "make_ptr"
+    },
+    {
+      "args": [
+        {
+          "text": "1"
+        },
+        {
+          "text": "\"s\""
+        }
+      ],
+      "assigned": [
+        "value"
+      ],
+      "col": 15,
+      "end": 21,
+      "line": 39,
+      "loop": false,
+      "name": "method",
+      "recv": "obj"
+    },
+    {
+      "args": [
+        {
+          "name": "x",
+          "text": "x"
+        }
+      ],
+      "col": 33,
+      "end": 45,
+      "line": 45,
+      "loop": false,
+      "name": "launch_count",
+      "recv": "flash"
+    },
+    {
+      "args": [
+        {
+          "text": "0"
+        }
+      ],
+      "col": 26,
+      "end": 33,
+      "line": 49,
+      "loop": false,
+      "name": "hipInit"
+    },
+    {
+      "args": [],
+      "col": 18,
+      "end": 22,
+      "line": 54,
+      "loop": false,
+      "name": "init"
+    },
+    {
+      "args": [
+        {
+          "name": "u",
+          "text": "u"
+        }
+      ],
+      "col": 41,
+      "end": 48,
+      "line": 55,
+      "loop": false,
+      "name": "convert"
+    },
+    {
+      "args": [],
+      "col": 20,
+      "end": 27,
+      "line": 58,
+      "loop": false,
+      "name": "cleanup"
+    }
+  ],
+  "flags": [
+    2,
+    0,
+    0,
+    1,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    1,
+    2,
+    2,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    1,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    1
+  ],
+  "imports": [],
+  "lang": "cuda-cpp",
+  "mainBlocks": [],
+  "symbols": [
+    {
+      "defLine": 9,
+      "end": 19,
+      "kind": "def",
+      "name": "add_kernel",
+      "params": [
+        {
+          "kind": "pos",
+          "name": "out"
+        },
+        {
+          "kind": "pos",
+          "name": "a"
+        },
+        {
+          "kind": "pos",
+          "name": "b"
+        },
+        {
+          "kind": "pos",
+          "name": "n"
+        }
+      ],
+      "qual": "flash::detail::add_kernel",
+      "sig": "__global__ void add_kernel(T* __restrict__ out, const T* a, const T* b, int n)",
+      "start": 8
+    },
+    {
+      "defLine": 23,
+      "end": 28,
+      "kind": "class",
+      "name": "Params",
+      "params": [],
+      "qual": "flash::detail::Params",
+      "sig": "struct Params",
+      "start": 23
+    },
+    {
+      "defLine": 26,
+      "end": 26,
+      "kind": "def",
+      "name": "size",
+      "params": [],
+      "parent": "flash::detail::Params",
+      "qual": "flash::detail::Params::size",
+      "sig": "int size() const",
+      "start": 26
+    },
+    {
+      "defLine": 27,
+      "end": 27,
+      "kind": "class",
+      "name": "Inner",
+      "params": [],
+      "parent": "flash::detail::Params",
+      "qual": "flash::detail::Params::Inner",
+      "sig": "struct Inner",
+      "start": 27
+    },
+    {
+      "defLine": 27,
+      "end": 27,
+      "kind": "def",
+      "name": "g",
+      "params": [],
+      "parent": "flash::detail::Params::Inner",
+      "qual": "flash::detail::Params::Inner::g",
+      "sig": "void g()",
+      "start": 27
+    },
+    {
+      "defLine": 32,
+      "end": 40,
+      "kind": "def",
+      "name": "launch",
+      "params": [
+        {
+          "kind": "pos",
+          "name": "out"
+        },
+        {
+          "kind": "pos",
+          "name": "a"
+        },
+        {
+          "kind": "pos",
+          "name": "b"
+        },
+        {
+          "kind": "pos",
+          "name": "n"
+        },
+        {
+          "kind": "pos",
+          "name": "s"
+        }
+      ],
+      "qual": "flash::launch",
+      "sig": "void launch(float* out, const float* a, const float* b, int n, cudaStream_t s)",
+      "start": 32
+    },
+    {
+      "defLine": 45,
+      "end": 45,
+      "kind": "def",
+      "name": "c_api",
+      "params": [
+        {
+          "kind": "pos",
+          "name": "x"
+        }
+      ],
+      "qual": "c_api",
+      "sig": "int c_api(int x)",
+      "start": 45
+    },
+    {
+      "defLine": 49,
+      "end": 49,
+      "kind": "def",
+      "name": "rocm_only",
+      "params": [],
+      "qual": "rocm_only",
+      "sig": "static void rocm_only()",
+      "start": 49
+    },
+    {
+      "defLine": 52,
+      "end": 57,
+      "kind": "class",
+      "name": "Engine",
+      "params": [],
+      "qual": "Engine",
+      "sig": "class Engine : public Base",
+      "start": 52
+    },
+    {
+      "defLine": 54,
+      "end": 54,
+      "kind": "def",
+      "name": "Engine",
+      "params": [],
+      "parent": "Engine",
+      "qual": "Engine::Engine",
+      "sig": "Engine() : Base(init())",
+      "start": 54
+    },
+    {
+      "defLine": 55,
+      "end": 55,
+      "kind": "def",
+      "name": "get",
+      "params": [
+        {
+          "kind": "pos",
+          "name": "u"
+        }
+      ],
+      "parent": "Engine",
+      "qual": "Engine::get",
+      "sig": "U get(U u)",
+      "start": 55
+    },
+    {
+      "defLine": 58,
+      "end": 58,
+      "kind": "def",
+      "name": "~Engine",
+      "params": [],
+      "qual": "Engine::~Engine",
+      "sig": "Engine::~Engine()",
+      "start": 58
+    },
+    {
+      "defLine": 59,
+      "end": 59,
+      "kind": "def",
+      "name": "helper",
+      "params": [
+        {
+          "kind": "pos",
+          "name": "v"
+        }
+      ],
+      "qual": "Engine::helper",
+      "sig": "int Engine::helper(int v)",
+      "start": 59
+    }
+  ],
+  "trailing": {
+    "10": 50,
+    "30": 3,
+    "42": 3
+  }
+}

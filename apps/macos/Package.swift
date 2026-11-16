@@ -86,3 +86,26 @@ package.targets += [
   .executableTarget(name: "MarkdownDemo", dependencies: ["MarkdownDemoKit"]),
   .testTarget(name: "MarkdownDemoKitTests", dependencies: ["MarkdownDemoKit", "CodeBoardModel"]),
 ]
+
+// Code analysis for reading code (symbols, calls, selections, peek, cross-language boundaries), a port of
+// packages/analysis with its tests as the specification. Foundation and tree-sitter only, with its own small
+// tree-sitter wrapper instead of CodeBoardSyntax's, so that it stands alone; no target depends on it yet
+package.targets += [
+  .target(
+    name: "CodeBoardAnalysis",
+    dependencies: [
+      .product(name: "TreeSitter", package: "tree-sitter"),
+      .product(name: "TreeSitterPython", package: "tree-sitter-python"),
+      .product(name: "TreeSitterRust", package: "tree-sitter-rust"),
+      .product(name: "TreeSitterCUDA", package: "tree-sitter-cuda"),
+      "CTreeSitterScanners",
+    ],
+    swiftSettings: [.treatAllWarnings(as: .error)]
+  ),
+  .testTarget(
+    name: "CodeBoardAnalysisTests",
+    dependencies: ["CodeBoardAnalysis"],
+    resources: [.copy("Fixtures")],
+    swiftSettings: [.treatAllWarnings(as: .error)]
+  ),
+]

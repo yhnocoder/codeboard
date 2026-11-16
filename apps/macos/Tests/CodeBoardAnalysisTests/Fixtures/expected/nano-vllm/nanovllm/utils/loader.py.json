@@ -1,0 +1,298 @@
+{
+  "calls": [
+    {
+      "args": [
+        {
+          "name": "loaded_weight",
+          "text": "loaded_weight"
+        }
+      ],
+      "col": 15,
+      "end": 20,
+      "line": 9,
+      "loop": false,
+      "name": "copy_",
+      "recv": "param.data"
+    },
+    {
+      "args": [
+        {
+          "text": "os.path.join(path, \"*.safetensors\")"
+        }
+      ],
+      "col": 16,
+      "end": 20,
+      "line": 14,
+      "loop": false,
+      "name": "glob"
+    },
+    {
+      "args": [
+        {
+          "name": "path",
+          "text": "path"
+        },
+        {
+          "text": "\"*.safetensors\""
+        }
+      ],
+      "col": 29,
+      "end": 33,
+      "line": 14,
+      "loop": false,
+      "name": "join",
+      "recv": "os.path"
+    },
+    {
+      "args": [
+        {
+          "name": "file",
+          "text": "file"
+        },
+        {
+          "text": "\"pt\""
+        },
+        {
+          "text": "\"cpu\""
+        }
+      ],
+      "col": 13,
+      "end": 22,
+      "line": 15,
+      "loop": true,
+      "name": "safe_open"
+    },
+    {
+      "args": [],
+      "col": 33,
+      "end": 37,
+      "line": 16,
+      "loop": true,
+      "name": "keys",
+      "recv": "f"
+    },
+    {
+      "args": [
+        {
+          "name": "k",
+          "text": "k"
+        },
+        {
+          "name": "v",
+          "text": "v"
+        }
+      ],
+      "assigned": [
+        "param_name"
+      ],
+      "col": 49,
+      "end": 56,
+      "line": 20,
+      "loop": true,
+      "name": "replace",
+      "recv": "weight_name"
+    },
+    {
+      "args": [
+        {
+          "name": "param_name",
+          "text": "param_name"
+        }
+      ],
+      "assigned": [
+        "param"
+      ],
+      "col": 38,
+      "end": 51,
+      "line": 21,
+      "loop": true,
+      "name": "get_parameter",
+      "recv": "model"
+    },
+    {
+      "args": [
+        {
+          "name": "param",
+          "text": "param"
+        },
+        {
+          "text": "f.get_tensor(weight_name)"
+        },
+        {
+          "name": "shard_id",
+          "text": "shard_id"
+        }
+      ],
+      "col": 24,
+      "end": 37,
+      "line": 23,
+      "loop": true,
+      "name": "weight_loader"
+    },
+    {
+      "args": [
+        {
+          "name": "weight_name",
+          "text": "weight_name"
+        }
+      ],
+      "col": 47,
+      "end": 57,
+      "line": 23,
+      "loop": true,
+      "name": "get_tensor",
+      "recv": "f"
+    },
+    {
+      "args": [
+        {
+          "name": "weight_name",
+          "text": "weight_name"
+        }
+      ],
+      "assigned": [
+        "param"
+      ],
+      "col": 34,
+      "end": 47,
+      "line": 26,
+      "loop": true,
+      "name": "get_parameter",
+      "recv": "model"
+    },
+    {
+      "args": [
+        {
+          "name": "param",
+          "text": "param"
+        },
+        {
+          "text": "f.get_tensor(weight_name)"
+        }
+      ],
+      "col": 20,
+      "end": 33,
+      "line": 28,
+      "loop": true,
+      "name": "weight_loader"
+    },
+    {
+      "args": [
+        {
+          "name": "weight_name",
+          "text": "weight_name"
+        }
+      ],
+      "col": 43,
+      "end": 53,
+      "line": 28,
+      "loop": true,
+      "name": "get_tensor",
+      "recv": "f"
+    }
+  ],
+  "flags": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    1,
+    1,
+    0,
+    0,
+    1,
+    1,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    1
+  ],
+  "imports": [
+    {
+      "line": 1,
+      "module": "os",
+      "name": "os"
+    },
+    {
+      "from": true,
+      "line": 2,
+      "module": "glob",
+      "name": "glob"
+    },
+    {
+      "line": 3,
+      "module": "torch",
+      "name": "torch"
+    },
+    {
+      "from": true,
+      "line": 4,
+      "module": "torch",
+      "name": "nn"
+    },
+    {
+      "from": true,
+      "line": 5,
+      "module": "safetensors",
+      "name": "safe_open"
+    }
+  ],
+  "lang": "python",
+  "mainBlocks": [],
+  "symbols": [
+    {
+      "defLine": 8,
+      "end": 9,
+      "kind": "def",
+      "name": "default_weight_loader",
+      "params": [
+        {
+          "kind": "pos",
+          "name": "param"
+        },
+        {
+          "kind": "pos",
+          "name": "loaded_weight"
+        }
+      ],
+      "qual": "default_weight_loader",
+      "sig": "def default_weight_loader(param: nn.Parameter, loaded_weight: torch.Tensor)",
+      "start": 8
+    },
+    {
+      "defLine": 12,
+      "end": 28,
+      "kind": "def",
+      "name": "load_model",
+      "params": [
+        {
+          "kind": "pos",
+          "name": "model"
+        },
+        {
+          "kind": "pos",
+          "name": "path"
+        }
+      ],
+      "qual": "load_model",
+      "sig": "def load_model(model: nn.Module, path: str)",
+      "start": 12
+    }
+  ],
+  "trailing": {}
+}

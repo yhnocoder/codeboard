@@ -1,0 +1,763 @@
+{
+  "calls": [
+    {
+      "args": [
+        {
+          "text": "0"
+        }
+      ],
+      "assigned": [
+        "idx"
+      ],
+      "col": 13,
+      "end": 23,
+      "line": 21,
+      "loop": false,
+      "name": "program_id",
+      "recv": "tl"
+    },
+    {
+      "args": [
+        {
+          "text": "slot_mapping_ptr + idx"
+        }
+      ],
+      "assigned": [
+        "slot"
+      ],
+      "col": 14,
+      "end": 18,
+      "line": 22,
+      "loop": false,
+      "name": "load",
+      "recv": "tl"
+    },
+    {
+      "args": [
+        {
+          "text": "0"
+        },
+        {
+          "name": "D",
+          "text": "D"
+        }
+      ],
+      "col": 40,
+      "end": 46,
+      "line": 24,
+      "loop": false,
+      "name": "arange",
+      "recv": "tl"
+    },
+    {
+      "args": [
+        {
+          "text": "0"
+        },
+        {
+          "name": "D",
+          "text": "D"
+        }
+      ],
+      "col": 44,
+      "end": 50,
+      "line": 25,
+      "loop": false,
+      "name": "arange",
+      "recv": "tl"
+    },
+    {
+      "args": [
+        {
+          "text": "key_ptr + key_offsets"
+        }
+      ],
+      "assigned": [
+        "key"
+      ],
+      "col": 13,
+      "end": 17,
+      "line": 26,
+      "loop": false,
+      "name": "load",
+      "recv": "tl"
+    },
+    {
+      "args": [
+        {
+          "text": "value_ptr + value_offsets"
+        }
+      ],
+      "assigned": [
+        "value"
+      ],
+      "col": 15,
+      "end": 19,
+      "line": 27,
+      "loop": false,
+      "name": "load",
+      "recv": "tl"
+    },
+    {
+      "args": [
+        {
+          "text": "0"
+        },
+        {
+          "name": "D",
+          "text": "D"
+        }
+      ],
+      "col": 34,
+      "end": 40,
+      "line": 28,
+      "loop": false,
+      "name": "arange",
+      "recv": "tl"
+    },
+    {
+      "args": [
+        {
+          "text": "k_cache_ptr + cache_offsets"
+        },
+        {
+          "name": "key",
+          "text": "key"
+        }
+      ],
+      "col": 7,
+      "end": 12,
+      "line": 29,
+      "loop": false,
+      "name": "store",
+      "recv": "tl"
+    },
+    {
+      "args": [
+        {
+          "text": "v_cache_ptr + cache_offsets"
+        },
+        {
+          "name": "value",
+          "text": "value"
+        }
+      ],
+      "col": 7,
+      "end": 12,
+      "line": 30,
+      "loop": false,
+      "name": "store",
+      "recv": "tl"
+    },
+    {
+      "args": [
+        {
+          "text": "-1"
+        }
+      ],
+      "col": 15,
+      "end": 21,
+      "line": 36,
+      "loop": false,
+      "name": "stride",
+      "recv": "key"
+    },
+    {
+      "args": [
+        {
+          "text": "-1"
+        }
+      ],
+      "col": 41,
+      "end": 47,
+      "line": 36,
+      "loop": false,
+      "name": "stride",
+      "recv": "value"
+    },
+    {
+      "args": [
+        {
+          "text": "1"
+        }
+      ],
+      "col": 15,
+      "end": 21,
+      "line": 37,
+      "loop": false,
+      "name": "stride",
+      "recv": "key"
+    },
+    {
+      "args": [
+        {
+          "text": "1"
+        }
+      ],
+      "col": 47,
+      "end": 53,
+      "line": 37,
+      "loop": false,
+      "name": "stride",
+      "recv": "value"
+    },
+    {
+      "args": [
+        {
+          "text": "1"
+        }
+      ],
+      "col": 19,
+      "end": 25,
+      "line": 38,
+      "loop": false,
+      "name": "stride",
+      "recv": "k_cache"
+    },
+    {
+      "args": [
+        {
+          "text": "1"
+        }
+      ],
+      "col": 46,
+      "end": 52,
+      "line": 38,
+      "loop": false,
+      "name": "stride",
+      "recv": "v_cache"
+    },
+    {
+      "args": [],
+      "col": 24,
+      "end": 29,
+      "line": 39,
+      "loop": false,
+      "name": "numel",
+      "recv": "slot_mapping"
+    },
+    {
+      "args": [
+        {
+          "name": "key",
+          "text": "key"
+        },
+        {
+          "text": "key.stride(0)"
+        },
+        {
+          "name": "value",
+          "text": "value"
+        },
+        {
+          "text": "value.stride(0)"
+        },
+        {
+          "name": "k_cache",
+          "text": "k_cache"
+        },
+        {
+          "name": "v_cache",
+          "text": "v_cache"
+        },
+        {
+          "name": "slot_mapping",
+          "text": "slot_mapping"
+        },
+        {
+          "name": "D",
+          "text": "D"
+        }
+      ],
+      "col": 4,
+      "end": 24,
+      "launch": "grid",
+      "line": 40,
+      "loop": false,
+      "name": "store_kvcache_kernel"
+    },
+    {
+      "args": [
+        {
+          "text": "0"
+        }
+      ],
+      "col": 40,
+      "end": 46,
+      "line": 40,
+      "loop": false,
+      "name": "stride",
+      "recv": "key"
+    },
+    {
+      "args": [
+        {
+          "text": "0"
+        }
+      ],
+      "col": 64,
+      "end": 70,
+      "line": 40,
+      "loop": false,
+      "name": "stride",
+      "recv": "value"
+    },
+    {
+      "args": [],
+      "col": 16,
+      "end": 24,
+      "line": 52,
+      "loop": false,
+      "name": "__init__",
+      "recv": "super()"
+    },
+    {
+      "args": [
+        {
+          "text": "[]"
+        }
+      ],
+      "assigned": [
+        "self.v_cache"
+      ],
+      "col": 44,
+      "end": 50,
+      "line": 57,
+      "loop": false,
+      "name": "tensor",
+      "recv": "torch"
+    },
+    {
+      "args": [],
+      "assigned": [
+        "context"
+      ],
+      "col": 18,
+      "end": 29,
+      "line": 60,
+      "loop": false,
+      "name": "get_context"
+    },
+    {
+      "args": [],
+      "col": 19,
+      "end": 24,
+      "line": 62,
+      "loop": false,
+      "name": "numel",
+      "recv": "k_cache"
+    },
+    {
+      "args": [],
+      "col": 39,
+      "end": 44,
+      "line": 62,
+      "loop": false,
+      "name": "numel",
+      "recv": "v_cache"
+    },
+    {
+      "args": [
+        {
+          "name": "k",
+          "text": "k"
+        },
+        {
+          "name": "v",
+          "text": "v"
+        },
+        {
+          "name": "k_cache",
+          "text": "k_cache"
+        },
+        {
+          "name": "v_cache",
+          "text": "v_cache"
+        },
+        {
+          "text": "context.slot_mapping"
+        }
+      ],
+      "col": 12,
+      "end": 25,
+      "line": 63,
+      "loop": false,
+      "name": "store_kvcache"
+    },
+    {
+      "args": [
+        {
+          "name": "q",
+          "text": "q"
+        },
+        {
+          "name": "k",
+          "text": "k"
+        },
+        {
+          "name": "v",
+          "text": "v"
+        },
+        {
+          "kw": "max_seqlen_q",
+          "text": "context.max_seqlen_q"
+        },
+        {
+          "kw": "cu_seqlens_q",
+          "text": "context.cu_seqlens_q"
+        },
+        {
+          "kw": "max_seqlen_k",
+          "text": "context.max_seqlen_k"
+        },
+        {
+          "kw": "cu_seqlens_k",
+          "text": "context.cu_seqlens_k"
+        },
+        {
+          "kw": "softmax_scale",
+          "text": "self.scale"
+        },
+        {
+          "kw": "causal",
+          "text": "True"
+        },
+        {
+          "kw": "block_table",
+          "text": "context.block_tables"
+        }
+      ],
+      "assigned": [
+        "o"
+      ],
+      "col": 16,
+      "end": 38,
+      "line": 67,
+      "loop": false,
+      "name": "flash_attn_varlen_func"
+    },
+    {
+      "args": [
+        {
+          "text": "q.unsqueeze(1)"
+        },
+        {
+          "name": "k_cache",
+          "text": "k_cache"
+        },
+        {
+          "name": "v_cache",
+          "text": "v_cache"
+        },
+        {
+          "kw": "cache_seqlens",
+          "text": "context.context_lens"
+        },
+        {
+          "kw": "block_table",
+          "text": "context.block_tables"
+        },
+        {
+          "kw": "softmax_scale",
+          "text": "self.scale"
+        },
+        {
+          "kw": "causal",
+          "text": "True"
+        }
+      ],
+      "assigned": [
+        "o"
+      ],
+      "col": 16,
+      "end": 39,
+      "line": 72,
+      "loop": false,
+      "name": "flash_attn_with_kvcache"
+    },
+    {
+      "args": [
+        {
+          "text": "1"
+        }
+      ],
+      "col": 42,
+      "end": 51,
+      "line": 72,
+      "loop": false,
+      "name": "unsqueeze",
+      "recv": "q"
+    }
+  ],
+  "flags": [
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    1,
+    1,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    1,
+    1,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    1,
+    1,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    1
+  ],
+  "imports": [
+    {
+      "line": 1,
+      "module": "torch",
+      "name": "torch"
+    },
+    {
+      "from": true,
+      "line": 2,
+      "module": "torch",
+      "name": "nn"
+    },
+    {
+      "line": 3,
+      "module": "triton",
+      "name": "triton"
+    },
+    {
+      "line": 4,
+      "module": "triton.language",
+      "name": "tl"
+    },
+    {
+      "from": true,
+      "line": 6,
+      "module": "flash_attn",
+      "name": "flash_attn_varlen_func"
+    },
+    {
+      "from": true,
+      "line": 6,
+      "module": "flash_attn",
+      "name": "flash_attn_with_kvcache"
+    },
+    {
+      "from": true,
+      "line": 7,
+      "module": "nanovllm.utils.context",
+      "name": "get_context"
+    }
+  ],
+  "lang": "python",
+  "mainBlocks": [],
+  "symbols": [
+    {
+      "defLine": 11,
+      "end": 30,
+      "kind": "def",
+      "name": "store_kvcache_kernel",
+      "params": [
+        {
+          "kind": "pos",
+          "name": "key_ptr"
+        },
+        {
+          "kind": "pos",
+          "name": "key_stride"
+        },
+        {
+          "kind": "pos",
+          "name": "value_ptr"
+        },
+        {
+          "kind": "pos",
+          "name": "value_stride"
+        },
+        {
+          "kind": "pos",
+          "name": "k_cache_ptr"
+        },
+        {
+          "kind": "pos",
+          "name": "v_cache_ptr"
+        },
+        {
+          "kind": "pos",
+          "name": "slot_mapping_ptr"
+        },
+        {
+          "kind": "pos",
+          "name": "D"
+        }
+      ],
+      "qual": "store_kvcache_kernel",
+      "sig": "def store_kvcache_kernel( key_ptr, key_stride, value_ptr, value_stride, k_cache_ptr, v_cache_ptr, slot_mapping_ptr, D: tl.constexpr, )",
+      "start": 10
+    },
+    {
+      "defLine": 33,
+      "end": 40,
+      "kind": "def",
+      "name": "store_kvcache",
+      "params": [
+        {
+          "kind": "pos",
+          "name": "key"
+        },
+        {
+          "kind": "pos",
+          "name": "value"
+        },
+        {
+          "kind": "pos",
+          "name": "k_cache"
+        },
+        {
+          "kind": "pos",
+          "name": "v_cache"
+        },
+        {
+          "kind": "pos",
+          "name": "slot_mapping"
+        }
+      ],
+      "qual": "store_kvcache",
+      "sig": "def store_kvcache(key: torch.Tensor, value: torch.Tensor, k_cache: torch.Tensor, v_cache: torch.Tensor, slot_mapping: torch.Tensor)",
+      "start": 33
+    },
+    {
+      "defLine": 43,
+      "end": 75,
+      "kind": "class",
+      "name": "Attention",
+      "params": [],
+      "qual": "Attention",
+      "sig": "class Attention(nn.Module)",
+      "start": 43
+    },
+    {
+      "defLine": 45,
+      "end": 57,
+      "kind": "def",
+      "name": "__init__",
+      "params": [
+        {
+          "kind": "self",
+          "name": "self"
+        },
+        {
+          "kind": "pos",
+          "name": "num_heads"
+        },
+        {
+          "kind": "pos",
+          "name": "head_dim"
+        },
+        {
+          "kind": "pos",
+          "name": "scale"
+        },
+        {
+          "kind": "pos",
+          "name": "num_kv_heads"
+        }
+      ],
+      "parent": "Attention",
+      "qual": "Attention.__init__",
+      "sig": "def __init__( self, num_heads, head_dim, scale, num_kv_heads, )",
+      "start": 45
+    },
+    {
+      "defLine": 59,
+      "end": 75,
+      "kind": "def",
+      "name": "forward",
+      "params": [
+        {
+          "kind": "self",
+          "name": "self"
+        },
+        {
+          "kind": "pos",
+          "name": "q"
+        },
+        {
+          "kind": "pos",
+          "name": "k"
+        },
+        {
+          "kind": "pos",
+          "name": "v"
+        }
+      ],
+      "parent": "Attention",
+      "qual": "Attention.forward",
+      "sig": "def forward(self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor)",
+      "start": 59
+    }
+  ],
+  "trailing": {
+    "65": 52,
+    "71": 17
+  }
+}
