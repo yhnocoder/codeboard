@@ -9,7 +9,8 @@ import CodeBoardResources
 // click, a select or board value is chosen from a menu its cell shows on a click (a board's ⌘-click, or Open Board in
 // that menu, shows the board in this window). A value changed writes that one entry's file (a file that is an entry
 // alone becomes an entry first, ListDrag's `promoted`) and that row alone is read again; a field or an option changed
-// writes the resource file and the list is read again. No undo, as the list's other edits
+// writes the resource file and the list is read again. Each is a step of the window's Undo: a value written back as it
+// was, the resource's fields put back as they were
 
 extension ListColumn {
   static let addID = "+field"
@@ -171,7 +172,7 @@ extension ListTabView {
     let names = Set(fields.map(\.name))
     let name = ([base] + (2...999).map { "\(base) \($0)" }).first { !names.contains($0) } ?? base
     let f = Resource.Field(id: Board.newID("f"), name: name, type: kind)
-    return changeResource { $0.fields.append(f) } ? f : nil
+    return changeResource("Add Field") { $0.fields.append(f) } ? f : nil
   }
 
   @discardableResult
@@ -181,14 +182,14 @@ extension ListTabView {
       NSSound.beep()
       return false
     }
-    return changeResource { r in
+    return changeResource("Rename Field") { r in
       for i in r.fields.indices where r.fields[i].id == id { r.fields[i].name = name }
     }
   }
 
   /// The field gone from the resource; the entries keep their values
   func removeField(_ id: String) {
-    changeResource { $0.fields.removeAll { $0.id == id } }
+    changeResource("Delete Field") { $0.fields.removeAll { $0.id == id } }
   }
 
   /// The question before a field is deleted
@@ -227,17 +228,25 @@ extension ListTabView {
   }
 
   /// The resource file changed and written, and the list read again; false (a beep, said on the bar) when it could not
-  /// be
+  /// be. A change to its fields is a step of the window's Undo, called `name`, that puts back the fields it had
   @discardableResult
-  func changeResource(_ change: (inout Resource) -> Void) -> Bool {
+  func changeResource(_ name: String, _ change: (inout Resource) -> Void) -> Bool {
     guard let vault = context.pane.vault, let r = resource else { return false }
+    let before: [Resource.Field]
+    let after: [Resource.Field]
     do {
       var file = try vault.resource(at: r.path)
+      before = file.fields
       change(&file)
+      after = file.fields
       try vault.write(file, at: r.path)
     } catch {
       failed("The fields could not be changed: \(error)")
       return false
+    }
+    if after != before {
+      undoManager?.registerUndo(withTarget: self) { $0.changeResource(name) { $0.fields = before } }
+      undoManager?.setActionName(name)
     }
     show(r, tree: nil)
     return true
@@ -253,20 +262,25 @@ extension ListTabView {
     guard let f = fields.first(where: { $0.id == field }), Self.freeName(name, in: f, but: nil) else { return false }
     let o = Resource.Field.Option(id: Board.newID("option-"), name: name)
     guard
-      changeResource({ r in
-        for i in r.fields.indices where r.fields[i].id == field {
-          r.fields[i].options = (r.fields[i].options ?? []) + [o]
-        }
-      })
+      changeResource(
+        "Add Option",
+        { r in
+          for i in r.fields.indices where r.fields[i].id == field {
+            r.fields[i].options = (r.fields[i].options ?? []) + [o]
+          }
+        })
     else { return false }
-    return set(.text(o.id), of: field, at: key)
+    let chosen = set(.text(o.id), of: field, at: key)
+    // the option and the value chosen are one step of Undo
+    undoManager?.setActionName("Add Option")
+    return chosen
   }
 
   @discardableResult
   func renameOption(_ option: String, of field: String, to name: String) -> Bool {
     let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
     guard let f = fields.first(where: { $0.id == field }), Self.freeName(name, in: f, but: option) else { return false }
-    return changeResource { r in
+    return changeResource("Rename Option") { r in
       for i in r.fields.indices where r.fields[i].id == field {
         for j in r.fields[i].options?.indices ?? 0..<0 where r.fields[i].options?[j].id == option {
           r.fields[i].options?[j].name = name
@@ -410,6 +424,7 @@ extension ListTabView {
     }
     var path = key
     let entry: Entry
+    let was = rows[i].fields[field]
     if rows[i].id == nil {
       guard let made = promoted(key, fields: value.map { [field: $0] } ?? [:]) else {
         NSSound.beep()
@@ -430,6 +445,13 @@ extension ListTabView {
     }
     rows[i] = decorated(ListRow(.entry(entry, path: path), vault: vault))
     reload(moved: (key, path))
+    if was != value {
+      // ponytail: a file made an entry by this value stays an entry on Undo, only the value goes
+      undoManager?.registerUndo(withTarget: self) { [path] in
+        if $0.set(was, of: field, at: path) { $0.reveal(path) }
+      }
+      undoManager?.setActionName("Change \(fields.first { $0.id == field }?.name ?? "Value")")
+    }
     return true
   }
 

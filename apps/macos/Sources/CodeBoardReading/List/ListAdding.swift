@@ -180,9 +180,13 @@ extension ListTabView {
         for p in added { try? FileManager.default.removeItem(at: vault.url(of: p)) }
         return failed("The files could not be added: \(error)")
       }
+      undoable(added)
       reveal(added.first ?? seen.first)
     case .links(let urls):
       var first: String?
+      // an address the resource has already is saved into its entry, which Undo leaves
+      var made: [String] = []
+      let had = Set(rows.map(\.key))
       do {
         for u in urls {
           let item = SavedItem(
@@ -190,10 +194,12 @@ extension ListTabView {
           let path = try vault.save(item, in: r.path)
           context.pane.entries.update(try vault.entry(at: path), at: path)
           first = first ?? path
+          if !had.contains(path), !made.contains(path) { made.append(path) }
         }
       } catch {
         failed("The address could not be added: \(error)")
       }
+      undoable(made)
       reveal(first)
     case .paper(let id):
       if let found = context.pane.paper(id) {
@@ -207,10 +213,11 @@ extension ListTabView {
       let pane = context.pane
       adding = Task { [weak self] in
         do {
-          let path = try await pane.addPaper(id, to: r).found.path
+          let (found, isNew) = try await pane.addPaper(id, to: r)
           guard let self else { return }
           say(nil)
-          reveal(path)
+          if isNew { undoable([found.path]) }
+          reveal(found.path)
         } catch let e as ArxivError {
           self?.failed(e.description)
         } catch let e as DOIError {
@@ -222,8 +229,16 @@ extension ListTabView {
     }
   }
 
+  /// What an add made, one step of the window's Undo that sends it to the trash as Delete does, unasked even when a
+  /// board uses it by then (ponytail: no question on Undo; its cards say their source is not found, as after a Delete)
+  private func undoable(_ paths: [String]) {
+    guard !paths.isEmpty else { return }
+    undoManager?.registerUndo(withTarget: self) { $0.trash(paths, as: "Add to Resource") }
+    undoManager?.setActionName("Add to Resource")
+  }
+
   /// The list read again, the row at `path` selected and shown (the filter cleared when it hides it)
-  private func reveal(_ path: String?) {
+  func reveal(_ path: String?) {
     let (r, tree) = ListReading.resource(context.payload, in: context.pane.vault)
     show(r, tree: tree)
     guard let path else { return }

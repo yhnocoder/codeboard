@@ -3,9 +3,9 @@ import CodeBoardModel
 import CodeBoardResources
 
 // The selected rows deleted (⌫, the row menu's Delete, Edit ▸ Delete): each item's folder or file to the Trash, as the
-// sidebar deletes a board or a resource (Vault.trash; Finder puts it back, there is no undo in the app). Entries with
-// cards on boards are asked about first, naming the boards; the cards keep what they hold (a Note's text is the
-// board's), and their source line says the source is not found.
+// sidebar deletes a board or a resource (Vault.trash), one step of the window's Undo that puts them back (`untrash`).
+// Entries with cards on boards are asked about first, naming the boards; the cards keep what they hold (a Note's text
+// is the board's), and their source line says the source is not found.
 
 extension ListTabView {
   @objc func delete(_ sender: Any?) {
@@ -19,7 +19,7 @@ extension ListTabView {
       let boards = rows.compactMap(\.id).flatMap { found[$0] ?? [] }.filter { seen.insert($0).inserted }
       guard let self else { return }
       if !boards.isEmpty, !(await confirm(Self.deleteQuestion(rows.map(\.title), boards: boards), window)) { return }
-      trash(rows.map(\.key))
+      trash(rows.map(\.key), as: rows.count == 1 ? "Delete Entry" : "Delete Entries")
     }
   }
 
@@ -48,18 +48,61 @@ extension ListTabView {
   }
 
   /// Each item to the trash, stopping at the first that cannot go (a beep, said on the bar); then the entries and the
-  /// list read again
-  func trash(_ paths: [String]) {
+  /// list read again. Those that went are one step of the window's Undo, called `name`, that puts them back
+  func trash(_ paths: [String], as name: String) {
     guard let vault = context.pane.vault else { return }
     say(nil)
+    var moved: [(path: String, at: URL)] = []
     for p in paths {
-      do { try vault.trash(p, with: trasher) } catch {
+      do {
+        if let at = try vault.trash(p, with: trasher) { moved.append((p, at)) }
+      } catch {
         failed("“\((p as NSString).lastPathComponent)” could not be deleted: \(error)")
         break
       }
     }
-    let (r, tree) = ListReading.resource(context.payload, in: vault)
-    if let tree { context.pane.entries = EntryIndex(vault, tree) }
+    if !moved.isEmpty {
+      undoManager?.registerUndo(withTarget: self) { $0.untrash(moved, as: name) }
+      undoManager?.setActionName(name)
+    }
+    readAgain()
+  }
+
+  /// Items sent to the trash put back where they were, never over anything: one whose place is taken, or that is no
+  /// longer in the trash, stays (a beep, said on the bar); those put back selected, and Redo sends them again
+  func untrash(_ moved: [(path: String, at: URL)], as name: String) {
+    guard let vault = context.pane.vault else { return }
+    say(nil)
+    var back: [String] = []
+    for m in moved {
+      let to = vault.url(of: m.path)
+      let title = (m.path as NSString).lastPathComponent
+      if FileManager.default.fileExists(atPath: to.path) {
+        failed("“\(title)” could not be put back: something else is in its place")
+      } else if !FileManager.default.fileExists(atPath: m.at.path) {
+        failed("“\(title)” could not be put back: it is no longer in the Trash")
+      } else {
+        // moveItem never replaces what is there
+        do {
+          try FileManager.default.moveItem(at: m.at, to: to)
+          back.append(m.path)
+        } catch {
+          failed("“\(title)” could not be put back: \(error)")
+        }
+      }
+    }
+    if !back.isEmpty {
+      undoManager?.registerUndo(withTarget: self) { $0.trash(back, as: name) }
+      undoManager?.setActionName(name)
+    }
+    readAgain()
+    table.selectRowIndexes(IndexSet(shown.indices.filter { back.contains(shown[$0].key) }), byExtendingSelection: false)
+  }
+
+  /// The pane's entries and the list read again
+  private func readAgain() {
+    let (r, tree) = ListReading.resource(context.payload, in: context.pane.vault)
+    if let tree, let vault = context.pane.vault { context.pane.entries = EntryIndex(vault, tree) }
     show(r, tree: tree)
   }
 }

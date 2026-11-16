@@ -594,7 +594,8 @@
             "ListDragTests",
             "ListDeleteTests",
             "ListSearchTests",
-            "ListFieldsTests"
+            "ListFieldsTests",
+            "ListUndoTests"
           ]
         },
         "reading: shared": {
