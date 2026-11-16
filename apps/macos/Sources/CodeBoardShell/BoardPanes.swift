@@ -235,6 +235,7 @@ import CodeBoardNotes
         pane.canvas.cameras = cameras
         pane.canvas.picturesFolder = pictures
         pane.canvas.sources = shell.sources
+        pane.canvas.onOpenWeb = { [weak self] url, _ in self?.shell.openWeb(url) }
         pane.onOpenBoard = { [weak self] in self?.shell.show($0) }
         pane.canvas.onEnterBoard = { [weak self, weak pane] e in
           if let c = e.reveal { pane?.arriving(.card(c)) }

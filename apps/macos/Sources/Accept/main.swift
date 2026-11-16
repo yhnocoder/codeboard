@@ -1443,13 +1443,20 @@ func strings(_ x: Any) -> [String] {
     return menu.map { describe($0) } ?? "none"
   }
 
-  func pick(_ path: String) {
+  /// pick Item[/Item…]: that item of the menu read last, as a person picks it; one the menu shows greyed (the app's
+  /// validation, as `menu` lists it) is not chosen, and neither is one missing: the line fails saying so
+  func pick(_ path: String) -> String {
     var m = lastMenu
     let parts = path.split(separator: "/").map(String.init)
     for (i, title) in parts.enumerated() {
+      m?.update()
       guard let menu = m, let idx = menu.items.firstIndex(where: { $0.title == title }) else {
         log("pick: no item \(title)")
-        return
+        return "no item \(title)"
+      }
+      guard menu.items[idx].isEnabled else {
+        log("pick: \(path) is disabled")
+        return "\(path) is disabled"
       }
       if i == parts.count - 1 {
         // after this command has answered: an item that opens an app-modal dialog runs it from inside its action, and
@@ -1457,10 +1464,11 @@ func strings(_ x: Any) -> [String] {
         // the main queue: a main-queue block that runs a modal session holds the queue, and the next command with it
         menu.perform(#selector(NSMenu.accPerform(_:)), with: menu.items[idx], afterDelay: 0, inModes: [.common])
         log("picked \(path)")
-      } else {
-        m = menu.items[idx].submenu
+        return "picked \(path)"
       }
+      m = menu.items[idx].submenu
     }
+    return "no item"
   }
 
   /// menubar Menu/Item[/Item…]: that item of the menu bar chosen as the menu does it when a person picks it (its action
@@ -1610,7 +1618,7 @@ func strings(_ x: Any) -> [String] {
       panelAnswer.withLock { $0 = .some(url) }
     case "pick":
       menuOpen = false
-      pick(String(line.dropFirst(5)))
+      return pick(String(line.dropFirst(5)))
     case "menubar": return menubar(String(line.dropFirst(8)))
     case "find":  // find x0 y0 x1 y1 before|mid|after words: where those words are on screen inside that box
       let box = CGRect(x: d(1), y: d(2), width: d(3) - d(1), height: d(4) - d(2))
@@ -1920,6 +1928,64 @@ func strings(_ x: Any) -> [String] {
       guard let i = rows.firstIndex(where: { $0.name == title }) else { return "none" }
       let x = chevron ? 10 + 2 + 18 * Double(rows[i].depth) + 7 : 90
       return String(format: "%.0f %.0f", x, 91 + 29 * Double(i))
+    // subpv: the sub-board previews open on this board (the canvas's own state, by reflection), one sub-board card per
+    // line: "<card> open a,b exp a tit b fold false cols 1|2" (cols: the card's saved setting); none
+    case "subpv":
+      guard let c = canvas, let open = field(c, "subPreviews", "open") else { return "no canvas" }
+      func ids(_ x: Any?) -> String {
+        let l = (x as? [Any] ?? []).map { field($0, "rawValue") as? String ?? "\($0)" }
+        return l.isEmpty ? "-" : l.joined(separator: ",")
+      }
+      func deep(_ x: Any, _ label: String, _ depth: Int = 0) -> Any? {
+        guard depth < 8 else { return nil }
+        for ch in Mirror(reflecting: x).children {
+          if ch.label == label { return ch.value }
+          if let v = deep(ch.value, label, depth + 1) { return v }
+        }
+        return nil
+      }
+      let cards = field(c, "document", "board", "cards") as? [Any] ?? []
+      var out: [String] = []
+      for kv in Mirror(reflecting: open).children {
+        let pair = Mirror(reflecting: kv.value).children.map(\.value)
+        guard pair.count == 2, let frame = field(pair[0], "rawValue") as? String else { continue }
+        let card = cards.first { field($0, "id", "rawValue") as? String == frame }
+        let two = card.flatMap { deep($0, "twoColumnPreview") } as? Bool == true
+        let pv = pair[1]
+        out.append(
+          "\(frame) open \(ids(field(pv, "open"))) exp \(ids(field(pv, "exp"))) tit \(ids(field(pv, "tit"))) fold \(field(pv, "fold") as? Bool == true) cols \(two ? 2 : 1)"
+        )
+      }
+      return out.isEmpty ? "none" : out.sorted().joined(separator: "\n")
+    // cols <card>: a sub-board card's saved preview columns (1 or 2), with or without previews open
+    case "cols":
+      guard let c = canvas else { return "no canvas" }
+      func deep(_ x: Any, _ label: String, _ depth: Int = 0) -> Any? {
+        guard depth < 8 else { return nil }
+        for ch in Mirror(reflecting: x).children {
+          if ch.label == label { return ch.value }
+          if let v = deep(ch.value, label, depth + 1) { return v }
+        }
+        return nil
+      }
+      let cards = field(c, "document", "board", "cards") as? [Any] ?? []
+      guard let card = cards.first(where: { field($0, "id", "rawValue") as? String == a[1] }) else { return "none" }
+      return deep(card, "twoColumnPreview") as? Bool == true ? "2" : "1"
+    // vaultstamp: every file in the vault with its size and modification time, as one digest (a number): it changes
+    // when anything is written there
+    case "vaultstamp":
+      guard let root = env["ACCEPT_VAULT"].map({ URL(filePath: $0) }),
+        let e = FileManager.default.enumerator(
+          at: root, includingPropertiesForKeys: [.contentModificationDateKey, .fileSizeKey])
+      else { return "no vault" }
+      let rows = e.allObjects.compactMap { $0 as? URL }.map { u in
+        let v = try? u.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey])
+        return "\(u.path) \(v?.fileSize ?? -1) \(v?.contentModificationDate?.timeIntervalSince1970 ?? 0)"
+      }
+      var h: UInt64 = 1_469_598_103_934_665_603
+      for b in rows.sorted().joined(separator: "\n").utf8 { h = (h ^ UInt64(b)) &* 1_099_511_628_211 }
+      // (a number, so that `expect vaultstamp = was` compares it)
+      return "\(h % 1_000_000_000_000_000)"
     // entries <resource title>: that resource's entries as they are in the vault now, one title per line in Finder's
     // order (none), as the reading pane's list reads them: an entry folder's title from its entry file, a file alone by
     // its name

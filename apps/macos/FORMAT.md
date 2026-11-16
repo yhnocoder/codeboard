@@ -261,8 +261,11 @@ translates (blocks of the two correspond by order). `language`: BCP 47 (`zh`, `e
   `<id>.zh.anchors.json` as written). `source`, only with `blocks`: the TeX file there whose lines the list's
   `first_line`…`last_line` number (tongtu's `zh.tex`, kept as `<id>.zh.tex`). Without `blocks` it is a plain PDF: text
   by page only.
-- `page: {hash, bytes}`: a web page saved whole, kept outside the vault by its content fingerprint (`hash`, as the
-  saving service names the file); `bytes` its size.
+- `page: {hash, bytes, blocks?}`: a web page saved whole, kept outside the vault by its content fingerprint (`hash`, as
+  the saving service names the file); `bytes` its size. `blocks`: the file in the entry folder listing the page's
+  blocks as the reader cut them, in order, each `{id, kind, level?, hash, text}` (a heading's `level`; `hash` of its
+  `text`), written when the saved page is first opened; with it a place in the page is named (its nearest heading
+  above) without loading the page. Without it the page reads as before.
 - `file: {file}`: any other file in the entry folder, opened as the system opens it; no places in it.
 - `translation: {file}`: a saved page translated block by block. The version has `of`, a `page` version of the entry,
   and its `language` (a file without either is refused). `file`, in the entry folder (`<of>.<language>.json`, as

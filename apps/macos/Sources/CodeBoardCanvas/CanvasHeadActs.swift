@@ -299,7 +299,7 @@ extension CanvasView {
       )
     case .more: Tip("More Actions")
     case .source: Tip("Markdown Source", kbd: "⌘/")
-    case .open: Tip("Open in Browser", kbd: "Double-click")
+    case .open: Tip("Open in Browser", kbd: onOpenWeb == nil ? "Double-click" : "⌘ Double-click")
     case .unlock: Tip("Unlock", kbd: BoardKey.show(of: "Lock / Unlock"))
     case .row(let item, let tool):
       switch tool {

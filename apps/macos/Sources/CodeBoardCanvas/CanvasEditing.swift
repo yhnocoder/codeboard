@@ -1325,7 +1325,7 @@ extension CanvasView {
           if edges == [.right, .bottom] || edges == .bottom && note { fitCards([id]) }
         }
       } else {
-        doubleClick(at: p)
+        doubleClick(at: p, command: e.modifierFlags.contains(.command))
       }
       return
     }

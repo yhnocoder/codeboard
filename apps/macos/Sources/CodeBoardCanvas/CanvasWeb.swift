@@ -169,10 +169,17 @@ extension CanvasView {
     openURL(u)
   }
 
-  /// A double-click on a Web card or a row: its page in the browser. False when it is on neither
-  func openPage(at p: CGPoint) -> Bool {
+  /// A double-click on a Web card or a row: its page in the browser; a Web card's web page where `onOpenWeb` opens it,
+  /// unless `browser` (⌘ held). False when it is on neither
+  func openPage(at p: CGPoint, browser: Bool = false) -> Bool {
     guard let u = pageURL(at: p) else { return false }
-    openLink(u.absoluteString)
+    if !browser, let onOpenWeb, linkRow(at: p) == nil, ["http", "https"].contains(u.scheme?.lowercased() ?? ""),
+      let id = hitCard(p), case .own(let c)? = document?.board.card(id)?.content, case .web(let w) = c.body
+    {
+      onOpenWeb(u, c.title ?? w.meta?.title)
+    } else {
+      openLink(u.absoluteString)
+    }
     return true
   }
 
