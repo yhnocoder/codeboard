@@ -133,9 +133,44 @@ private final class Outside {
     let csv = try out.file("Readings.csv", Data("1,2\n".utf8))
     #expect(drop(list, ListDrag(files: [csv, try out.file("Tide table.txt")])) == (true, true))
     #expect(list.rows.map(\.title) == ["Readings", "Tide table"] && selectedKey(list) == "\(files.path)/Readings.csv")
-    // the same file again: a second copy beside it, never over it
+    // the same file again: not copied again, its row selected
+    list.table.deselectAll(nil)
     #expect(drop(list, ListDrag(files: [csv])) == (true, true))
-    #expect(list.rows.count == 3 && selectedKey(list) == "\(files.path)/Readings 2.csv")
+    #expect(list.rows.count == 2 && selectedKey(list) == "\(files.path)/Readings.csv")
+    // the same size, other content: added
+    #expect(drop(list, ListDrag(files: [try out.file("Tide table.txt", Data("tidf".utf8))])) == (true, true))
+    #expect(list.rows.count == 3 && selectedKey(list) == "\(files.path)/Tide table 2.txt")
+  }
+
+  /// A file with the content of one the resource has (a file alone or an entry's PDF), under any name, is not added
+  /// again: its row is selected; in a batch, the new ones are added (a PDF to papers: a paper entry) and the first of
+  /// them selected
+  @Test func aFileTheResourceHasAlreadyIsNotAddedAgain() async throws {
+    let v = try ListVault()
+    defer { v.remove() }
+    let out = try Outside()
+    defer { out.remove() }
+    let (_, list) = try await v.openList()
+    let count = list.rows.count
+    let notes = try out.file("Notes copy.pdf", Data(contentsOf: v.vault.url(of: "\(v.resource.path)/Pier notes.pdf")))
+    let mills = try out.file("Mills.pdf", Data(contentsOf: v.vault.url(of: "\(v.paperPath)/v1.pdf")))
+    #expect(drop(list, ListDrag(files: [notes, mills])) == (true, true))
+    #expect(list.rows.count == count && selectedKey(list) == "\(v.resource.path)/Pier notes.pdf")
+    #expect(drop(list, ListDrag(files: [mills, try out.file("Bay survey.pdf", makePDF(["Bay"]))])) == (true, true))
+    #expect(list.rows.count == count + 1 && selectedKey(list) == "\(v.resource.path)/Bay survey")
+  }
+
+  /// Two files of one content in one batch, under other names: only the first is added
+  @Test func aBatchAddsOneFileOfEachContent() async throws {
+    let v = try ListVault(empty: true)
+    defer { v.remove() }
+    let out = try Outside()
+    defer { out.remove() }
+    let (_, list) = try await v.openList()
+    let bay = makePDF(["Bay"])
+    let pdfs = [try out.file("Bay survey.pdf", bay), try out.file("Bay copy.pdf", bay)]
+    #expect(drop(list, ListDrag(files: pdfs)) == (true, true))
+    #expect(list.rows.map(\.title) == ["Bay survey"] && selectedKey(list) == "\(v.resource.path)/Bay survey")
   }
 
   /// A web pages list takes no file; addresses pasted (one a line) or dropped become link entries, an address saved
