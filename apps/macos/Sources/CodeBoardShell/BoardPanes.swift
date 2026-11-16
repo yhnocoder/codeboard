@@ -229,6 +229,7 @@ import CodeBoardReading
       }
     }
     reveal()
+    (shell.reading.codeHost as? ShellCode)?.versions.follow()
   }
 
   /// A pane for tab `id` here: a new one, or one handed over from another window's panes as it is (`handOver`), its
@@ -277,6 +278,10 @@ import CodeBoardReading
       pane.canvas.onOpenCode = { [weak self, weak pane] in self?.openCodeSource($0, at: $1, on: pane?.canvas) }
       callMarks = callMarks ?? ShellCallMarks(code)
       pane.canvas.callHost = callMarks
+      pane.canvas.onVersion = { [weak self, weak pane] card, what, r in
+        guard let pane, let code = self?.shell.reading.codeHost as? ShellCode else { return }
+        code.versions.ask(card, what, at: r, on: pane.canvas)
+      }
     }
     pane.canvas.onSetSeal = { [weak self] in self?.setSeal($0, $1, done: $2) }
     pane.canvas.shareOnBoard = { [weak self] in self?.boardDocuments.share($0, $1) }

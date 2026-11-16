@@ -90,7 +90,9 @@ private let seg = SegmentID(rawValue: "s1")
     let w = r.rect("c").width
     let bs = try #require(c.head(cid("c"))?.buttons)
     #expect(bs.last?.1 == CGRect(x: w - t.headerPadRight - 26, y: t.headerHeight / 2 - 13, width: 26, height: 26))
-    #expect(bs[2].1.maxX == w - t.headerPadRight - 26 - t.headerGap)
+    // and before its version chip ("No commit")
+    let chip = Drawing.width("No commit", t.codePath) + 10
+    #expect(bs[2].1.maxX == w - t.headerPadRight - 26 - t.headerGap - chip - t.headerGap)
     #expect(bs[1].1.maxX == bs[2].1.minX - 2 && bs[0].1.maxX == bs[1].1.minX - 2)
   }
 

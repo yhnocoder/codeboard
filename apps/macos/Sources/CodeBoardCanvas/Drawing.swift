@@ -40,6 +40,14 @@ enum Drawing: Sendable {
     }
   }
 
+  /// A code card's version marks (CodeHead.tsx .rev.new, .hollow, .lost and the "+ uncommitted" chip)
+  struct Mark: Hashable, Sendable {
+    var version: CardVersion?
+    var uncommitted = false
+    /// Its first segment is pinned by a file's fingerprint, not a commit
+    var unknown = false
+  }
+
   struct Code: Sendable {
     /// The card's id: picks its paper
     var id: String
@@ -49,6 +57,8 @@ enum Drawing: Sendable {
     var glyph: String?
     /// Its source's version (a commit, a package version, a file's fingerprint)
     var version: String?
+    /// What the version checks found (its chip's dot, or struck through) and its changes not committed
+    var mark = Mark()
     /// Arrows ending on the card
     var linkedIn: Int
     /// Rows arrows start from: segment index and line
@@ -543,9 +553,69 @@ enum Drawing: Sendable {
   /// .cmenu) and, on a code card, its version and the arrows ending on it; the hover buttons end here
   static func headerRight(_ c: Code?, width w: CGFloat, _ t: Theme) -> CGFloat {
     var right = w - t.headerPadRight - 26 - t.headerGap
-    if let v = c?.version { right -= width(v, t.codePath) + 10 + t.headerGap }
+    if let c {
+      let chips = chips(c, width: w, t)
+      if let r = chips.version ?? chips.uncommitted { right = r.minX - t.headerGap }
+    }
     if let n = c?.linkedIn, n > 0 { right -= width("← \(n)", t.linkedIn) + 8 + t.headerGap }
     return right
+  }
+
+  static let uncommittedLabel = "+ uncommitted"
+
+  /// A code card's chips left of its ···, card points (.rev: 5 across, 2 up and down, its dot 6 and 4 before the
+  /// label): its version, then "+ uncommitted" at the right; nil for one it does not show
+  static func chips(_ c: Code, width w: CGFloat, _ t: Theme) -> (version: CGRect?, uncommitted: CGRect?) {
+    var right = w - t.headerPadRight - 26 - t.headerGap
+    let y = t.headerHeight / 2 - 8.5
+    var unc: CGRect?
+    if c.mark.uncommitted {
+      let cw = width(uncommittedLabel, t.codePath) + 10
+      unc = CGRect(x: right - cw, y: y, width: cw, height: 17)
+      right -= cw + t.headerGap
+    }
+    let dot: CGFloat = [.changed, .hidden].contains(c.mark.version) ? 10 : 0
+    let ver = c.version.map { v in
+      let cw = width(v, t.codePath) + dot + 10
+      return CGRect(x: right - cw, y: y, width: cw, height: 17)
+    }
+    return (ver, unc)
+  }
+
+  /// A chip's label in `r` (and the version's dot): the version in --warn when it has a newer one, struck through in
+  /// --ink-3 when its code is lost, else --ink-3 (lit: --ink, .rev:hover); "+ uncommitted" in --k-num
+  static func chip(_ ctx: CGContext, _ c: Code, uncommitted: Bool, in r: CGRect, lit: Bool, _ t: Theme) {
+    let mid = r.midY
+    if uncommitted {
+      let color = lit ? t.ink : t.syntax[.number] ?? t.ink3
+      text(ctx, uncommittedLabel, t.codePath, color, x: r.minX + 5, midY: mid, width: r.width - 10)
+      return
+    }
+    guard let v = c.version else { return }
+    var x = r.minX + 5
+    let color: CGColor
+    switch c.mark.version {
+    case .changed?, .hidden?:
+      color = t.ask
+      let d = CGRect(x: x, y: mid - 3, width: 6, height: 6)
+      if c.mark.version == .changed {
+        ctx.setFillColor(t.ask)
+        ctx.fillEllipse(in: d)
+      } else {
+        ctx.setStrokeColor(t.ask)
+        ctx.setLineWidth(1.5)
+        ctx.strokeEllipse(in: d.insetBy(dx: 0.75, dy: 0.75))
+      }
+      x += 10
+    case .lost?: color = t.ink3
+    case nil: color = lit ? t.ink : t.ink3
+    }
+    let w = width(v, t.codePath)
+    text(ctx, v, t.codePath, color, x: x, midY: mid, width: w)
+    if c.mark.version == .lost {
+      ctx.setFillColor(t.ink3)
+      ctx.fill(CGRect(x: x, y: mid - 0.25, width: w, height: 1))
+    }
   }
 
   /// A code card's title bar: kind, title and path from the left; the arrows ending on it and its version from the right,
@@ -553,12 +623,10 @@ enum Drawing: Sendable {
   static func header(_ ctx: CGContext, _ c: Code, _ r: CGRect, _ t: Theme, reserve: CGFloat = 0) {
     let mid = t.headerHeight / 2
     var right = r.width - t.headerPadRight - 26 - t.headerGap
-    if let v = c.version {
-      // the chip's own padding
-      let w = width(v, t.codePath)
-      text(ctx, v, t.codePath, t.ink3, x: right - 5 - w, midY: mid, width: w)
-      right -= w + 10 + t.headerGap
-    }
+    let chips = chips(c, width: r.width, t)
+    if let u = chips.uncommitted { chip(ctx, c, uncommitted: true, in: u, lit: false, t) }
+    if let v = chips.version { chip(ctx, c, uncommitted: false, in: v, lit: false, t) }
+    if let first = chips.version ?? chips.uncommitted { right = first.minX - t.headerGap }
     if c.linkedIn > 0 {
       let s = "← \(c.linkedIn)"
       let w = width(s, t.linkedIn)

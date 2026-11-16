@@ -1,12 +1,14 @@
 import AppKit
 import CodeBoardAnalysis
 import CodeBoardModel
+import CodeBoardWorkspace
+import CodeCore
 import CodeUI
 
 /// A file of a repository filling its tab, read-only, drawn by the code component in the board's code look, scrolled in
 /// a scroll view; its bar floats over the bottom edge and comes and goes as `WebBarVisibility` says, as a web tab's.
-/// The component's view is an editor: presses are handed to it, to select, but the keys stay with the tab, so nothing
-/// typed reaches the text
+/// The component is read only: it selects, copies and finds, and passes the keys it does not use on to the tab (to
+/// scroll, ⌥↵)
 final class CodeTabView: NSView, ReadingLookFollower, NSTextFieldDelegate, NSMenuItemValidation {
   let context: ReadingContext
   let file: CodeFile?
@@ -29,6 +31,8 @@ final class CodeTabView: NSView, ReadingLookFollower, NSTextFieldDelegate, NSMen
   private(set) var outline: [CodeReading.OutlineRow] = []
   /// Gone to before the file was read: where to be once it is
   var pending: Int?
+  /// The file read again after it changed, how many times: an older reading is dropped
+  private var reads = 0
   // What takes code to the board, and ⌘-click (CodeCards.swift)
   /// The bar over a selection (Add to Board); in this view, kept over the selection as it scrolls
   private(set) var selectionBar: SelectionBar!
@@ -136,8 +140,12 @@ final class CodeTabView: NSView, ReadingLookFollower, NSTextFieldDelegate, NSMen
     page.addSubview(underline)
     page.addSubview(marks)
     flashView.wantsLayer = true
-    NotificationCenter.default.addObserver(
-      self, selector: #selector(boardsChanged), name: CodeReading.boardsChanged, object: context.pane)
+    for (n, f) in [
+      (CodeReading.boardsChanged, #selector(boardsChanged)), (CodeReading.filesChanged, #selector(filesChanged)),
+      (CodeReading.commitsChanged, #selector(commitsChanged)),
+    ] {
+      NotificationCenter.default.addObserver(self, selector: f, name: n, object: context.pane)
+    }
     Self.live[context.tab] = Weak(view: self)
     for v in [scroll, message, plus, selectionBar!, list, bar] { addSubview(v) }
     bar.back.target = self
@@ -183,17 +191,16 @@ final class CodeTabView: NSView, ReadingLookFollower, NSTextFieldDelegate, NSMen
     switch loaded {
     case .quiet(let why): say(why)
     case .text(let t):
-      let v = CodeEditorView(text: t.text, look: codeLook)
-      v.runs = t.runs
+      message.isHidden = true
+      let v = CodeEditorView(text: t.text, look: context.pane.codeLook, editable: false, runs: t.runs)
+      // Escape: the list of definitions or cards closed
+      v.onExit = { [weak self] in self?.closeList() }
       v.pasteboard = context.pane.pasteboard
       v.setAccessibilityIdentifier("ui-codetext")
-      text = t
       code = v
-      heads = CodeReading.heads(t.symbols)
+      took(t)
       page.addSubview(v, positioned: .below, relativeTo: nil)
       page.addSubview(flashView, positioned: .below, relativeTo: v)
-      bar.outline.isEnabled = !t.symbols.isEmpty
-      bar.outline.toolTip = t.symbols.isEmpty ? "No classes or functions in this file" : "Outline"
       needsLayout = true
       layoutSubtreeIfNeeded()
       if let line = pending { go(to: line) }
@@ -204,6 +211,123 @@ final class CodeTabView: NSView, ReadingLookFollower, NSTextFieldDelegate, NSMen
       placeChanged()
       readOnBoards()
     }
+  }
+
+  /// The text shown and what is read from it: the lines with a plus, the outline's button
+  private func took(_ t: CodeReading.Text) {
+    text = t
+    heads = CodeReading.heads(t.symbols)
+    bar.outline.isEnabled = !t.symbols.isEmpty
+    bar.outline.toolTip = t.symbols.isEmpty ? "No classes or functions in this file" : "Outline"
+  }
+
+  // MARK: Following the file
+
+  @objc private func filesChanged(_ note: Notification) {
+    guard let file, (note.userInfo?["files"] as? [CodeFile])?.contains(file) == true else { return }
+    reread()
+  }
+
+  @objc private func commitsChanged(_ note: Notification) {
+    guard let file, (note.userInfo?["repositories"] as? [String])?.contains(file.repository) == true else { return }
+    readCommit()
+  }
+
+  /// The file changed on disk, read again off the main actor: the line at the top stays the line it was (followed
+  /// through what changed), a selection stays when its lines did not change; gone, the quiet line says so, and the file
+  /// shows again where it was when it comes back
+  func reread() {
+    guard let file else { return }
+    reads += 1
+    let asked = reads
+    let url = file.url
+    let old = text
+    let top = topLine
+    let selected = code.map(\.editor.selection.range).flatMap { $0.isEmpty ? nil : $0 }
+    Task { [weak self] in
+      let got = await Task.detached(priority: .userInitiated) {
+        let loaded = CodeReading.load(url)
+        guard case .text(let t) = loaded, let old else { return (loaded, top, nil as Range<Int>?) }
+        let (line, sel) = Self.follow(top: top, selection: selected, from: old, to: t)
+        return (loaded, line, sel)
+      }.value
+      guard let self, asked == self.reads else { return }
+      if case .text(let t) = got.0, let old, t.text == old.text { return }
+      // scrolled or selected while the file was read: followed again from where the view is now
+      let now = self.code.map(\.editor.selection.range).flatMap { $0.isEmpty ? nil : $0 }
+      guard self.topLine == top, now == selected else { return self.reread() }
+      self.reread(got.0, top: got.1, selection: got.2)
+    }
+  }
+
+  /// Where the top line and a selection (UTF-16 offsets) of `old` are in `now`: the top line by the first line from it
+  /// down that is still there, as far above that as it was; the selection when all its lines are there unchanged, in
+  /// the same order, else nil
+  nonisolated static func follow(top: Int, selection: Range<Int>?, from old: CodeReading.Text, to now: CodeReading.Text)
+    -> (top: Int, selection: Range<Int>?)
+  {
+    var map: [Int: Int] = [:]
+    for d in diffLines(old.text.components(separatedBy: "\n"), now.text.components(separatedBy: "\n"))
+    where d.op == .same {
+      if let a = d.a, let b = d.b { map[a] = b }
+    }
+    let kept = (top...max(top, old.lineCount)).first { map[$0] != nil }
+    let line = kept.flatMap { k in map[k].map { max(1, $0 - (k - top)) } } ?? min(top, now.lineCount)
+    guard let s = selection else { return (line, nil) }
+    let a = old.place(s.lowerBound)
+    let b = old.place(s.upperBound)
+    guard let first = map[a.line], (a.line...b.line).allSatisfy({ map[$0] == first + ($0 - a.line) }) else {
+      return (line, nil)
+    }
+    let last = first + (b.line - a.line)
+    return (line, (now.starts[first - 1] + a.col)..<(now.starts[last - 1] + b.col))
+  }
+
+  private func reread(_ loaded: CodeReading.Loaded, top: Int, selection: Range<Int>?) {
+    guard case .text(let t) = loaded else {
+      // gone (or no longer readable): the code goes, its place kept for when it comes back
+      if code != nil {
+        code?.removeFromSuperview()
+        flashView.removeFromSuperview()
+        code = nil
+        text = nil
+        onBoards = []
+        marks.draw(here: [], other: [], look: context.bar)
+        hideSelectionBar()
+        closeList()
+        hover(at: nil, command: false)
+        bar.outline.isEnabled = false
+        pending = top
+      }
+      if case .quiet(let why) = loaded { say(why) }
+      return
+    }
+    guard let v = code else {
+      pending = pending ?? top
+      return show(loaded)
+    }
+    v.reset(text: t.text, runs: t.runs)
+    took(t)
+    prepared = nil
+    if let s = selection {
+      v.change { $0.select(CodeSelection(anchor: s.lowerBound, head: s.upperBound)) }
+    } else {
+      hideSelectionBar()
+    }
+    hover(at: nil, command: false)
+    switch listing {
+    case .outline?:
+      outline = CodeReading.outline(t.symbols)
+      showOutline()
+    case .definitions?, .places?: closeList()
+    case .finder?, nil: break
+    }
+    needsLayout = true
+    layoutSubtreeIfNeeded()
+    go(to: top)
+    placeChanged()
+    readOnBoards()
+    if selection != nil { selectionSettled() }
   }
 
   private func say(_ why: String) {
@@ -286,14 +410,6 @@ final class CodeTabView: NSView, ReadingLookFollower, NSTextFieldDelegate, NSMen
     list.frame = CGRect(x: b.maxX - w, y: b.minY - 6 - h, width: w, height: h)
   }
 
-  /// The board's code look without the caret's line: a reader has no caret (the component draws the caret only while
-  /// it holds the keys, which the tab takes back after every press)
-  private var codeLook: CodeEditorView.Look {
-    var l = context.pane.codeLook
-    l.currentLine = nil
-    return l
-  }
-
   func barLookChanged(_ look: ReadingBarLook) {
     bar.look = look
     list.look = look
@@ -301,7 +417,7 @@ final class CodeTabView: NSView, ReadingLookFollower, NSTextFieldDelegate, NSMen
     plus.paint(look, enabled: canAdd)
     underline.layer?.backgroundColor = look.ink
     message.textColor = NSColor(cgColor: look.ink.copy(alpha: 0.55) ?? look.ink)
-    code?.look = codeLook
+    code?.look = context.pane.codeLook
     drawMarks()
     needsLayout = true
   }
@@ -311,7 +427,6 @@ final class CodeTabView: NSView, ReadingLookFollower, NSTextFieldDelegate, NSMen
   /// Where the view is: the bar comes and goes, what came into view is drawn, the bar names the function at the top
   @objc private func scrolled() {
     handle(.scrolled(scroll.contentView.bounds.minY))
-    if let v = code { v.place(v.frame, zoom: 1) }
     placeChanged()
     if listing == .definitions || listing == .places { closeList() }
     placeFloats()
@@ -379,7 +494,7 @@ final class CodeTabView: NSView, ReadingLookFollower, NSTextFieldDelegate, NSMen
 
   // MARK: Keys
 
-  /// A press on the code: handed to the component's view to select, the keys back here; ⌘ goes to the definition of
+  /// A press on the code: handed to the component's view to select (the keys go with it); ⌘ goes to the definition of
   /// the name pressed; a press on the selection may drag it out
   func pressed(_ e: NSEvent) {
     pressOnMark = e.clickCount == 1 ? markedLine(at: convert(e.locationInWindow, from: nil)) : nil
@@ -397,7 +512,6 @@ final class CodeTabView: NSView, ReadingLookFollower, NSTextFieldDelegate, NSMen
       return
     }
     code?.mouseDown(with: e)
-    window?.makeFirstResponder(self)
   }
 
   /// The mouse let go in the code: a press on the selection that was not dragged is a click there; the bar over the
@@ -430,7 +544,7 @@ final class CodeTabView: NSView, ReadingLookFollower, NSTextFieldDelegate, NSMen
     interpretKeyEvents([event])
   }
 
-  /// Read-only: what is typed goes nowhere
+  /// Typing the read-only code passed on does nothing, as in a web tab (no beep)
   override func insertText(_ insertString: Any) {}
 
   override func doCommand(by selector: Selector) {
@@ -684,8 +798,8 @@ final class CodeTabView: NSView, ReadingLookFollower, NSTextFieldDelegate, NSMen
 
 extension CodeTabView: NSDraggingSource {}
 
-/// What the scroll view scrolls: the component's view, which takes no press itself (it would take the keys to write
-/// in it); the tab hands them to it
+/// What the scroll view scrolls: the component's view, whose presses the tab sees first (a thin line's, ⌘'s, one on
+/// the selection that may drag it out) and hands on
 final class CodePage: NSView {
   weak var owner: CodeTabView?
 

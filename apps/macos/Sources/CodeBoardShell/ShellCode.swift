@@ -33,6 +33,10 @@ import os
   var found: [LinesKey: ClosedRange<Int>?] = [:]
   /// A change is being told, on the next turn
   var telling = false
+  /// Which code cards of the window's boards have a newer version (ShellVersions.swift)
+  lazy var versions = ShellVersions(code: self)
+  /// The code tabs' and the sidebar's repositories followed on disk (ShellCodeFiles.swift)
+  lazy var files = ShellCodeFiles(code: self)
   private nonisolated static let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "CodeBoard", category: "code")
 
   /// A repository folder as the workspace reads it: links resolved, as git prints its paths
@@ -60,6 +64,7 @@ import os
   func opened(_ repository: String) {
     let r = repo(repository)
     Task { await r.sources.lookup.index.start() }
+    files.follow()
   }
 
   func repo(_ folder: String) -> Repo {

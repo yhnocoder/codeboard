@@ -1,3 +1,4 @@
+import CodeBoardAnalysis
 import Foundation
 
 // core's diffLines: a line diff by jsdiff's diffArrays (diff 9.0.0, lib/diff/base.js), ported step by step so that
@@ -153,4 +154,149 @@ private func arrayDiff(_ oldLines: [String], _ newLines: [String], maxEditLength
     editLength += 1
   }
   return nil
+}
+
+// core's alignRows, wordDiff and mapLines: two versions of a run of lines side by side, the words that changed in a
+// line, and where each old line went
+
+/// One row of two columns (core's AlignRow): l and r are 0-based indices into each side
+public struct AlignRow: Hashable, Sendable {
+  public enum Kind: Hashable, Sendable {
+    /// The same on both sides
+    case same
+    /// On both sides, but not the same
+    case changed
+    /// Only on the left or only on the right
+    case left, right
+  }
+
+  public var kind: Kind
+  public var l: Int?
+  public var r: Int?
+}
+
+/// Two runs of lines side by side: the same lines on one row; deletions and additions in between paired as changed,
+/// similar lines first (in order, never crossing), the rest by position, only what one side has left over alone
+public func alignRows(_ a: [String], _ b: [String]) -> [AlignRow] {
+  let d = diffLines(a, b, aStart: 0, bStart: 0)
+  var rows: [AlignRow] = []
+  var k = 0
+  while k < d.count {
+    if d[k].op == .same {
+      rows.append(AlignRow(kind: .same, l: d[k].a, r: d[k].b))
+      k += 1
+      continue
+    }
+    var dels: [Int] = []
+    var adds: [Int] = []
+    while k < d.count && d[k].op != .same {
+      if d[k].op == .del { dels.append(d[k].a!) } else { adds.append(d[k].b!) }
+      k += 1
+    }
+    var i = 0
+    var j = 0
+    func side(_ ie: Int, _ je: Int) {
+      while i < ie && j < je {
+        rows.append(AlignRow(kind: .changed, l: dels[i], r: adds[j]))
+        i += 1
+        j += 1
+      }
+      while i < ie {
+        rows.append(AlignRow(kind: .left, l: dels[i]))
+        i += 1
+      }
+      while j < je {
+        rows.append(AlignRow(kind: .right, r: adds[j]))
+        j += 1
+      }
+    }
+    for p in dels.indices where p >= i {
+      guard let q = (j..<min(adds.count, j + 12)).first(where: { similar(a[dels[p]], b[adds[$0]]) }) else { continue }
+      side(p, q)
+      rows.append(AlignRow(kind: .changed, l: dels[i], r: adds[j]))
+      i += 1
+      j += 1
+    }
+    side(dels.count, adds.count)
+  }
+  return rows
+}
+
+private func isWordUnit(_ u: UInt16) -> Bool {
+  (u >= 48 && u <= 57) || (u >= 65 && u <= 90) || (u >= 97 && u <= 122) || u == 95
+}
+
+private func isSpaceUnit(_ u: UInt16) -> Bool {
+  switch u {
+  case 0x09...0x0D, 0x20, 0xA0, 0x1680, 0x2000...0x200A, 0x2028, 0x2029, 0x202F, 0x205F, 0x3000, 0xFEFF: true
+  default: false
+  }
+}
+
+/// /\w+|\s+|[^\w\s]/g over UTF-16 code units, each token as its units
+private func tokens(_ s: String) -> [[UInt16]] {
+  let u = Array(s.utf16)
+  var out: [[UInt16]] = []
+  var i = 0
+  while i < u.count {
+    var j = i + 1
+    if isWordUnit(u[i]) {
+      while j < u.count && isWordUnit(u[j]) { j += 1 }
+    } else if isSpaceUnit(u[i]) {
+      while j < u.count && isSpaceUnit(u[j]) { j += 1 }
+    }
+    out.append(Array(u[i..<j]))
+    i = j
+  }
+  return out
+}
+
+/// A third of the words in common
+private func similar(_ x: String, _ y: String) -> Bool {
+  let words = { (t: [UInt16]) in t.contains(where: isWordUnit) }
+  let tx = Set(tokens(x).filter(words))
+  let ty = tokens(y).filter(words)
+  if tx.isEmpty || ty.isEmpty { return jsTrim(x).isEmpty && jsTrim(y).isEmpty }
+  let common = ty.filter { tx.contains($0) }.count
+  return Double(common) / Double(max(tx.count, ty.count)) >= 0.34
+}
+
+/// The characters that changed in each of two lines, as UTF-16 offsets [start, end), by a diff of their words
+public func wordDiff(_ x: String, _ y: String) -> (a: [Range<Int>], b: [Range<Int>]) {
+  let tx = tokens(x)
+  let ty = tokens(y)
+  let d = diffLines(
+    tx.map { String(decoding: $0, as: UTF16.self) }, ty.map { String(decoding: $0, as: UTF16.self) }, aStart: 0,
+    bStart: 0)
+  func ends(_ ts: [[UInt16]]) -> [Int] {
+    var p = [0]
+    for t in ts { p.append(p[p.count - 1] + t.count) }
+    return p
+  }
+  let px = ends(tx)
+  let py = ends(ty)
+  var a: [Range<Int>] = []
+  var b: [Range<Int>] = []
+  func push(_ rs: inout [Range<Int>], _ s: Int, _ e: Int) {
+    if let last = rs.last, last.upperBound == s { rs[rs.count - 1] = last.lowerBound..<e } else { rs.append(s..<e) }
+  }
+  for l in d {
+    if l.op == .del { push(&a, px[l.a!], px[l.a! + 1]) }
+    if l.op == .add { push(&b, py[l.b!], py[l.b! + 1]) }
+  }
+  return (a, b)
+}
+
+/// Where each old line is in the new lines, by line number: the same lines (the diff's), and with `fuzzy` a changed
+/// line paired with one (alignRows' changed); a line not there is not in the map
+public func mapLines(_ old: [String], _ oldStart: Int, _ new: [String], _ newStart: Int, fuzzy: Bool = true) -> [Int:
+  Int]
+{
+  var map: [Int: Int] = [:]
+  if fuzzy {
+    for r in alignRows(old, new) { if let l = r.l, let n = r.r { map[oldStart + l] = newStart + n } }
+  } else {
+    for d in diffLines(old, new, aStart: oldStart, bStart: newStart) where d.op == .same { map[d.a!] = d.b! }
+  }
+  return map
 }
