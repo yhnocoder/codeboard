@@ -31,8 +31,9 @@ A vault is a folder of its own. Its folder tree is the sidebar's tree: real fold
   .codeboard/                   the app's own data (Vault.appDataFolder)
     shared/<card id>.json       shared cards
     shared/images/<file>        their images
-    site-rules/<domain>.json    the user's rule for reading and saving pages of a site: one JSON object, written with
-                                sorted keys; a host reads its own file, else its parent domain's (web reading)
+    site-rules/<domain>.json    the user's rule for reading and saving pages of a site, read and written by the saving
+                                service alone (the app hands it what the page scripts give and asks it for a host's
+                                rules); files there whose names start with a dot (`.tmp` leftovers) are not rules
 ```
 
 - Names starting with `.` are never listed (so `.codeboard/` is not a folder in the sidebar). A folder whose name ends in

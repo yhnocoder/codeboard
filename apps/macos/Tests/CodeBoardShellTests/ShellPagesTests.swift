@@ -118,6 +118,23 @@ struct ShiyiStoreTests {
     for f in files {
       #expect(Set(((f as? [String: Any]) ?? [:]).keys) == ["domain", "origin", "rules"])
     }
+
+    // the user's own rule: kept in the vault's folder the service was given, and first for the site from then on
+    let folder = FileManager.default.temporaryDirectory.appending(path: "shiyi-vault-\(UUID().uuidString)/.codeboard")
+    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: folder.deletingLastPathComponent()) }
+    try await store.setVault(folder.resolvingSymlinksInPath())
+    let rule = ##"""
+      {"match":{"hosts":["127.0.0.1"]},"variants":[{"id":"2026-11-16","body":["#main"],"hide":["#ad"]}],
+       "source":"picker","updated":"2026-11-16T03:50:00Z"}
+      """##
+    try await store.putRule(domain: "127.0.0.1", Data(rule.utf8))
+    #expect(FileManager.default.fileExists(atPath: folder.appending(path: "site-rules/127.0.0.1.json").path))
+    let own = try await store.rules(forHost: "127.0.0.1").map { try JSONSerialization.jsonObject(with: $0) }
+    #expect((own.first as? [String: Any])?["origin"] as? String == "vault" && own.count == 1)
+    await #expect(throws: ShiyiStore.Failure.self) {
+      try await store.putRule(domain: "127.0.0.1", Data(##"{"no-such-key":1}"##.utf8))
+    }
   }
 
   /// What the service has comes into the vault's web resource, once: a second import finds nothing new

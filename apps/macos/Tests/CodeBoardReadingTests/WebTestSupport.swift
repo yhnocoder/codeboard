@@ -139,6 +139,22 @@ actor TestStore: PageStore {
   func pin(id: String, pinned: Bool) {}
   func rules(forHost host: String) -> [Data] { ruleFiles[host] ?? [] }
 
+  /// What was put, by domain; like the service, the store then gives it first to that domain's host, as the vault's
+  private(set) var put: [String: Data] = [:]
+  private(set) var vault: URL?
+  var refuses = false
+
+  func putRule(domain: String, _ rules: Data) throws {
+    if refuses { throw CocoaError(.fileWriteNoPermission) }
+    put[domain] = rules
+    let file = Data(#"{"domain":"\#(domain)","origin":"vault","rules":"#.utf8) + rules + Data("}".utf8)
+    ruleFiles[domain] =
+      [file] + (ruleFiles[domain] ?? []).filter { !String(decoding: $0, as: UTF8.self).contains(#""origin":"vault""#) }
+  }
+
+  func setVault(_ folder: URL?) { vault = folder }
+  func set(refuses: Bool) { self.refuses = refuses }
+
   func set(rules: [String], forHost host: String) { ruleFiles[host] = rules.map { Data($0.utf8) } }
   func set(file: URL, forHash hash: String) { files[hash] = file }
 }

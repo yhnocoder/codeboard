@@ -219,9 +219,11 @@ import WebKit
   @Test func aFullPageIsCapturedKeptByTheServiceAndListedInTheVault() async throws {
     let store = TestStore()
     await store.set(
-      rules: [##"{"domain":"127.0.0.1","origin":"builtin","rules":{"variants":[{"body":"#main"}]}}"##],
+      rules: [
+        ##"{"domain":"127.0.0.1","origin":"vault","rules":{"variants":[{"hide":["#ad"]}]}}"##,
+        ##"{"domain":"127.0.0.1","origin":"builtin","rules":{"variants":[{"body":"#main"}]}}"##,
+      ],
       forHost: "127.0.0.1")
-    try vault.writeSiteRules(Data(##"{"variants":[{"hide":["#ad"]}]}"##.utf8), domain: "127.0.0.1")
     let websiteData = WKWebsiteDataStore.nonPersistent()
     let cookie = try #require(
       HTTPCookie(properties: [.name: "session", .value: "made-up-token", .domain: "127.0.0.1", .path: "/"]))

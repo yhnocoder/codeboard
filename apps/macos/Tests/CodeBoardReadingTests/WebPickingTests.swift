@@ -32,9 +32,10 @@ import WebKit
     <footer id="foot">foot</footer>
     """
 
+  let store = TestStore()
+
   /// A tab on the saved page in body view, read with its rules
   func tab(scripts: URL? = nil, vault: Bool = true) async throws -> (WebPageView, WebTabs) {
-    let store = TestStore()
     let file = data.appending(path: "\(Self.hash).html")
     try Self.html.write(to: file, atomically: true, encoding: .utf8)
     await store.set(file: file, forHash: Self.hash)
@@ -77,11 +78,9 @@ import WebKit
     try await until("picking") { try await reader(v, "return shiyiReader.picking") as? Bool == true }
   }
 
-  var ruleFile: URL { vault.siteRulesURL.appending(path: "news.example.org.json") }
-
-  /// Done takes the reader's rule file, with the part left out, into the vault as the site's rule, and the page is
+  /// Done takes the reader's rule file, with the part left out, to the saving service as the site's rule, and the page is
   /// read again with it first among its rule files; while picking, the bar says so and offers Cancel and Done alone
-  @Test func doneKeepsWhatWasPickedAsTheSitesRuleInTheVault() async throws {
+  @Test func doneHandsWhatWasPickedToTheSavingServiceAsTheSitesRule() async throws {
     let (v, tabs) = try await tab()
     defer { done(tabs) }
     try await until("body view") { try await hidden(v) == "nav foot" }
@@ -96,8 +95,12 @@ import WebKit
     #expect(try await hidden(v) == "nav aside foot")
     #expect(v.bar.pickNote.stringValue.contains("Done"))
     v.bar.pickDone.performClick(nil)
-    try await until("kept") { v.bar.picking == nil && FileManager.default.fileExists(atPath: ruleFile.path) }
-    let kept = try JSONSerialization.jsonObject(with: Data(contentsOf: ruleFile)) as? NSDictionary
+    try await until("kept") {
+      let put = await store.put
+      return v.bar.picking == nil && put.keys.sorted() == ["news.example.org"]
+    }
+    let kept =
+      try JSONSerialization.jsonObject(with: try #require(await store.put["news.example.org"])) as? NSDictionary
     let expected =
       try JSONSerialization.jsonObject(
         with: Data(##"{"variants":[{"body":"main, aside","hide":["#aside"]}]}"##.utf8)) as? NSDictionary
@@ -140,23 +143,21 @@ import WebKit
     v.bar.pickDone.performClick(nil)
     try await until("left") { v.bar.picking == nil }
     #expect(try await reader(v, "return shiyiReader.picking") as? Bool == false)
-    #expect(!FileManager.default.fileExists(atPath: vault.siteRulesURL.path))
+    #expect(await store.put.isEmpty)
   }
 
-  /// The vault's rule for the site, here for the domain above the host, is read when the page opens and wins over
-  /// the service's built-in one; one that cannot be read is left out, and the body button says why
-  @Test func aRuleInTheVaultIsReadOnTheNextOpenAndWinsOverTheBuiltInOne() async throws {
-    try vault.writeSiteRules(Data(##"{"variants":[{"body":"main","hide":["#nav"]}]}"##.utf8), domain: "example.org")
+  /// A rule the service refuses is said on the bar, picking going on
+  @Test func aRuleTheServiceRefusesIsSaidAndPickingGoesOn() async throws {
     let (v, tabs) = try await tab()
-    try await until("the vault's rule") { try await hidden(v) == "nav aside foot" }
-    #expect(try await reader(v, "return shiyiReader.files[0].origin") as? String == "vault")
-    tabs.close()
-
-    try Data("{".utf8).write(to: ruleFile)
-    let (bad, other) = try await tab()
-    defer { done(other) }
-    try await until("the built-in rule alone") { try await hidden(bad) == "nav foot" }
-    #expect(bad.bar.extract.buttons[0].toolTip?.contains("could not be read") == true)
+    defer { done(tabs) }
+    try await until("body view") { try await hidden(v) == "nav foot" }
+    await store.set(refuses: true)
+    try await start(v)
+    try await click(v, "aside")
+    try await until("the change said") { v.bar.picking?.changed == true }
+    v.bar.pickDone.performClick(nil)
+    try await until("said") { v.bar.picking?.failure?.contains("could not be kept") == true }
+    #expect(await store.put.isEmpty)
   }
 
   /// The body cannot be corrected without a vault, in full page, or with a reader that cannot pick; the menu says why

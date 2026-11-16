@@ -78,7 +78,6 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
   /// The reader can be asked to correct the body (`pick`); none before it has read the page
   private(set) var readerPicks: Bool?
   /// Why the vault's rule for the site could not be read: the page is read without it
-  private var ruleError: String?
   /// The views of open web tabs
   private static var live: [ReadingTab.ID: Weak] = [:]
   /// What reveal is waiting for a saved page's reader to show, by tab: a block and its characters
@@ -452,17 +451,9 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
     }
   }
 
-  /// The rule files of a site as the scripts take them: the vault's own first, so that it wins over the saving
-  /// service's built-in one
+  /// The rule files of a site as the saving service gives them, the user's own first
   private func ruleFiles(forHost host: String) async -> [Data] {
-    var own: Data?
-    do {
-      own = try context.pane.vault?.siteRules(forHost: host)
-      ruleError = nil
-    } catch {
-      ruleError = "The site's rule in the vault could not be read, so the page is read without it: \(error)"
-    }
-    return (own.map { [$0] } ?? []) + ((try? await store?.rules(forHost: host)) ?? [])
+    (try? await store?.rules(forHost: host)) ?? []
   }
 
   @objc func extractChosen(_ sender: Any?) {
@@ -477,7 +468,7 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
   /// The body button, chosen, says it can correct the body, or why the site's own rule was left out
   private func showBodyTip() {
     guard bar.extract.isEnabled, bar.extract.selectedSegment == 0 else { return }
-    bar.extract.buttons[0].toolTip = ruleError ?? "Body. Click again to correct what counts as the body"
+    bar.extract.buttons[0].toolTip = "Body. Click again to correct what counts as the body"
   }
 
   /// The body button pressed while body view is shown: what it can do besides
@@ -530,10 +521,11 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
     showPicking(p)
   }
 
-  /// The reader's rule file, with what was picked, kept in the vault as the site's rule, and the page read again with
-  /// it; nothing is written when nothing changed. One that cannot be kept says why on the bar, picking going on
+  /// The reader's rule file, with what was picked, handed to the saving service as it is, which keeps it as the site's
+  /// rule, and the page read again with it; nothing is kept when nothing changed. One that cannot be kept says why on
+  /// the bar, picking going on
   @objc func pickDone(_ sender: Any?) {
-    guard let p = bar.picking, let vault = context.pane.vault else { return }
+    guard let p = bar.picking, let store else { return }
     guard p.changed else { return endPicking() }
     let url = web.url
     Task {
@@ -542,11 +534,12 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
         guard web.url == url, bar.picking != nil else { return }
         guard let d = r as? [String: Any], let domain = d["domain"] as? String, let rules = d["rules"],
           JSONSerialization.isValidJSONObject(rules)
-        else { throw VaultError.unwritable(vault.siteRulesURL, "the page scripts gave no rule file") }
-        try vault.writeSiteRules(try JSONSerialization.data(withJSONObject: rules), domain: domain)
+        else {
+          throw CocoaError(.fileWriteUnknown, userInfo: [NSLocalizedDescriptionKey: "the page scripts gave no rule"])
+        }
+        try await store.putRule(domain: domain, try JSONSerialization.data(withJSONObject: rules))
+        guard web.url == url, bar.picking != nil else { return }
         endPicking()
-      } catch let e as VaultError {
-        showPicking(WebBar.Picking(changed: p.changed, failure: "The correction could not be kept: \(e)"))
       } catch {
         showPicking(
           WebBar.Picking(changed: p.changed, failure: "The correction could not be kept: \(error.localizedDescription)")

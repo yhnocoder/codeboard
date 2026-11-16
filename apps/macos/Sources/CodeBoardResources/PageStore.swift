@@ -16,6 +16,12 @@ public protocol PageStore: Sendable {
   func pin(id: String, pinned: Bool) async throws
   /// The service's rule files for pages of `host`, as JSON
   func rules(forHost host: String) async throws -> [Data]
+  /// The user's rule for the pages of `domain` kept, `rules` as the page scripts gave them (JSON); with a vault set,
+  /// in its `site-rules/`, where the service reads it first for that domain's hosts from then on
+  func putRule(domain: String, _ rules: Data) async throws
+  /// Where the service keeps the user's site rules: `folder` (the vault's `.codeboard`, there already), nil for its
+  /// own data folder
+  func setVault(_ folder: URL?) async throws
 }
 
 /// An address to save as a link
