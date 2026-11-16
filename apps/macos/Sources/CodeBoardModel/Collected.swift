@@ -65,6 +65,9 @@ public struct SourceLabel: Equatable, Sendable {
   func blockSize(_ a: SourceAnchor) -> CGSize?
   /// The block drawn from its file at that width in pixels; nil: not there
   func blockImage(_ a: SourceAnchor, pixelWidth: Int) async -> CGImage?
+  /// The author's macro definitions (`\newcommand`, `\def`, `\DeclareMathOperator`…) of the paper the anchor is in,
+  /// one a line, for drawing its formulas; nil: none known. Synchronous and cheap: cached per version
+  func mathPreamble(for a: SourceAnchor) -> String?
   /// Opens the reading pane on the entry if needed, scrolls only when the passage is out of view, shows it as an
   /// ordinary selection
   func reveal(_ a: SourceAnchor)

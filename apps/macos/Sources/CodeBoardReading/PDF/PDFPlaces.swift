@@ -98,9 +98,9 @@ enum PDFPlaces {
     return a == b ? "p. \(a)" : "p. \(a)–\(b)"
   }
 
-  /// The annotations that draw a highlight: one a line, the colour laid over the text
-  static func annotations(_ h: Highlight, in doc: PDFDocument) -> [(PDFPage, PDFAnnotation)] {
-    guard let s = selection([h.place], in: doc) else { return [] }
+  /// The annotations that draw a highlight over its text `s`: one a line, the colour laid over the text
+  static func annotations(_ h: Highlight, on s: PDFSelection?) -> [(PDFPage, PDFAnnotation)] {
+    guard let s else { return [] }
     return s.selectionsByLine().flatMap { line in
       line.pages.map { page -> (PDFPage, PDFAnnotation) in
         let b = line.bounds(for: page)

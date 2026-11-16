@@ -12,10 +12,10 @@ extension PDFTabView {
   /// A yellow highlight on each page of the selection, in the entry's file (a file alone becomes an entry first);
   /// one already there for the same text and colour is not added again
   func highlight() {
-    guard let s = pdf.currentSelection, selectedText != nil, let doc = pdf.document else { return }
+    guard let s = pdf.currentSelection, selectedText != nil else { return }
     let now = Self.now
     func marks(_ version: VersionID) -> [Highlight] {
-      PDFPlaces.places(s, in: doc, version: version).map {
+      places(s, version: version).map {
         Highlight(id: Board.newID("h"), place: $0, color: .yellow, at: now)
       }
     }
@@ -32,11 +32,11 @@ extension PDFTabView {
   func draw(_ entry: Entry) {
     for (page, a) in drawn { page.removeAnnotation(a) }
     drawn = []
-    guard case .entry(_, let version)? = target, let doc = pdf.document else { return }
+    guard case .entry(_, let version)? = target, pdf.document != nil else { return }
     for group in PDFPlaces.groups(entry.highlights) where group[0].place.version == version {
       var last: (PDFPage, PDFAnnotation)?
       for h in group {
-        for (page, a) in PDFPlaces.annotations(h, in: doc) {
+        for (page, a) in PDFPlaces.annotations(h, on: selection([h.place])) {
           page.addAnnotation(a)
           drawn.append((page, a))
           last = (page, a)
