@@ -925,9 +925,12 @@ public final class MarkdownEditorView: NSView {
     }
   }
 
-  private var caretBounds: CGRect {
-    guard let c = core.caretRect else { return .zero }
-    return CGRect(x: c.minX * zoom - 2, y: c.minY * zoom, width: 4, height: c.height * zoom).insetBy(dx: 0, dy: -1)
+  /// Where a blink redraws, in the view's points: the caret as it is drawn (slid with its block, put beside a picture, a
+  /// gap's caret a line across), and the line's two device pixels and their edges around it. A caret by a picture and a
+  /// gap's were left half drawn
+  var caretBounds: CGRect {
+    guard let c = core.caretRect.map(slid).map(offImage) else { return .zero }
+    return c.applying(CGAffineTransform(scaleX: zoom, y: zoom)).insetBy(dx: -2, dy: -2)
   }
 
   /// after anything the core did: redraw, keep the caret in view, say if the size changed

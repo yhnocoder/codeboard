@@ -212,4 +212,49 @@ private final class Flipped: NSView {
     #expect(r.view.draws > drawn)
     #expect(r.wrong().isEmpty, "\(r.wrong())")
   }
+
+  /// The caret's pixels, a gap's line across too, lie within what a blink redraws
+  @Test func theCaretIsWithinWhatABlinkRedraws() throws {
+    _ = boardFonts
+    let src = "```\nx\n```"
+    let v = MarkdownEditorView(
+      layout: BlockLayout(MarkdownDocument(src), width: 300, theme: testTheme, layout: nil, resources: TestResources()),
+      caret: 4)
+    // the gap under the block, at the Note's end
+    v.doCommand(by: #selector(NSResponder.moveToEndOfDocument(_:)))
+    #expect(v.core.caretRect?.height == 0, "a gap's caret: \(String(describing: v.core.caretRect))")
+    let scale: CGFloat = 2
+    // drawn with room around the editor: a gap's caret may lie past its edge
+    let room = v.bounds.insetBy(dx: -24, dy: -24)
+    func pixels() -> [UInt8] {
+      let w = Int(room.width * scale)
+      let h = Int(room.height * scale)
+      let ctx = CGContext(
+        data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
+        space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+      ctx.translateBy(x: 0, y: CGFloat(h))
+      ctx.scaleBy(x: scale, y: -scale)
+      ctx.translateBy(x: -room.minX, y: -room.minY)
+      NSGraphicsContext.saveGraphicsState()
+      NSGraphicsContext.current = NSGraphicsContext(cgContext: ctx, flipped: true)
+      v.draw(room)
+      NSGraphicsContext.restoreGraphicsState()
+      return Array(UnsafeBufferPointer(start: ctx.data!.assumingMemoryBound(to: UInt8.self), count: w * h * 4))
+    }
+    v.alwaysShowsCaret = true
+    let with = pixels()
+    v.alwaysShowsCaret = false
+    let without = pixels()
+    let w = Int(room.width * scale)
+    var ink = CGRect.null
+    for i in stride(from: 0, to: with.count, by: 4) where with[i..<i + 4] != without[i..<i + 4] {
+      let p = i / 4
+      ink = ink.union(
+        CGRect(
+          x: room.minX + CGFloat(p % w) / scale, y: room.minY + CGFloat(p / w) / scale, width: 1 / scale,
+          height: 1 / scale))
+    }
+    #expect(!ink.isNull, "the caret is drawn")
+    #expect(v.caretBounds.contains(ink), "the caret \(ink), a blink redraws \(v.caretBounds)")
+  }
 }
