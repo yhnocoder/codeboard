@@ -77,6 +77,34 @@ import Testing
     #expect(showing.count == 1 && doc.board.isAuto(showing[0].id))
   }
 
+  /// A double-click on a card drawn in a sub-board card's map enters the sub-board brought to that card (interact.ts
+  /// data-sub)
+  @Test func doubleClickingACardInASubBoardsMapEntersAtThatCard() async throws {
+    let root = FileManager.default.temporaryDirectory.appending(path: "canvas-edit-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    let kid = try Vault(root: root).newBoard(
+      in: "", title: "Kid",
+      board: Board(id: BoardID(rawValue: "kid"), cards: [note("k1", x: 0, y: 0), note("k2", x: 400, y: 0)]))
+    let frame = Card(
+      id: cid("f"), x: 100, y: 100, width: 560, height: 360,
+      content: .own(CardContent(body: .board(SubBoard(board: kid.id)))))
+    let r = try await Rig(Board(id: BoardID(rawValue: "here"), cards: [frame]), zoom: 1, root: root)
+    defer { r.close() }
+    let c = r.canvas
+    var map: Skeleton?
+    await r.until("the map drawn") {
+      if case .board(let d)? = c.scene?.parts[cid("f")]?.drawing { map = d.map }
+      return map != nil
+    }
+    let rect = try #require(c.scene?.placed[cid("f")]?.rect)
+    let block = try #require(map.flatMap { Drawing.block(cid("k2"), in: $0, rect) })
+    var entered: BoardEntry?
+    c.onEnterBoard = { entered = $0 }
+    c.doubleClick(at: CGPoint(x: block.midX, y: block.midY))
+    await r.until("the shell asked") { entered != nil }
+    #expect(entered?.board == kid.id && entered?.frame == cid("f") && entered?.reveal == cid("k2"))
+  }
+
   /// Into a sub-board and out (subboards.ts enterFrame, leaveBoard, boardShown; Crumbs.tsx): the card's name hidden
   /// and its copy flying to the breadcrumb while the board fades out; the shell asked once it has; the board entered
   /// fading in from 1.03 with the breadcrumb, its current crumb hidden until the name lands. Esc deselects first, then

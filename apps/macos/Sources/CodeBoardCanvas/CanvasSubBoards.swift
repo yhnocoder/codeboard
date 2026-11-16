@@ -60,11 +60,20 @@ extension CanvasView {
     return nil
   }
 
-  /// Enters the board a sub-board card shows, in this tab (CanvasCrumbs.swift); whether it is one
-  @discardableResult func openSubBoard(_ id: CardID) -> Bool {
+  /// Enters the board a sub-board card shows, in this tab (CanvasCrumbs.swift), brought to the card of its map under
+  /// `p` when there is one (interact.ts data-sub); whether it is one
+  @discardableResult func openSubBoard(_ id: CardID, at p: CGPoint? = nil) -> Bool {
     guard case .board? = scene?.parts[id]?.content.body else { return false }
-    if !isGone(id), let b = subBoardTarget(id) { enterSubBoard(id, b) }
+    if !isGone(id), let b = subBoardTarget(id) { enterSubBoard(id, b, reveal: p.flatMap { mapCard(at: $0, of: id) }) }
     return true
+  }
+
+  /// The card of a sub-board card's map drawn under `p`, the topmost
+  private func mapCard(at p: CGPoint, of id: CardID) -> CardID? {
+    guard case .board(let d)? = scene?.parts[id]?.drawing, let map = d.map, let r = scene?.placed[id]?.rect else {
+      return nil
+    }
+    return map.cards.last { Drawing.block($0.id, in: map, r)?.contains(p) == true }?.id
   }
 
   /// A sub-board card whose board or subfolder is not there now
