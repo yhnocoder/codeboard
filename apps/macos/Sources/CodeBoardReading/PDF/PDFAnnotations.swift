@@ -4,9 +4,9 @@ import CodeBoardResources
 import PDFKit
 
 // A PDF tab's highlights and what is written on them: highlighting the selection, a click on a highlight bringing its
-// bar (Annotate, Remove), the annotation popup under it, and a mark at the end of a highlight that has annotations.
-// A highlight made across pages is one Highlight a page in the entry, made at the same time: they are clicked,
-// annotated and removed together.
+// bar (Annotate, Remove), the annotation popup under it (the board's sidenote popup, which the shell makes), and a mark
+// at the end of a highlight that has annotations. A highlight made across pages is one Highlight a page in the entry,
+// made at the same time: they are clicked, annotated and removed together.
 
 extension PDFTabView {
   /// A yellow highlight on each page of the selection, in the entry's file (a file alone becomes an entry first);
@@ -78,10 +78,7 @@ extension PDFTabView {
   }
 
   /// Annotate: the popup under the highlight, ready to write
-  func annotate() {
-    openPop()
-    window?.makeFirstResponder(pop?.input)
-  }
+  func annotate() { openPop(write: true) }
 
   /// Remove: the highlights made together go from the entry, with what was written on them
   func removeShown() {
@@ -96,40 +93,76 @@ extension PDFTabView {
     write(e, at: path)
   }
 
-  /// The popup for the shown highlight, below its last line (above its first when there is no room for it with one
-  /// more note), with its annotations
-  func openPop() {
-    guard let entry, !shownHighlight.isEmpty else { return }
-    let ls = lines(of: shownHighlight)
-    let notes = notes(of: shownHighlight, in: entry).map {
-      AnnotationPop.Note(id: $0.id.rawValue, text: $0.note.text, question: $0.note.question != nil)
-    }
-    let p: AnnotationPop
-    if let pop {
-      p = pop
-      p.notes = notes
-    } else {
-      p = AnnotationPop(notes: notes, width: min(360, bounds.width - 16), look: context.bar)
-      p.onAdd = { [weak self] text, ask in self?.addNote(text, ask: ask) }
-      p.onRemove = { [weak self] id in self?.removeNote(SidenoteID(rawValue: id)) }
-      p.onClose = { [weak self] in self?.closePop() }
-      addSubview(p)
+  /// The popup for the shown highlight (the board's sidenote popup), below its last line (above its first when there
+  /// is no room for it with one more note), with its annotations; opened to write: its input has the keys
+  func openPop(write: Bool = false) {
+    guard let entry, !shownHighlight.isEmpty, let path = entryPath, let vault = context.pane.vault else { return }
+    if pop == nil {
+      guard let make = context.pane.makePop else { return }
+      let p = make({ [weak self] in self?.popAction($0) }, { [weak self] in self?.placePop() })
+      addSubview(p.view)
       pop = p
     }
-    guard let first = ls.min(by: { $0.1.minY < $1.1.minY }) else { return }
-    // the side is chosen once, with room for one more note, and kept: a note added grows it away from the highlight
-    let area = floatArea
-    if p.below == nil {
-      p.below = AnnotationPop.below(height: p.size.height + p.oneMoreNote, lines: ls.map(\.1), visible: area)
-    }
-    pin(p, at: AnnotationPop.origin(size: p.size, lines: ls.map(\.1), visible: area, below: p.below), on: first.0)
+    let ls = lines(of: shownHighlight)
+    let pages = Set(ls.compactMap { pdf.document?.index(for: $0.0) }).map { $0 + 1 }.sorted()
+    let range = label(shownHighlight.map(\.place), pages: pages)
+    let shown = AnnotationPop.Shown(
+      title: title, range: range, notes: notes(of: shownHighlight, in: entry), write: write,
+      folder: vault.url(of: path), look: context.bar, maxHeight: max(120, min(560, floatArea.height - 16)))
+    pop?.show(shown)
+    placePop()
+    if write { pop?.focus() }
   }
 
+  /// The popup beside the shown highlight's lines; the side is chosen once, with room for one more note, and kept: a
+  /// note added grows it away from the highlight
+  func placePop() {
+    guard let p = pop else { return }
+    let ls = lines(of: shownHighlight)
+    guard let first = ls.min(by: { $0.1.minY < $1.1.minY }) else { return }
+    let size = p.size()
+    let area = floatArea
+    let below =
+      p.below ?? AnnotationPop.below(height: size.height + AnnotationPop.oneMoreNote, lines: ls.map(\.1), visible: area)
+    pop?.below = below
+    let f = p.frame(AnnotationPop.origin(size: size, lines: ls.map(\.1), visible: area, below: below))
+    p.view.setFrameSize(f.size)
+    pin(p.view, at: f.origin, on: first.0)
+  }
+
+  /// The popup closed: what is being written in it is added first
   func closePop() {
     guard let p = pop else { return }
-    unpin(p)
-    p.removeFromSuperview()
     pop = nil
+    p.end()
+    unpin(p.view)
+    p.view.removeFromSuperview()
+  }
+
+  /// What was done in the popup, written to the entry's file
+  func popAction(_ a: AnnotationPop.Action) {
+    switch a {
+    case .add(let text, let ask): addNote(text, ask: ask)
+    // written empty it goes, as a board's sidenote does
+    case .write(let id, let text) where text.isEmpty: change(id, nil)
+    case .write(let id, let text): change(id) { $0.note.text = text }
+    case .delete(let id): change(id, nil)
+    case .done(let id, let done): change(id) { $0.note.question?.done = done }
+    case .answer(let id, let text):
+      change(id) { $0.note.question?.answers.append(Question.Answer(id: Board.newID("a"), text: text, at: Self.now)) }
+    case .writeAnswer(let id, let answer, let text):
+      change(id) { n in
+        if text.isEmpty {
+          n.note.question?.answers.removeAll { $0.id == answer }
+        } else if let i = n.note.question?.answers.firstIndex(where: { $0.id == answer }) {
+          n.note.question?.answers[i].text = text
+        }
+      }
+    case .remove: removeShown()
+    case .close:
+      closePop()
+      window?.makeFirstResponder(self)
+    }
   }
 
   /// What was written on the shown highlight, as an annotation at its first place (a question when asked)
@@ -141,14 +174,15 @@ extension PDFTabView {
       EntrySidenote(
         id: SidenoteID(rawValue: Board.newID("n")), place: h.place, note: TextNote(text: text, question: question)))
     write(e, at: path)
-    openPop()
+    if pop != nil { openPop() }
   }
 
-  func removeNote(_ id: SidenoteID) {
-    guard let (e0, path, _) = madeEntry() else { return }
+  /// An annotation changed by `f`, or deleted (nil), in the entry's file
+  func change(_ id: SidenoteID, _ f: ((inout EntrySidenote) -> Void)?) {
+    guard let (e0, path, _) = madeEntry(), let i = e0.sidenotes.firstIndex(where: { $0.id == id }) else { return }
     var e = e0
-    e.sidenotes.removeAll { $0.id == id }
+    if let f { f(&e.sidenotes[i]) } else { e.sidenotes.remove(at: i) }
     write(e, at: path)
-    openPop()
+    if pop != nil { openPop() }
   }
 }

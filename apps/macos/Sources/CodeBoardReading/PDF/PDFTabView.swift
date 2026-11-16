@@ -21,7 +21,7 @@ final class PDFTabView: NSView, NSDraggingSource, ReadingLookFollower {
   /// The entry's versions, at the bottom (PDFVersions.swift), and the note above it
   private(set) var versions: VersionsBar!
   let note = VersionNote()
-  /// What is written on a highlight, while it is open
+  /// What is written on a highlight (PDFAnnotations.swift), while it is open
   var pop: AnnotationPop?
   /// The entry's folder once it has one, and the entry as last read or written
   private(set) var entryPath: String?
@@ -237,7 +237,11 @@ final class PDFTabView: NSView, NSDraggingSource, ReadingLookFollower {
     for b in [bar!, regionBar!, highlightBar!] { b.look = look }
     versions.look = look
     placeVersions()
-    pop?.look = look
+    // the popup again in the new look, what was being written in it added
+    if pop != nil {
+      closePop()
+      openPop()
+    }
     regionFrame.layer?.borderColor = look.accent
   }
 

@@ -6,11 +6,13 @@ import PDFKit
 import Synchronization
 import Testing
 
+@testable import CodeBoardCanvas
 @testable import CodeBoardReading
 @testable import CodeBoardShell
 
 // PDFs through the shell: added to a resource from its row (Add PDF…, a drop from Finder), opened in the reading pane,
-// a passage handed to the shell, a highlighted file's tab following its new entry, tabs kept across a relaunch
+// a passage handed to the shell, a highlighted file's tab following its new entry, tabs kept across a relaunch, a
+// highlight's annotations written in the board's sidenote popup (needs the board's fonts: node tools/markdown/assets.mjs)
 @MainActor @Suite(.serialized) struct ShellPDFTests {
   let fm = FileManager.default
 
@@ -214,5 +216,164 @@ import Testing
     #expect((view.views[tab.id] as? PDFTabView)?.pdf.document?.pageCount == 1)
     again.apply(.success(try vault.tree()))
     #expect(again.reading.tabs.map(\.id) == [tab.id])
+  }
+
+  // MARK: Annotations
+
+  /// A PDF tab of the shell's reading pane in a window of its own, off the screen, "north" highlighted and clicked
+  func highlightedTab() throws -> (Vault, Shell, NSWindow, PDFTabView) {
+    let (vault, shell, r) = try vault()
+    let pdf = try outside("Field notes.pdf", "The river runs north.")
+    defer { try? fm.removeItem(at: pdf.deletingLastPathComponent()) }
+    shell.addPDFs([pdf], to: r)
+    let view = ReadingPaneView(pane: shell.reading)
+    let window = NSWindow(
+      contentRect: CGRect(x: -30000, y: -30000, width: 600, height: 900), styleMask: [.titled], backing: .buffered,
+      defer: false)
+    window.isReleasedWhenClosed = false
+    window.contentView = view
+    view.sync()
+    view.layoutSubtreeIfNeeded()
+    let selected = try #require(shell.reading.selected)
+    let t = try #require(view.views[selected] as? PDFTabView)
+    t.layoutSubtreeIfNeeded()
+    let page = try #require(t.pdf.document?.page(at: 0))
+    t.pdf.setCurrentSelection(page.selection(for: (page.string! as NSString).range(of: "north")), animate: false)
+    t.highlight()
+    t.pdf.clearSelection()
+    t.dismiss()
+    let lit = try #require(page.annotations.first { $0.type == "Highlight" }).bounds
+    t.released(at: t.pdf.convert(CGPoint(x: lit.midX, y: lit.midY), from: page))
+    return (vault, shell, window, t)
+  }
+
+  /// The sidenote popup the tab shows its highlight's annotations in
+  func sidenotePop(_ t: PDFTabView) throws -> SidenotePop {
+    try #require((t.pop?.view as? PopView)?.pop)
+  }
+
+  func entry(_ shell: Shell) throws -> Entry {
+    let id = try #require(shell.reading.tabs.first?.payload["entry"])
+    let path = try #require(shell.reading.entries[EntryID(rawValue: id)]?.path)
+    return try #require(shell.vault).entry(at: path)
+  }
+
+  func type(_ pop: SidenotePop, _ s: String) {
+    pop.field?.insertText(s, replacementRange: NSRange(location: NSNotFound, length: 0))
+  }
+
+  func enter(_ pop: SidenotePop) { pop.field?.doCommand(by: #selector(NSResponder.insertNewline(_:))) }
+
+  /// Until `f` holds, the main queue running meanwhile (the next input takes the keys after it)
+  func until(_ what: String, _ f: () -> Bool) async throws {
+    let deadline = ContinuousClock.now + .seconds(5)
+    while !f() {
+      guard ContinuousClock.now < deadline else {
+        Issue.record("never: \(what)")
+        return
+      }
+      try await Task.sleep(for: .milliseconds(5))
+    }
+  }
+
+  /// Annotate opens the board's popup beside the highlight with its input ready: ↵ writes an annotation in the entry
+  /// and the next one is written in a new input; the ? asks a question, which is answered, resolved and opened again
+  /// in the popup; an annotation is changed and deleted there; Esc closes it. The tools a board's sidenote has for
+  /// code and for the board (Always Show, Place on Board, a code search) are not there
+  @Test func annotationsAndQuestionsAreWrittenInTheBoardsSidenotePopup() async throws {
+    let (vault, shell, window, t) = try highlightedTab()
+    defer {
+      window.contentView = nil
+      window.close()
+      try? fm.removeItem(at: vault.root)
+    }
+    #expect(t.pop == nil, "no annotations yet: no popup")
+    let annotate = t.highlightBar.buttons[0]
+    NSApp.sendAction(annotate.action!, to: annotate.target, from: annotate)
+    let pop = try sidenotePop(t)
+    #expect(pop.view.alphaValue == 1 && window.firstResponder === pop.field, "the input has the keys")
+    #expect(pop.shown?.title == "Field notes" && pop.shown?.range == "p. 1" && pop.shown?.theme.id == .warmInk)
+    #expect(pop.labels() == ["Remove Highlight", "Close"])
+    let composer = try #require(pop.bottom as? Composer)
+    #expect(composer.askButton != nil && composer.codeButton == nil, "no code search")
+    // beside the highlight: under its line, from where it starts but shifted in to stay inside the tab
+    let line = try #require(t.lines(of: t.shownHighlight).first?.1)
+    let box = pop.view.convert(pop.view.popRect, to: t)
+    #expect(abs(box.minY - (line.maxY + 6)) < 0.5 && abs(box.minX - min(line.minX, t.bounds.maxX - box.width)) < 0.5)
+    #expect(t.floatArea.contains(box) && box.width == 460)
+
+    type(pop, "Which mill?")
+    enter(pop)
+    #expect(try entry(shell).sidenotes.map(\.note) == [TextNote(text: "Which mill?")])
+    try await until("the next input has the keys") { window.firstResponder === pop.field && pop.field != nil }
+    #expect(pop.slips.count == 1)
+    // the ? asks it; after ↵ the row is the + again
+    #expect(pop.press("Question"))
+    type(pop, "Why north?")
+    enter(pop)
+    var e = try entry(shell)
+    #expect(e.sidenotes.count == 2 && e.sidenotes[1].note.question.map { !$0.done && $0.answers.isEmpty } == true)
+    #expect(e.sidenotes.allSatisfy { $0.place == e.highlights[0].place })
+    #expect((pop.bottom as? PopButton)?.label == "Add Sidenote")
+    let (n, q) = (e.sidenotes[0].id.rawValue, e.sidenotes[1].id.rawValue)
+    #expect(pop.labels(in: n) == ["Edit", "Delete Sidenote"], "no Always Show, no Place on Board")
+    #expect(pop.labels(in: q) == ["Resolve", "Edit", "Delete Question"])
+    // answered under the question, then resolved by its tick and opened again
+    #expect(pop.press("Answer", in: q))
+    #expect(window.firstResponder === pop.field)
+    type(pop, "Upstream")
+    enter(pop)
+    e = try entry(shell)
+    #expect(e.sidenotes[1].note.question?.answers.map(\.text) == ["Upstream"])
+    try await until("the answer drawn") { pop.slips.last?.answers.count == 1 }
+    #expect(pop.press("Resolve", in: q))
+    #expect(try entry(shell).sidenotes[1].note.question?.done == true)
+    try await until("drawn resolved") { pop.slips.last?.question == true }
+    #expect(pop.press("Reopen", in: q))
+    #expect(try entry(shell).sidenotes[1].note.question?.done == false)
+    // the first one written again in its slip, then deleted
+    #expect(pop.press("Edit", in: n))
+    type(pop, " The old one.")
+    enter(pop)
+    #expect(try entry(shell).sidenotes[0].note.text == "Which mill? The old one.")
+    #expect(pop.press("Delete Sidenote", in: try entry(shell).sidenotes[0].id.rawValue))
+    e = try entry(shell)
+    #expect(e.sidenotes.map(\.id.rawValue) == [q] && pop.slips.count == 1)
+    // with nothing being written, Esc closes it, and the keys go back to the tab
+    window.makeFirstResponder(pop.view)
+    pop.view.cancelOperation(nil)
+    #expect(t.pop == nil && window.firstResponder === t)
+    // clicked again: its annotations, not written in
+    let page = try #require(t.pdf.document?.page(at: 0))
+    let lit = try #require(page.annotations.first { $0.type == "Highlight" }).bounds
+    t.released(at: t.pdf.convert(CGPoint(x: lit.midX, y: lit.midY), from: page))
+    let again = try sidenotePop(t)
+    #expect(again !== pop && again.slips.count == 1 && again.bottom is PopButton)
+  }
+
+  /// What is being written when the popup closes is added; the title bar's Remove Highlight takes the highlight and
+  /// what was written on it
+  @Test func whatIsWrittenAsThePopupClosesIsAddedAndRemoveHighlightTakesItAll() throws {
+    let (vault, shell, window, t) = try highlightedTab()
+    defer {
+      window.contentView = nil
+      window.close()
+      try? fm.removeItem(at: vault.root)
+    }
+    t.annotate()
+    let pop = try sidenotePop(t)
+    type(pop, "Half written")
+    t.dismiss()
+    #expect(t.pop == nil && pop.key == nil)
+    #expect(try entry(shell).sidenotes.map(\.note.text) == ["Half written"])
+    let page = try #require(t.pdf.document?.page(at: 0))
+    let lit = try #require(page.annotations.first { $0.type == "Highlight" }).bounds
+    t.released(at: t.pdf.convert(CGPoint(x: lit.midX, y: lit.midY), from: page))
+    let again = try sidenotePop(t)
+    #expect(again.slips.count == 1)
+    #expect(again.press("Remove Highlight"))
+    let e = try entry(shell)
+    #expect(e.highlights.isEmpty && e.sidenotes.isEmpty && t.pop == nil && t.highlightBar.isHidden)
+    #expect(!page.annotations.contains { $0.type == "Highlight" || $0.type == "Circle" })
   }
 }

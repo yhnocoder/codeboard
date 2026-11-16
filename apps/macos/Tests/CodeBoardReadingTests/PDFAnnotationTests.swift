@@ -34,6 +34,16 @@ import Testing
 
   func press(_ b: NSButton) { NSApp.sendAction(b.action!, to: b.target, from: b) }
 
+  /// The tab's view with the popup the shell would make standing in, the highlight on these words clicked
+  func clicked(_ v: PDFVault, _ words: String) throws -> (PDFWindow, PDFTabView, FakePop) {
+    let w = try PDFWindow(v)
+    let fake = FakePop(w.pane)
+    let t = try w.tab(try #require(w.pane.openPDF(.file(v.file))))
+    try highlighted(w, t, words)
+    t.released(at: try point(on: t))
+    return (w, t, fake)
+  }
+
   @Test func highlightsMadeTogetherAreOneGroup() {
     let v = VersionID(rawValue: "v1")
     let w = VersionID(rawValue: "v2")
@@ -86,9 +96,10 @@ import Testing
     #expect(try entry(v).highlights.count == 3)
     t.released(at: try point(on: t, page: 1))
     #expect(t.shownHighlight.count == 2)
+    let fake = FakePop(w.pane)
     t.annotate()
-    t.pop?.input.string = "Why there?"
-    t.pop?.addWritten()
+    fake.act?(.add("Why there?", ask: false))
+    #expect(try entry(v).sidenotes.count == 1)
     press(t.highlightBar.buttons[1])
     let e = try entry(v)
     #expect(e.highlights.count == 1 && e.highlights[0].place.block == .page(1))
@@ -130,28 +141,24 @@ import Testing
   @Test func anAnnotationIsWrittenAtTheHighlightMarksItsEndAndShowsWhenItIsClickedAgain() throws {
     let v = try PDFVault()
     defer { v.remove() }
-    let w = try PDFWindow(v)
+    let (w, t, fake) = try clicked(v, "runs north")
     defer { w.close() }
-    let t = try w.tab(try #require(w.pane.openPDF(.file(v.file))))
-    try highlighted(w, t, "runs north")
-    t.released(at: try point(on: t))
     press(t.highlightBar.buttons[0])
     let pop = try #require(t.pop)
-    #expect(!pop.isHidden && pop.notes.isEmpty)
+    let opened = try #require(fake.shown.last)
+    #expect(!pop.view.isHidden && opened.notes.isEmpty && opened.write && fake.focused == 1, "ready to write")
+    #expect(opened.title == "Field notes" && opened.range == "p. 1" && opened.folder == v.vault.url(of: t.entryPath!))
     // under the highlight's last line, from where it starts
     let line = try #require(t.lines(of: t.shownHighlight).first?.1)
-    #expect(abs(pop.frame.minY - (line.maxY + 6)) < 0.5 && abs(pop.frame.minX - line.minX) < 0.5)
-    pop.input.string = "Which mill?"
-    pop.ask.state = .on
-    press(pop.add)
-    pop.input.string = "Look at the map"
-    #expect(pop.textView(pop.input, doCommandBy: #selector(NSResponder.insertNewline(_:))), "↵ adds")
+    #expect(abs(pop.view.frame.minY - (line.maxY + 6)) < 0.5 && abs(pop.view.frame.minX - line.minX) < 0.5)
+    fake.act?(.add("Which mill?", ask: true))
+    fake.act?(.add("Look at the map", ask: false))
     let e = try entry(v)
     #expect(e.sidenotes.map(\.note.text) == ["Which mill?", "Look at the map"])
     #expect(e.sidenotes.allSatisfy { $0.place == e.highlights[0].place && !$0.note.alwaysShow })
     #expect(e.sidenotes[0].note.question.map { !$0.done && $0.answers.isEmpty } == true)
     #expect(e.sidenotes[1].note.question == nil)
-    #expect(pop.notes.map(\.text) == ["Which mill?", "Look at the map"] && pop.notes.map(\.question) == [true, false])
+    #expect(fake.shown.last?.notes == e.sidenotes && fake.shown.last?.write == false, "shown again, written in no more")
     let page = try #require(t.pdf.document?.page(at: 0))
     let mark = try #require(page.annotations.first { $0.type == "Circle" })
     let lit = try #require(page.annotations.first { $0.type == "Highlight" }).bounds
@@ -159,45 +166,68 @@ import Testing
     #expect(mark.bounds.minX >= lit.maxX && abs(mark.bounds.maxY - lit.maxY) < 0.5 && mark.bounds.width <= 3)
     #expect(mark.bounds.maxX < (try #require(PDFPlaces.nextGlyph(after: lit, on: page))).minX)
 
-    // clicked again: the bar and, under it, the annotations
+    // clicked again: the bar and, under it, the annotations, not written in
     t.dismiss()
-    #expect(t.pop == nil)
+    #expect(t.pop == nil && fake.ended == 1, "what was being written is added as it closes")
     t.released(at: t.pdf.convert(CGPoint(x: mark.bounds.midX, y: mark.bounds.midY), from: page))
-    let again = try #require(t.pop)
-    #expect(!t.highlightBar.isHidden && again.notes.count == 2)
-    let remove = try #require(
-      again.subviews.first { $0.accessibilityIdentifier() == "ui-annotationremove1" } as? NSButton)
-    press(remove)
-    press(try #require(again.subviews.first { $0.accessibilityIdentifier() == "ui-annotationremove1" } as? NSButton))
-    #expect(try entry(v).sidenotes.isEmpty && again.notes.isEmpty)
+    #expect(!t.highlightBar.isHidden && t.pop != nil && fake.shown.last?.notes.count == 2)
+    #expect(fake.shown.last?.write == false && fake.focused == 1)
+    for n in e.sidenotes { fake.act?(.delete(n.id)) }
+    #expect(try entry(v).sidenotes.isEmpty && fake.shown.last?.notes.isEmpty == true && t.pop != nil)
     #expect(!page.annotations.contains { $0.type == "Circle" }, "no annotations: no mark")
-    // Esc closes it
-    #expect(again.textView(again.input, doCommandBy: #selector(NSResponder.cancelOperation(_:))) && t.pop == nil)
+    fake.act?(.close)
+    #expect(t.pop == nil && w.window.firstResponder === t)
   }
 
-  /// The keys stay in the popup's input after ↵ adds a note and after one is removed: more is written, Esc closes it
-  @Test func theKeysStayInTheAnnotationInputAfterANoteIsAddedOrRemoved() throws {
+  /// What is done in the popup is written to the entry's file: an annotation changed, a question answered, its answer
+  /// changed and deleted, resolved and opened again; the title bar's Remove Highlight takes the highlight with them
+  @Test func whatIsDoneInThePopupIsWrittenToTheEntrysFile() throws {
     let v = try PDFVault()
     defer { v.remove() }
-    let w = try PDFWindow(v)
+    let (w, t, fake) = try clicked(v, "runs north")
     defer { w.close() }
-    let t = try w.tab(try #require(w.pane.openPDF(.file(v.file))))
-    try highlighted(w, t, "runs north")
-    t.released(at: try point(on: t))
-    press(t.highlightBar.buttons[0])
-    let pop = try #require(t.pop)
-    #expect(w.window.firstResponder === pop.input)
-    func keys() -> NSTextView? { w.window.firstResponder as? NSTextView }
-    pop.input.string = "Which mill?"
-    keys()?.doCommand(by: #selector(NSResponder.insertNewline(_:)))
-    #expect(pop.notes.count == 1 && w.window.firstResponder === pop.input, "after ↵ adds")
-    keys()?.insertText("Another", replacementRange: NSRange(location: NSNotFound, length: 0))
-    keys()?.doCommand(by: #selector(NSResponder.insertNewline(_:)))
-    #expect(pop.notes.map(\.text) == ["Which mill?", "Another"])
-    press(try #require(pop.subviews.first { $0.accessibilityIdentifier() == "ui-annotationremove1" } as? NSButton))
-    #expect(pop.notes.count == 1 && w.window.firstResponder === pop.input, "after one is removed")
-    keys()?.doCommand(by: #selector(NSResponder.cancelOperation(_:)))
-    #expect(t.pop == nil, "Esc closes it")
+    t.annotate()
+    fake.act?(.add("Which mill?", ask: true))
+    fake.act?(.add("A note", ask: false))
+    var e = try entry(v)
+    let (q, n) = (e.sidenotes[0].id, e.sidenotes[1].id)
+    fake.act?(.write(n, "A better note"))
+    fake.act?(.answer(q, "The old one"))
+    fake.act?(.answer(q, "Or the new one"))
+    e = try entry(v)
+    #expect(e.sidenotes[1].note.text == "A better note")
+    let answers = try #require(e.sidenotes[0].note.question?.answers)
+    #expect(answers.map(\.text) == ["The old one", "Or the new one"] && Set(answers.map(\.id)).count == 2)
+    fake.act?(.writeAnswer(q, answer: answers[0].id, "The oldest one"))
+    fake.act?(.writeAnswer(q, answer: answers[1].id, ""))
+    fake.act?(.done(q, true))
+    e = try entry(v)
+    #expect(e.sidenotes[0].note.question?.answers.map(\.text) == ["The oldest one"])
+    #expect(e.sidenotes[0].note.question?.done == true)
+    #expect(fake.shown.last?.notes == e.sidenotes)
+    fake.act?(.done(q, false))
+    #expect(try entry(v).sidenotes[0].note.question?.done == false)
+    // written empty: gone
+    fake.act?(.write(n, ""))
+    #expect(try entry(v).sidenotes.map(\.id) == [q])
+    fake.act?(.remove)
+    e = try entry(v)
+    #expect(e.highlights.isEmpty && e.sidenotes.isEmpty && t.pop == nil && t.highlightBar.isHidden)
+  }
+
+  /// The look changed while it is open: shown again in it, what was being written in it added first
+  @Test func thePopupIsShownAgainInANewLook() throws {
+    let v = try PDFVault()
+    defer { v.remove() }
+    let (w, t, fake) = try clicked(v, "runs north")
+    defer { w.close() }
+    t.annotate()
+    fake.onEnd = { fake.act?(.add("Half written", ask: false)) }
+    let dark = ReadingBarLook.warmInk(dark: true)
+    w.pane.barLook = dark
+    t.barLookChanged(dark)
+    #expect(fake.ended == 1 && t.pop != nil && fake.shown.last?.look == dark)
+    #expect(fake.shown.last?.notes.map(\.note.text) == ["Half written"] && fake.made == 2)
   }
 
   /// Questions on the entries' passages, for the board's question list: listed with their anchors, done and answered
@@ -205,17 +235,11 @@ import Testing
   @Test func questionsAreListedWithTheirAnchorsAndAreDoneAndAnsweredInTheEntrysFile() throws {
     let v = try PDFVault()
     defer { v.remove() }
-    let w = try PDFWindow(v)
+    let (w, t, fake) = try clicked(v, "far bank")
     defer { w.close() }
-    let t = try w.tab(try #require(w.pane.openPDF(.file(v.file))))
-    try highlighted(w, t, "far bank")
-    t.released(at: try point(on: t))
     t.annotate()
-    t.pop?.input.string = "Which bank?"
-    t.pop?.ask.state = .on
-    t.pop?.addWritten()
-    t.pop?.input.string = "Not a question"
-    t.pop?.addWritten()
+    fake.act?(.add("Which bank?", ask: true))
+    fake.act?(.add("Not a question", ask: false))
     // what the board asks, through the protocol
     let s: any SourceProvider = ReadingSources(pane: w.pane)
     let e = try entry(v)
@@ -381,15 +405,31 @@ import Testing
     let c = try #require(await s.blockImage(anchor, pixelWidth: 300))
     #expect(c !== a && s.document(url) !== doc)
   }
+}
 
-  @Test func theQuestionButtonIsFilledWhileWhatIsWrittenWillBeAsked() {
-    let look = ReadingBarLook.warmInk(dark: false)
-    let pop = AnnotationPop(notes: [], width: 280, look: look)
-    #expect(pop.ask.layer?.backgroundColor != look.ask)
-    pop.ask.performClick(nil)
-    #expect(pop.ask.state == .on && pop.ask.layer?.backgroundColor == look.ask)
-    pop.input.string = "why"
-    pop.addWritten()
-    #expect(pop.ask.state == .off && pop.ask.layer?.backgroundColor != look.ask, "off again for the next one")
+/// The popup the shell makes, standing in for it: what it is shown, and what is done in it said by the test
+@MainActor final class FakePop {
+  var shown: [AnnotationPop.Shown] = []
+  var act: ((AnnotationPop.Action) -> Void)?
+  var made = 0
+  var focused = 0
+  var ended = 0
+  /// What closing it does first (what was being written added)
+  var onEnd: (() -> Void)?
+
+  init(_ pane: ReadingPane) {
+    pane.makePop = { [unowned self] act, _ in
+      self.act = act
+      self.made += 1
+      let size = CGSize(width: 300, height: 120)
+      return AnnotationPop(
+        view: NSView(), size: { size }, frame: { CGRect(origin: $0, size: size) },
+        show: { [unowned self] in self.shown.append($0) }, focus: { [unowned self] in self.focused += 1 },
+        end: { [unowned self] in
+          self.ended += 1
+          self.onEnd?()
+          self.onEnd = nil
+        })
+    }
   }
 }
