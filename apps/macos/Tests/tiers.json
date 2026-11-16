@@ -501,7 +501,7 @@
         },
         "reading: pdf": {
           "sources": ["CodeBoardReading/PDF", "CodeBoardResources"],
-          "tests": ["PDFPlaceTests", "PDFTabTests", "PDFSourceTests"]
+          "tests": ["PDFPlaceTests", "PDFTabTests", "PDFSourceTests", "PDFAnnotationTests"]
         },
         "reading: web": {
           "sources": ["CodeBoardReading/Web"],
@@ -513,7 +513,11 @@
         },
         "reading: shared": {
           "sources": ["CodeBoardReading/Shared", "CodeBoardModel/Collected.swift"],
-          "tests": ["SelectionBarPlaceTests", "SelectionBarTests"]
+          "tests": [
+            "SelectionBarPlaceTests",
+            "SelectionBarTests",
+            "PDFAnnotationTests/theAnnotationPopupGoesBelowTheHighlightAndAboveOnlyWhenThereIsNoRoom"
+          ]
         }
       }
     },

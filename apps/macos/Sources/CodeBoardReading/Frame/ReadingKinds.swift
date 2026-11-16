@@ -90,7 +90,9 @@ import CodeBoardModel
 /// What the board's bottom bars look like, for a tab's floating bars to match: the board toolbar's in each theme
 /// (CanvasToolbar: Warm Ink's glass pill 36 high cut at a radius of 14 over the window's blur, Ink Wash's 46 high;
 /// 12 above the panel's bottom, BoardPanes.toolbarFrame; buttons 30 × 28 lit at a radius of 8.5) and its colours
-/// (CanvasBar BarLook: the glass laid over the blur, its hairline, the icons' ink)
+/// (CanvasBar BarLook: the glass laid over the blur, its hairline, the icons' ink); and, from the theme (Theme.swift),
+/// the paper popups are drawn on (its surface, as the sidenote popup's), the accent a selected object is ringed in and
+/// a question's colour
 public struct ReadingBarLook: Equatable, Sendable {
   public var height: CGFloat
   public var radius: CGFloat
@@ -102,27 +104,36 @@ public struct ReadingBarLook: Equatable, Sendable {
   public var glass: CGColor
   public var ring: CGColor
   public var ink: CGColor
+  public var paper: CGColor
+  public var accent: CGColor
+  public var ask: CGColor
   public var dark: Bool
 
   public static func warmInk(dark: Bool) -> ReadingBarLook {
     dark
       ? ReadingBarLook(
         height: 36, radius: 14, glass: c(40, 39, 36, 0.6), ring: c(255, 240, 220, 0.11), ink: c(236, 232, 224),
-        dark: true)
+        paper: hex(0x252422), accent: hex(0xe3895f), ask: hex(0xe0b055), dark: true)
       : ReadingBarLook(
         height: 36, radius: 14, glass: c(250, 248, 244, 0.62), ring: c(60, 45, 20, 0.16), ink: c(33, 31, 27),
-        dark: false)
+        paper: hex(0xfdfcfa), accent: hex(0xb5552d), ask: hex(0xc48a1f), dark: false)
   }
 
   public static func inkWash(dark: Bool) -> ReadingBarLook {
     dark
       ? ReadingBarLook(
-        height: 46, radius: 2, glass: c(28, 27, 25), ring: c(233, 229, 218, 0.14), ink: c(233, 229, 218), dark: true)
+        height: 46, radius: 2, glass: c(28, 27, 25), ring: c(233, 229, 218, 0.14), ink: c(233, 229, 218),
+        paper: hex(0x1e1d1a), accent: hex(0xd6533a), ask: hex(0xe0b055), dark: true)
       : ReadingBarLook(
-        height: 46, radius: 2, glass: c(253, 253, 251), ring: c(29, 28, 26, 0.16), ink: c(29, 28, 26), dark: false)
+        height: 46, radius: 2, glass: c(253, 253, 251), ring: c(29, 28, 26, 0.16), ink: c(29, 28, 26),
+        paper: hex(0xfdfdfb), accent: hex(0xb8321f), ask: hex(0xc48a1f), dark: false)
   }
 
   private static func c(_ r: CGFloat, _ g: CGFloat, _ b: CGFloat, _ a: CGFloat = 1) -> CGColor {
     CGColor(srgbRed: r / 255, green: g / 255, blue: b / 255, alpha: a)
+  }
+
+  private static func hex(_ v: UInt32) -> CGColor {
+    c(CGFloat(v >> 16 & 0xff), CGFloat(v >> 8 & 0xff), CGFloat(v & 0xff))
   }
 }
