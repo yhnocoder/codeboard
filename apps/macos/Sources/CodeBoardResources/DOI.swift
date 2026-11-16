@@ -118,8 +118,17 @@ public struct DOI: Sendable {
     func text(_ key: String) -> String? {
       let v = csl[key]
       let s = (v as? String) ?? (v as? [String])?.first
-      let t = s?.replacing(/<[^>]+>/, with: "").split(whereSeparator: \.isWhitespace).joined(separator: " ")
+      var t = s?.replacing(/<[^>]+>/, with: "").split(whereSeparator: \.isWhitespace).joined(separator: " ")
+      // and its text is escaped as HTML's is (`Discovery &amp; Data Mining`)
+      for (entity, char) in [("&lt;", "<"), ("&gt;", ">"), ("&quot;", "\""), ("&#39;", "'"), ("&amp;", "&")] {
+        t = t?.replacingOccurrences(of: entity, with: char)
+      }
       return t?.isEmpty == false ? t : nil
+    }
+    // Crossref keeps what follows the colon apart (`Optuna` + `A Next-generation…`)
+    var title = text("title")
+    if let main = title, let sub = text("subtitle"), !main.localizedCaseInsensitiveContains(sub) {
+      title = "\(main): \(sub)"
     }
     let authors = (csl["author"] as? [[String: Any]] ?? []).compactMap { a -> String? in
       if let l = a["literal"] as? String { return l }
@@ -131,7 +140,7 @@ public struct DOI: Sendable {
     // a book, report, thesis or dataset is in no journal: where it was published is its publisher
     let alone = ["book", "monograph", "report", "thesis", "dataset"].contains(csl["type"] as? String ?? "")
     return DOIPaper(
-      doi: doi, title: text("title"), authors: authors, year: year,
+      doi: doi, title: title, authors: authors, year: year,
       venue: text("container-title") ?? (alone ? text("publisher") : nil))
   }
 }

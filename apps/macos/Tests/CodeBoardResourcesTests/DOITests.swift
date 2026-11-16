@@ -64,6 +64,15 @@ extension FakeArxiv {
     #expect(
       DOI.paper("10.1/b", book)
         == DOIPaper(doi: "10.1/b", title: "Mills", authors: [], year: 2001, venue: "River Press"))
+    // as Crossref answers: what follows the colon kept apart, and the text escaped as HTML's is
+    let split: [String: Any] = [
+      "type": "paper-conference", "title": "Reach", "subtitle": ["A Walk Along the Bank"],
+      "container-title": "Rivers &amp; Mills",
+    ]
+    #expect(
+      DOI.paper("10.1/s", split)
+        == DOIPaper(
+          doi: "10.1/s", title: "Reach: A Walk Along the Bank", authors: [], year: nil, venue: "Rivers & Mills"))
     let article: [String: Any] = ["type": "article-journal", "title": "  ", "publisher": "ACM"]
     #expect(DOI.paper("10.1/a", article) == DOIPaper(doi: "10.1/a", title: nil, authors: [], year: nil))
   }
