@@ -444,6 +444,27 @@ import Testing
     #expect(list.shown[0].opens == .web(.online(URL(string: "https://arxiv.org/abs/2402.00002"))))
   }
 
+  /// A board's source that is a whole entry with its PDF and a translation listed first opens what its row opens: the
+  /// PDF, not the translation
+  @Test func aWholeEntryRevealedFromTheBoardOpensWhatItsRowOpens() async throws {
+    let v = try ListVault(empty: true)
+    defer { v.remove() }
+    let e = Entry(
+      id: EntryID(rawValue: "e-mill"), title: "Mill races", added: 1,
+      versions: [
+        Version(id: VersionID(rawValue: "zh"), added: 2, of: VersionID(rawValue: "v1"), content: .pdf(file: "zh.pdf")),
+        Version(id: VersionID(rawValue: "v1"), added: 1, content: .pdf(file: "v1.pdf")),
+      ])
+    let path = try v.vault.newEntry(e, in: v.resource.path)
+    for f in ["v1.pdf", "zh.pdf"] { try makePDF(["Page of \(f)"]).write(to: v.vault.url(of: "\(path)/\(f)")) }
+    v.pane.entries = EntryIndex(v.vault, try v.vault.tree())
+    let (_, list) = try await v.openList()
+    let original = PDFTarget.entry(e.id, version: VersionID(rawValue: "v1"))
+    #expect(list.shown.first?.opens == .pdf(original))
+    ReadingSources(pane: v.pane).reveal(SourceAnchor(entry: e.id))
+    #expect(v.pane.tabs.last?.key == original.key && v.pane.selected == v.pane.tabs.last?.id)
+  }
+
   /// A PDF opened from the list and closed: the list shown again has what the resource holds now
   @Test func theListShownAgainAfterATabFromItClosesIsUpToDate() async throws {
     let v = try ListVault()

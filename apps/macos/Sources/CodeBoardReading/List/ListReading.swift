@@ -122,6 +122,24 @@ struct ListRow: Equatable {
   }
 }
 
+extension ReadingPane {
+  /// An entry opened as its row in a list opens it (a board's source that is the entry as a whole)
+  func openEntry(_ id: EntryID) {
+    guard let found = entries[id] else { return }
+    open(ListRow(.entry(found.entry, path: found.path), vault: vault))
+  }
+
+  /// What a row opens, opened: a PDF in its tab, a page online in a new web tab, a saved page in its web tab (gone to
+  /// when it is open, by its hash)
+  func open(_ row: ListRow) {
+    switch row.opens {
+    case .pdf(let t): openPDF(t)
+    case .web(let p): open(row.title, key: p.key, kind: WebReading.kind, payload: p.payload)
+    case nil: break
+    }
+  }
+}
+
 /// A resource's tab: its entries in a table with the columns of its preset (ListColumn), sorted by its default until a
 /// header is clicked, narrowed by the filter at the top right. A click selects a row, ↑ ↓ move the selection, a
 /// double-click or Return opens it in a tab. An empty resource says how to add to it. Files dropped on it, what ⌘V
@@ -337,16 +355,11 @@ final class ListTabView: NSView, ReadingLookFollower, NSTableViewDataSource, NST
     table.scrollRowToVisible(i)
   }
 
-  /// A row shown opened: a PDF in its tab, a page online in a new web tab, a saved page in its web tab (gone to when it
-  /// is open, by its hash)
+  /// A row shown opened (ReadingPane.open)
   func open(_ i: Int) {
     guard shown.indices.contains(i) else { return }
     select(i)
-    switch shown[i].opens {
-    case .pdf(let t): context.pane.openPDF(t)
-    case .web(let p): context.open(shown[i].title, kind: WebReading.kind, payload: p.payload, key: p.key)
-    case nil: break
-    }
+    context.pane.open(shown[i])
   }
 
   func barLookChanged(_ look: ReadingBarLook) { paint() }
