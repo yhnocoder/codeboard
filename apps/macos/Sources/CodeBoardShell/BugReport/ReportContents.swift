@@ -137,9 +137,9 @@ enum ReportContents {
       for board in [b.start, b.end].compactMap({ $0 }) {
         for c in allCards(board) {
           guard case .own(let content) = c.content else { continue }
-          if let a = content.source { wanted.append((a.entry, a.place.version)) }
+          if let a = content.source { wanted.append((a.entry, a.place?.version)) }
           if case .image(let img) = content.body, case .resource(let a) = img.source {
-            wanted.append((a.entry, a.place.version))
+            wanted.append((a.entry, a.place?.version))
           }
         }
       }
@@ -181,7 +181,7 @@ enum ReportContents {
         let names: [String]
         switch v.content {
         case .pdf(let file, let blocks, let source): names = [file, blocks, source].compactMap { $0 }
-        case .file(let file): names = [file]
+        case .file(let file), .translation(let file): names = [file]
         case .page: names = []
         }
         for n in names where done.insert("\(id.rawValue)/\(n)").inserted {
