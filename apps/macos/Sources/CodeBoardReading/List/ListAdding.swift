@@ -193,6 +193,7 @@ extension ListTabView {
             id: "", kind: .link, url: u.absoluteString, title: WebAddress.withPath(u), savedAt: Int64(Entry.now))
           let path = try vault.save(item, in: r.path)
           context.pane.entries.update(try vault.entry(at: path), at: path)
+          context.pane.readLink(item, in: r.path)
           first = first ?? path
           if !had.contains(path), !made.contains(path) { made.append(path) }
         }

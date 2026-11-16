@@ -87,21 +87,62 @@ extension ReadingPane {
     else { return }
     var request = URLRequest(url: url)
     request.timeoutInterval = 10
-    guard let (data, _) = try? await URLSession(configuration: .ephemeral).data(for: request),
-      data.count <= 1_000_000, NSBitmapImageRep(data: data) != nil, let vault,
-      let path = try? vault.save(item, in: WebReading.webResource(in: vault))
+    guard let (data, _) = try? await URLSession(configuration: .ephemeral).data(for: request), let vault,
+      let resource = try? WebReading.webResource(in: vault)
     else { return }
-    let known = ["png", "ico", "jpg", "jpeg", "gif", "webp"]
     let ending = url.scheme == "data" ? "" : url.pathExtension.lowercased()
-    let name = "icon." + (known.contains(ending) ? ending : "png")
-    let folder = vault.url(of: path).appending(path: Vault.imagesFolder)
+    keep(item, meta: meta, icon: data, ending: ending, in: resource)
+  }
+
+  /// `meta` kept in the entry of `item` in `resource` with the icon `icon` as a file in its images, when that is a
+  /// bitmap of at most 1 MB; else as it is
+  private func keep(_ item: SavedItem, meta: WebMeta, icon: Data?, ending: String, in resource: String) {
+    guard let vault else { return }
     var kept = meta
-    kept.icon = .file(name)
     do {
-      try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-      try data.write(to: folder.appending(path: name), options: .atomic)
-      try saveWeb(item, meta: kept)
+      if let icon, icon.count <= 1_000_000, NSBitmapImageRep(data: icon) != nil {
+        let path = try vault.save(item, in: resource)
+        let name = "icon." + (["png", "ico", "jpg", "jpeg", "gif", "webp"].contains(ending) ? ending : "png")
+        let folder = vault.url(of: path).appending(path: Vault.imagesFolder)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try icon.write(to: folder.appending(path: name), options: .atomic)
+        kept.icon = .file(name)
+      }
+      let path = try vault.save(item, in: resource, meta: kept)
+      entries.update(try vault.entry(at: path), at: path)
     } catch {}
+  }
+
+  /// A link added without a tab (pasted or dropped into a list) read as a page with a tab is when its link is saved:
+  /// its title, description, site and icon, by the reader the shell gives; nothing when there is none or it fails
+  public func readLink(_ item: SavedItem, in resource: String) {
+    guard let read = readsPage, let url = URL(string: item.url) else { return }
+    Task {
+      guard let page = await read(url) else { return }
+      var named = item
+      named.title = page.title ?? item.title
+      let meta = WebMeta(
+        title: page.title, description: page.description, site: page.site,
+        fetchedAt: (Date().timeIntervalSince1970 * 1000).rounded())
+      keep(named, meta: meta, icon: page.icon, ending: page.iconEnding ?? "", in: resource)
+    }
+  }
+}
+
+/// What was read of a page that has no tab: its icon as its bytes and the file ending they say
+public struct PageRead: Sendable {
+  public var title: String?
+  public var description: String?
+  public var site: String?
+  public var icon: Data?
+  public var iconEnding: String?
+
+  public init(title: String?, description: String?, site: String?, icon: Data?, iconEnding: String?) {
+    self.title = title
+    self.description = description
+    self.site = site
+    self.icon = icon
+    self.iconEnding = iconEnding
   }
 }
 

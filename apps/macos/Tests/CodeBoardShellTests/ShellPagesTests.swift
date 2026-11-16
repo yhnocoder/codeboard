@@ -313,6 +313,36 @@ struct ShiyiWebTabTests {
       passage.body
         == .note(markdown: "The article's text, long enough to be read as the body of the page and nothing else."))
 
+    // the selection highlighted: kept in the entry at its block, drawn over the same text by the app's script, and
+    // removed from the bar a click on it brings
+    func marks() throws -> [Highlight] {
+      try vault.items(in: WebReading.webResource(in: vault)).flatMap { i -> [Highlight] in
+        if case .entry(let e, _) = i { e.highlights } else { [] }
+      }
+    }
+    func drawn() async throws -> String? {
+      try await v.web.callAsyncJavaScript(
+        "return [...(CSS.highlights.get('codeboard-yellow') ?? [])].map(r => r.toString()).join('|')",
+        contentWorld: WebReading.selectionWorld) as? String
+    }
+    v.highlight()
+    #expect(try marks().count == 1 && marks().first?.place == passage.source?.place)
+    try await until("the highlight drawn") {
+      try await drawn() == "The article's text, long enough to be read as the body of the page and nothing else."
+    }
+    try await until("the selection let go") { v.selection == nil }
+    _ = try await js(
+      v,
+      """
+      const b = document.querySelector("#main p").getBoundingClientRect()
+      document.querySelector("#main p").dispatchEvent(
+        new MouseEvent("click", { bubbles: true, clientX: b.left + 20, clientY: b.top + b.height / 2 }))
+      """)
+    try await until("the highlight's bar") { v.shownHighlight != nil && !v.highlightBar.isHidden }
+    v.removeShownHighlight()
+    #expect(try marks().isEmpty && v.highlightBar.isHidden)
+    try await until("nothing drawn") { try await drawn() == "" }
+
     // the real page scripts' blocks, translated by a made-up translator and shown beside the original
     pane.entries = EntryIndex(vault, try vault.tree())
     let t = open(saved.payload) { texts, _, _ in texts.map { "译文：" + $0 } }

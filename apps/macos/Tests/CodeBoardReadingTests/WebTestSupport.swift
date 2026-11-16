@@ -292,7 +292,7 @@ enum StandInScripts {
         els() {
           const all = [...document.body.querySelectorAll("h1,h2,h3,p,li,figcaption,blockquote,td,th,pre")]
           all.forEach((e, i) => {
-            if (!e.dataset.shiyiId) { e.dataset.shiyiId = "1.b" + (i + 1); e.dataset.shiyiOriginal = e.textContent }
+            if (!e.dataset.shiyiBlock) { e.dataset.shiyiBlock = "1.b" + (i + 1); e.dataset.shiyiOriginal = e.textContent }
           })
           return all
         },
@@ -301,7 +301,7 @@ enum StandInScripts {
           const keep = this.variant().body
           return { scheme: 1, blocks: this.els().map(e => {
             const kind = this.kinds[e.tagName], text = e.dataset.shiyiOriginal
-            const b = { id: e.dataset.shiyiId, kind, text, textHash: this.hash(text), inBody: !keep || !!e.closest(keep),
+            const b = { id: e.dataset.shiyiBlock, kind, text, textHash: this.hash(text), inBody: !keep || !!e.closest(keep),
               translate: kind != "code" }
             if (kind == "heading") b.level = +e.tagName[1]
             return b
@@ -313,11 +313,11 @@ enum StandInScripts {
           const at = this.position()
           for (const n of document.querySelectorAll("[data-shiyi-translation]")) n.remove()
           for (const e of this.els()) {
-            const t = this.translations[e.dataset.shiyiId]
+            const t = this.translations[e.dataset.shiyiBlock]
             e.textContent = this.language == "translation" && t ? t : e.dataset.shiyiOriginal
             if (this.language != "both" || !t) continue
             const d = document.createElement("div")
-            d.dataset.shiyiTranslation = e.dataset.shiyiId
+            d.dataset.shiyiTranslation = e.dataset.shiyiBlock
             d.textContent = t
             e.after(d)
           }
@@ -326,12 +326,12 @@ enum StandInScripts {
         position() {
           for (const e of this.els()) {
             const r = e.getBoundingClientRect()
-            if (r.bottom > 0) return { id: e.dataset.shiyiId, offset: -r.top }
+            if (r.bottom > 0) return { id: e.dataset.shiyiBlock, offset: -r.top }
           }
           return null
         },
         scrollTo(id, range, offset = 0) {
-          const e = this.els().find(e => e.dataset.shiyiId == id)
+          const e = this.els().find(e => e.dataset.shiyiBlock == id)
           if (e) window.scrollTo(0, e.getBoundingClientRect().top + scrollY + offset)
           this.scrolledTo = { id, range }
         },
@@ -341,7 +341,7 @@ enum StandInScripts {
           if (!s.rangeCount || s.isCollapsed) return []
           const r = s.getRangeAt(0)
           const block = n =>
-            (n.nodeType == 1 ? n : n.parentElement).closest("[data-shiyi-id], [data-shiyi-translation]")
+            (n.nodeType == 1 ? n : n.parentElement).closest("[data-shiyi-block], [data-shiyi-translation]")
           const a = block(r.startContainer)
           if (!a) return []
           const at = (node, offset) => {
@@ -351,9 +351,9 @@ enum StandInScripts {
             return p.toString().length
           }
           const end = block(r.endContainer) == a ? at(r.endContainer, r.endOffset) : a.textContent.length
-          const range = { id: a.dataset.shiyiId ?? a.dataset.shiyiTranslation,
+          const range = { id: a.dataset.shiyiBlock ?? a.dataset.shiyiTranslation,
             start: at(r.startContainer, r.startOffset), end, text: s.toString() }
-          return [a.dataset.shiyiId ? range : { ...range, fromTranslation: true }]
+          return [a.dataset.shiyiBlock ? range : { ...range, fromTranslation: true }]
         },
       })
       Object.assign(shiyiReader, {

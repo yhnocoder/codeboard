@@ -213,6 +213,44 @@ import WebKit
     #expect(WebReading.sourceLabel(SourceAnchor(entry: found.entry.id), in: tabs.pane)?.icon == .image(file))
   }
 
+  /// A link added without a tab is read by the reader the shell gives: its entry takes the page's title, description
+  /// and site, and its icon as a file; with no reader, or a page that cannot be read, it stays as it was added
+  @Test func aLinkAddedWithoutATabIsReadAndKeepsItsIcon() async throws {
+    let tabs = try WebTabs(vault: vault, store: nil, scripts: nil)
+    defer { done(tabs) }
+    let pane = tabs.pane
+    let resource = try vault.newResource(in: "", title: "Links", preset: .web).path
+    let png = try #require(
+      Data(
+        base64Encoded:
+          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="))
+    func add(_ address: String) throws -> (SavedItem, String) {
+      let item = SavedItem(id: "", kind: .link, url: address, title: address, savedAt: 1_000)
+      let path = try vault.save(item, in: resource)
+      pane.entries.update(try vault.entry(at: path), at: path)
+      pane.readLink(item, in: resource)
+      return (item, path)
+    }
+    let (_, bare) = try add("https://example.org/bare")
+    #expect(try vault.entry(at: bare).meta == nil, "no reader: as it was added")
+
+    pane.readsPage = { url in
+      url.path == "/gone"
+        ? nil : PageRead(title: "A Page", description: "About it", site: "Example", icon: png, iconEnding: "png")
+    }
+    let (_, read) = try add("https://example.org/read")
+    try await until("read") { try vault.entry(at: read).meta?.icon == .file("icon.png") }
+    let e = try vault.entry(at: read)
+    #expect(e.title == "A Page" && e.meta?.description == "About it" && e.meta?.site == "Example")
+    #expect(pane.entries[e.id]?.entry == e, "the pane knows")
+    let file = vault.url(of: read).appending(path: Vault.imagesFolder).appending(path: "icon.png")
+    #expect(try Data(contentsOf: file) == png)
+    #expect(WebReading.sourceLabel(SourceAnchor(entry: e.id), in: pane)?.icon == .image(file))
+    let (_, gone) = try add("https://example.org/gone")
+    try await Task.sleep(for: .milliseconds(50))
+    #expect(try vault.entry(at: gone).meta == nil && vault.entry(at: gone).title == "https://example.org/gone")
+  }
+
   /// Saving a page whole: the script's fetch is answered with the tab's cookie, its two chunks written in order, the
   /// rule files of its host handed to it, the vault's own first; the service gets the one file, and the page's entry
   /// one version of the hash it gave, which the button then shows; the file is gone after

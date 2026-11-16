@@ -303,6 +303,106 @@ import WebKit
         == SourceAnchor(entry: entry.id, place: Place(version: VersionID(rawValue: "v1"), block: .id("1.b4"))))
   }
 
+  /// On a saved page the selection's bar has Highlight: the highlight is kept in the entry at the block and range,
+  /// drawn over that text by the app's script, drawn again when the page is opened again, and removed from the bar
+  /// a click on it brings; a page online has no Highlight
+  @Test func aSelectionOnASavedPageIsHighlightedDrawnAndRemoved() async throws {
+    let (v, tabs, _, entry) = try await saved()
+    defer { done(tabs) }
+    func drawn(_ v: WebPageView) async throws -> String? {
+      try await v.web.callAsyncJavaScript(
+        "return [...(CSS.highlights.get('codeboard-yellow') ?? [])].map(r => r.toString()).join('|')",
+        contentWorld: WebReading.selectionWorld) as? String
+    }
+    _ = try await client(
+      v,
+      """
+      const t = document.getElementById("p").firstChild
+      getSelection().setBaseAndExtent(t, 4, t, 10)
+      """)
+    try await until("the reader said") { v.selection?.ranges.isEmpty == false }
+    #expect(v.selectionBar.buttons.map(\.toolTip) == ["Add to Board", "Highlight", "Copy"])
+    v.selectionBar.buttons[1].performClick(nil)
+    let place = Place(version: VersionID(rawValue: "v1"), block: .id("1.b4"), range: 4..<10)
+    let kept = try #require(tabs.pane.entries[entry.id])
+    #expect(kept.entry.highlights.map(\.place) == [place] && kept.entry.highlights.first?.color == .yellow)
+    #expect(try vault.entry(at: kept.path).highlights == kept.entry.highlights)
+    try await until("drawn") { try await drawn(v) == "second" }
+    try await until("the selection let go") { v.selection == nil && v.selectionBar.isHidden }
+
+    _ = try await client(
+      v,
+      """
+      const b = document.getElementById("p").getBoundingClientRect()
+      const r = document.createRange()
+      r.setStart(document.getElementById("p").firstChild, 4)
+      r.setEnd(document.getElementById("p").firstChild, 10)
+      const at = r.getBoundingClientRect()
+      document.getElementById("p").dispatchEvent(new MouseEvent("click",
+        { bubbles: true, clientX: at.left + 2, clientY: at.top + at.height / 2 }))
+      """)
+    try await until("the highlight's bar") { v.shownHighlight != nil && !v.highlightBar.isHidden }
+    _ = try await client(
+      v, "document.body.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: 1, clientY: 1 }))")
+    try await until("a click elsewhere takes the bar away") { v.shownHighlight == nil && v.highlightBar.isHidden }
+
+    let again = tabs.open(v.page.payload)
+    try await until("drawn in a tab opened again") { try await drawn(again) == "second" }
+    _ = try await client(
+      again,
+      """
+      const r = document.createRange()
+      r.setStart(document.getElementById("p").firstChild, 4)
+      r.setEnd(document.getElementById("p").firstChild, 10)
+      const at = r.getBoundingClientRect()
+      document.getElementById("p").dispatchEvent(new MouseEvent("click",
+        { bubbles: true, clientX: at.left + 2, clientY: at.top + at.height / 2 }))
+      """)
+    try await until("its bar") { again.shownHighlight != nil }
+    // Annotate: the popup the shell makes, what is written in it kept on the highlight's place
+    let fake = FakePop(tabs.pane)
+    #expect(again.highlightBar.buttons.map(\.toolTip) == ["Annotate", "Remove"])
+    again.highlightBar.buttons[0].performClick(nil)
+    #expect(fake.shown.last?.write == true && fake.shown.last?.notes.isEmpty == true && again.pop != nil)
+    fake.act?(.add("a thought", ask: false))
+    let noted = try #require(tabs.pane.entries[entry.id]?.entry)
+    #expect(noted.sidenotes.map(\.place) == [place] && noted.sidenotes.first?.note.text == "a thought")
+    #expect(fake.shown.last?.notes.map(\.note.text) == ["a thought"])
+    func layer(_ name: String) async throws -> String? {
+      try await again.web.callAsyncJavaScript(
+        "return [...(CSS.highlights.get(name) ?? [])].map(r => r.toString()).join('|')", arguments: ["name": name],
+        contentWorld: WebReading.selectionWorld) as? String
+    }
+    try await until("underlined, having something written on it") { try await layer("codeboard-noted") == "second" }
+    // the popup is on the window, where no pane clips it, beside the highlight
+    #expect(again.pop?.view.superview === tabs.window.contentView)
+    // drawn in the colour the entry has for it
+    var green = noted
+    green.highlights[0].color = .green
+    try vault.write(green, at: try #require(tabs.pane.entries[entry.id]).path)
+    tabs.pane.entries.update(green, at: try #require(tabs.pane.entries[entry.id]).path)
+    again.entriesRead()
+    try await until("green") { try await layer("codeboard-green") == "second" }
+    #expect(try await drawn(again) == "")
+    try vault.write(noted, at: try #require(tabs.pane.entries[entry.id]).path)
+    tabs.pane.entries.update(noted, at: try #require(tabs.pane.entries[entry.id]).path)
+    again.entriesRead()
+    try await until("yellow again") { try await drawn(again) == "second" }
+    // Remove takes the highlight and what was written on it; Undo brings both back, Redo takes them again
+    let undo = try #require(again.undoManager)
+    fake.act?(.remove)
+    #expect(tabs.pane.entries[entry.id]?.entry.highlights.isEmpty == true && again.highlightBar.isHidden)
+    #expect(tabs.pane.entries[entry.id]?.entry.sidenotes.isEmpty == true && again.pop == nil)
+    try await until("gone from the page") { try await drawn(again) == "" }
+    undo.undo()
+    #expect(tabs.pane.entries[entry.id]?.entry.highlights == noted.highlights)
+    #expect(tabs.pane.entries[entry.id]?.entry.sidenotes == noted.sidenotes)
+    try await until("drawn again") { try await drawn(again) == "second" }
+    undo.redo()
+    #expect(tabs.pane.entries[entry.id]?.entry.highlights.isEmpty == true)
+    try await until("gone again") { try await drawn(again) == "" }
+  }
+
   /// A card's source shows its place again: a saved page's block in the saved page's tab, scrolled to by the reader;
   /// a page online in the tab already on it. Its foot is the site's and the entry's title, the nearest heading above
   /// the block lighter; nothing for an entry that is not a web page's

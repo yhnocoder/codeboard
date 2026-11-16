@@ -144,7 +144,7 @@ import WebKit
     #expect(tabs.tab(v)?.payload["view"] == "both")
     try await until("kept beside the entry") { try kept?.blocks.count == 7 }
     let file = try #require(try kept)
-    let pid = try #require(try await js(v, "return document.querySelectorAll('p')[1].dataset.shiyiId") as? String)
+    let pid = try #require(try await js(v, "return document.querySelectorAll('p')[1].dataset.shiyiBlock") as? String)
     #expect(file.scheme == 1 && file.blocks[pid]?.text == "zh: The second paragraph.")
 
     choose(v, 2)
