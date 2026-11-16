@@ -252,6 +252,10 @@ final class CodeTabView: NSView, ReadingLookFollower, NSTextFieldDelegate, NSMen
         return (loaded, line, sel)
       }.value
       guard let self, asked == self.reads else { return }
+      if case .text(let t) = got.0, let old, t.text == old.text { return }
+      // scrolled or selected while the file was read: followed again from where the view is now
+      let now = self.code.map(\.editor.selection.range).flatMap { $0.isEmpty ? nil : $0 }
+      guard self.topLine == top, now == selected else { return self.reread() }
       self.reread(got.0, top: got.1, selection: got.2)
     }
   }
