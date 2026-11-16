@@ -53,7 +53,6 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
 
   /// None when the shell gave the tab no folder of its own on this Mac: no history is kept
   private var historyFile: URL? { context.dataFolder?.appending(path: "history.json") }
-  static let slide: TimeInterval = 0.18
 
   /// Scroll offsets, posted from the page's scroll events in a world of their own so that the page's scripts neither
   /// see nor fake them. WebKit sends scroll events once per frame at most, as the page is drawn, so the main thread
@@ -192,22 +191,7 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
     visibility.handle(event)
     guard visibility.shown != barShown else { return }
     barShown = visibility.shown
-    bar.isHidden = false
-    let to = barFrame(shown: barShown)
-    let slide = !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-    NSAnimationContext.runAnimationGroup { ctx in
-      ctx.duration = Self.slide
-      ctx.allowsImplicitAnimation = true
-      bar.animator().alphaValue = barShown ? 1 : 0
-      if slide { bar.animator().frame = to }
-    } completionHandler: { [weak self] in
-      MainActor.assumeIsolated {
-        guard let self, !self.barShown else { return }
-        self.bar.isHidden = true
-        self.bar.frame = self.barFrame(shown: false)
-      }
-    }
-    if !slide, barShown { bar.frame = to }
+    bar.slide(shown: barShown, to: barFrame(shown: barShown))
   }
 
   override func updateTrackingAreas() {
