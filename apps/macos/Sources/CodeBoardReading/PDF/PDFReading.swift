@@ -73,7 +73,7 @@ extension ReadingPane {
       var found = entries[id]
       if found == nil, scanning, let tree = try? vault.tree() { found = EntryIndex(vault, tree)[id] }
       guard let found, let v = found.entry.versions.first(where: { $0.id == version }),
-        case .pdf(let file, _) = v.content
+        case .pdf(let file, _, _) = v.content
       else { return nil }
       let url = vault.url(of: Vault.join(found.path, file))
       guard FileManager.default.fileExists(atPath: url.path) else { return nil }

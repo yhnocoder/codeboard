@@ -1,0 +1,39 @@
+# 网页标签页（只跑 Mac，不对照）：File > New Web Tab 开一个空白网页标签页，地址正在编辑；工具条的下边和白板右下角那一组的下边在一条线上（白板窄的时候，白板的工具条按设计叠在那一组上面）；输入环回地址回车前往，点链接到下一页，后退、前进；往下滚收起工具条，往上滚露出来；⌘L 再编辑地址，Esc 放弃；Save Link 之后 vault 里有了 网页 资料和这一页的条目
+# only: mac
+# site: site/web
+zoom 1
+menubar File/New Web Tab
+wait 300
+expect focus has WebAddressField
+expect ui.webbar.bottom = ui.dock.bottom
+type $SITE/a.html\n
+wait 500
+expect focus has WKWebView
+expect webviews has "Page A" view shown page visible
+expect readtabs has * web: Page A
+click @view:WKWebView
+wait 500
+expect webviews has "Page B"
+click @ui.webback
+wait 500
+click @ui.webforward
+wait 500
+click @ui.webback
+wait 500
+move @view:WKWebView 200
+wheel -40 6
+wait 400
+expect ui.webbar.y = missing
+wheel 10 2
+wait 400
+expect ui.webbar.bottom = ui.dock.bottom
+key cmd+l
+expect focus has WebAddressField
+key esc
+expect focus has WKWebView
+click @ui.websave
+pick Save Link
+wait 300
+expect entry:网页 has Page A
+expect row:网页 = shown
+shot saved @ui.webbar

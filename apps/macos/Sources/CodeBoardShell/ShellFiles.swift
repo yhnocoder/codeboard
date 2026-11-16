@@ -47,11 +47,12 @@ extension Shell {
     ]
   }
 
-  /// A resource's row menu: what a board's has that a resource has too, and adding PDFs to it
+  /// A resource's row menu: what a board's has that a resource has too, and adding PDFs and arXiv papers to it
   public func menu(resource: VaultResource) -> [MenuEntry] {
     let n = resource.entryCount
     return [
-      ("Add PDF…", { Task { self.addPDFs(await self.askPDFs(), to: resource) } }), nil,
+      ("Add PDF…", { Task { self.addPDFs(await self.askPDFs(), to: resource) } }),
+      ("Add arXiv Paper…", { self.askArxiv(resource) }), nil,
       ("Rename", { self.renaming = .resource(resource.id) }), ("Move to", {}), nil,
     ]
       + fileEntries(resource.path, Vault.resourceFileName) + [
@@ -190,6 +191,47 @@ extension Shell {
     }
     for path in added { openPDF(.file(path)) }
     return !added.isEmpty
+  }
+
+  /// Add arXiv Paper…'s Add: the paper `text` names (an id or an address) opened in a PDF tab. One the vault has an
+  /// entry for is that entry, opened at the version asked for (else its newest), never a second entry; else its
+  /// metadata and PDF come from arXiv (`reading.arxiv`) and make a new entry of `resource`. `translate`: that version's
+  /// translation queued too. Nil when it went through, else what went wrong in plain words
+  public func addArxiv(_ text: String, translate: Bool, to resource: VaultResource) async -> String? {
+    guard vault != nil else { return "No vault is open." }
+    guard let (id, asked) = Arxiv.parse(text) else { return ArxivError.notAnID(text).description }
+    if let found = reading.entries.arxiv(id) {
+      let originals = found.entry.versions.filter { $0.of == nil }
+      guard
+        let v = originals.first(where: { asked != nil && Arxiv.number($0) == asked })
+          ?? originals.max(by: { (Arxiv.number($0) ?? 0) < (Arxiv.number($1) ?? 0) })
+      else { return "\(found.entry.title) has no version to open." }
+      openPDF(.entry(found.entry.id, version: v.id))
+      if translate, !found.entry.versions.contains(where: { $0.of == v.id }) { queueTranslation(found.entry, v) }
+      return nil
+    }
+    let arxiv = reading.arxiv
+    let made: (Entry, String)
+    do {
+      let paper = try await arxiv.paper(id)
+      let n = asked ?? paper.latest
+      let pdf = try await arxiv.pdf(id, version: n)
+      var out: (Entry, String)?
+      guard files({ v in out = try v.newEntry(paper, version: n, pdf: pdf, in: resource.path) }), let out else {
+        return fileError ?? "The paper could not be added."
+      }
+      made = out
+    } catch {
+      return error.description
+    }
+    openPDF(.entry(made.0.id, version: made.0.versions[0].id))
+    if translate { queueTranslation(made.0, made.0.versions[0]) }
+    return nil
+  }
+
+  private func queueTranslation(_ e: Entry, _ v: Version) {
+    guard let vault, let job = TranslationJob(vault: vault, entry: e, version: v) else { return }
+    reading.translations?.add(job)
   }
 
   /// Rename Board… (the toolbar's ⋯): the open board's row shown in the sidebar, its name written in place there; a

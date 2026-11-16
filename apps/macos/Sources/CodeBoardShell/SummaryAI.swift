@@ -140,6 +140,7 @@ struct AISettings {
   static let switchKey = "summarySwitch"
   static let baseURLKey = "ai.baseURL"
   static let modelKey = "ai.model"
+  static let tongtuKey = "tongtu.path"
   let defaults: UserDefaults
 
   var summarySwitch: SummarySwitch {
@@ -155,6 +156,12 @@ struct AISettings {
   var model: String {
     get { defaults.string(forKey: Self.modelKey) ?? "" }
     nonmutating set { defaults.set(newValue, forKey: Self.modelKey) }
+  }
+
+  /// Where tongtu is on this machine; empty: looked for in PATH and the usual places (Tongtu.find)
+  var tongtuPath: String {
+    get { defaults.string(forKey: Self.tongtuKey) ?? "" }
+    nonmutating set { defaults.set(newValue, forKey: Self.tongtuKey) }
   }
 
   /// The writer these settings and `keys` describe
