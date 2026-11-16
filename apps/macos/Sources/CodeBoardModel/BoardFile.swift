@@ -120,6 +120,15 @@ extension Board {
       }
     }
     var stickerIDs = Set<StickerID>()
+    // a sticker on an arrow is on one of its own scope's: the board's, or its shelf entry's
+    let scoped = [(stickers, arrows)] + shelf.map { ($0.stickers, $0.arrows) }
+    for (list, among) in scoped {
+      for k in list {
+        if let a = k.anchor.arrow, !among.contains(where: { $0.id == a }) {
+          return "sticker \(k.id.rawValue): no arrow \(a.rawValue)"
+        }
+      }
+    }
     for k in stickers + shelf.flatMap(\.stickers) {
       guard stickerIDs.insert(k.id).inserted else { return "sticker \(k.id.rawValue) is there twice" }
       if let p = k.problem() { return "sticker \(k.id.rawValue): \(p)" }
@@ -157,9 +166,11 @@ extension Segment {
 extension Sticker {
   func problem() -> String? {
     switch anchor {
-    case .canvas(_, _, let size?), .card(_, _, _, let size?): if size <= 0 { return "size \(size)" }
+    case .canvas(_, _, let size?), .card(_, _, _, let size?), .arrow(_, _, _, _, let size?):
+      if size <= 0 { return "size \(size)" }
     default: break
     }
+    if case .arrow(_, let t, _, _, _) = anchor, !(0...1).contains(t) { return "position \(t) on its arrow" }
     if case .emoji(let e) = glyph, e.count != 1 { return "\(e) is not one emoji" }
     return nil
   }
@@ -514,7 +525,7 @@ extension CardContent: Codable {
 
 extension SubBoard: Codable {
   private enum Keys: String, CodingKey {
-    case board, folder, auto
+    case board, folder, auto, previewColumns
   }
 
   public init(from decoder: any Decoder) throws {
@@ -522,9 +533,15 @@ extension SubBoard: Codable {
     let board = try c.decodeIfPresent(BoardID.self, forKey: .board)
     let folder = try c.decodeIfPresent(String.self, forKey: .folder)
     let auto = try c.decodeIfPresent(Bool.self, forKey: .auto) ?? false
+    let columns = try c.decodeIfPresent(Int.self, forKey: .previewColumns)
+    if let columns, columns != 2 {
+      throw DecodingError.dataCorruptedError(
+        forKey: .previewColumns, in: c, debugDescription: "\(columns): written only as 2")
+    }
+    let two = columns == 2
     switch (board, folder) {
-    case (let b?, nil): self.init(board: b, auto: auto)
-    case (nil, let f?) where auto && !f.isEmpty: self.init(folder: f)
+    case (let b?, nil): self.init(board: b, auto: auto, twoColumnPreview: two)
+    case (nil, let f?) where auto && !f.isEmpty: self.init(folder: f, twoColumnPreview: two)
     default:
       throw DecodingError.dataCorrupted(
         .init(codingPath: c.codingPath, debugDescription: "a board card has a board, or a folder and auto"))
@@ -538,6 +555,7 @@ extension SubBoard: Codable {
     case .folder(let f): try c.encode(f, forKey: .folder)
     }
     if auto { try c.encode(true, forKey: .auto) }
+    if twoColumnPreview { try c.encode(2, forKey: .previewColumns) }
   }
 }
 
@@ -629,7 +647,7 @@ extension Sticker: Codable {
     case builtin, emoji
   }
   private enum AnchorKeys: String, CodingKey {
-    case canvas, card, line
+    case canvas, card, line, arrow
   }
   private struct Canvas: Codable {
     var x: Double
@@ -646,6 +664,13 @@ extension Sticker: Codable {
     var card: CardID
     var segment: SegmentID
     var line: Int
+  }
+  private struct OnArrow: Codable {
+    var arrow: ArrowID
+    var position: Double
+    var x: Double
+    var y: Double
+    var size: Double?
   }
 
   public init(from decoder: any Decoder) throws {
@@ -668,6 +693,9 @@ extension Sticker: Codable {
     case .line:
       let p = try a.decode(Line.self, forKey: .line)
       anchor = .line(p.card, segment: p.segment, line: p.line)
+    case .arrow:
+      let p = try a.decode(OnArrow.self, forKey: .arrow)
+      anchor = .arrow(p.arrow, position: p.position, x: p.x, y: p.y, size: p.size)
     }
     self.init(
       id: try c.decode(StickerID.self, forKey: .id), glyph: glyph,
@@ -690,6 +718,8 @@ extension Sticker: Codable {
       try a.encode(OnCard(card: card, x: x, y: y, size: size), forKey: .card)
     case .line(let card, let segment, let line):
       try a.encode(Line(card: card, segment: segment, line: line), forKey: .line)
+    case .arrow(let arrow, let position, let x, let y, let size):
+      try a.encode(OnArrow(arrow: arrow, position: position, x: x, y: y, size: size), forKey: .arrow)
     }
   }
 }

@@ -667,6 +667,7 @@ private func unchanged(_ before: [String: Data], _ after: [String: Data]) -> [St
       "c": ["x": 0, "y": 0, "w": 300, "summary": summary], "n": ["x": 0, "y": 0, "w": 1, "mh": 80],
       "w": ["x": 0, "y": 0, "w": 1], "ll": ["x": 0, "y": 0, "w": 1], "sb": ["x": 0, "y": 0, "w": 1, "h": 200],
     ],
+    links: [["id": "l", "from": ["card": "c"], "to": ["card": "n"]]],
     sections: [["id": "sec", "title": "S", "x": 0, "y": 0, "w": 10, "h": 10, "directSummary": summary]],
     extra: [
       "sidenotes": [
@@ -703,11 +704,16 @@ private func unchanged(_ before: [String: Data], _ after: [String: Data]) -> [St
         ["id": "k4", "icon": ["pack": "mypack", "name": "cat"], "at": ["kind": "canvas", "x": 1, "y": 2]],
         [
           "id": "k5", "icon": ["pack": "builtin", "name": "zap"],
-          "at": ["kind": "canvas", "x": 1, "y": 2, "on": ["link": "l", "t": 0.5]],
+          "at": ["kind": "canvas", "x": 1, "y": 2, "on": ["link": "l", "t": 1.5]],
         ],
         [
           "id": "k6", "icon": ["pack": "builtin", "name": "bug"],
           "at": ["kind": "line", "card": "c", "seg": "zz", "line": 6],
+        ],
+        // on an arrow of the shelf, not the board's
+        [
+          "id": "k8", "icon": ["pack": "builtin", "name": "flag"],
+          "at": ["kind": "canvas", "x": 0, "y": 0, "on": ["link": "l9", "t": 0.5]],
         ],
       ],
       "shelf": [
@@ -719,7 +725,11 @@ private func unchanged(_ before: [String: Data], _ after: [String: Data]) -> [St
             [
               "id": "k7", "icon": ["pack": "builtin", "name": "heart"],
               "at": ["kind": "canvas", "x": 1, "y": 1, "on": ["card": "put"]],
-            ]
+            ],
+            [
+              "id": "k9", "icon": ["pack": "builtin", "name": "check"],
+              "at": ["kind": "canvas", "x": -16, "y": -40, "size": 24, "on": ["link": "l9", "t": 0.42]],
+            ],
           ],
         ]
       ],
@@ -752,7 +762,7 @@ private func unchanged(_ before: [String: Data], _ after: [String: Data]) -> [St
             LinkList.Item(id: "i1", url: "https://a", title: "A", rich: false), .init(id: "i2", url: "https://b"),
           ],
           rich: true)))
-  #expect(body(4) == .board(SubBoard(board: BoardID(rawValue: "other"))))
+  #expect(body(4) == .board(SubBoard(board: BoardID(rawValue: "other"), twoColumnPreview: true)))
   #expect(b.cards[4].height == 200)
   #expect(FileManager.default.fileExists(atPath: vault.url(of: "Board.board/images/og.png").path))
   #expect(FileManager.default.fileExists(atPath: vault.url(of: "Board.board/images/q.png").path))
@@ -783,18 +793,23 @@ private func unchanged(_ before: [String: Data], _ after: [String: Data]) -> [St
       Sticker(
         id: StickerID(rawValue: "k3"), glyph: .builtin(.star),
         anchor: .line(c, segment: SegmentID(rawValue: "s"), line: 6)),
+      // its place along the arrow kept within 0…1
+      Sticker(
+        id: StickerID(rawValue: "k5"), glyph: .builtin(.zap),
+        anchor: .arrow(ArrowID(rawValue: "l"), position: 1, x: 1, y: 2, size: nil)),
     ])
   #expect(b.shelf.count == 1)
   let e = b.shelf[0]
   #expect(e.id == "e1" && e.at == 100 && e.cards.map(\.id.rawValue) == ["put"])
   #expect(e.cards[0].measuredHeight == 44 && e.cards[0].section == SectionID(rawValue: "inner"))
   #expect(e.sections.map(\.parent) == [SectionID(rawValue: "sec")])
-  #expect(e.arrows.map(\.id.rawValue) == ["l9"] && e.stickers.map(\.id.rawValue) == ["k7"])
+  #expect(e.arrows.map(\.id.rawValue) == ["l9"] && e.stickers.map(\.id.rawValue) == ["k7", "k9"])
+  #expect(e.stickers[1].anchor == .arrow(ArrowID(rawValue: "l9"), position: 0.42, x: -16, y: -40, size: 24))
   #expect(b.seal == Seal(text: "引用", color: .teal))
   #expect(
     skipped(report, "b.json") == [
-      .variants: ["c"], .sidenoteWithoutAnchor: ["n5", "n6"], .stickerWithoutAnchor: ["k6"], .arrowSticker: ["k5"],
-      .stickerPack: ["k4"], .field: ["sb.pcols"],
+      .variants: ["c"], .sidenoteWithoutAnchor: ["n5", "n6"], .stickerWithoutAnchor: ["k6", "k8"],
+      .stickerPack: ["k4"],
     ])
 }
 

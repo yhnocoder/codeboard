@@ -131,10 +131,8 @@ public enum SkipKind: String, CaseIterable, Sendable {
   case arrowWithoutEnd
   /// A sidenote on a card, segment or section that was not imported or does not exist, or on a Variant not shown
   case sidenoteWithoutAnchor
-  /// A sticker on a card or segment that was not imported or does not exist
+  /// A sticker on a card, segment or arrow that was not imported or does not exist
   case stickerWithoutAnchor
-  /// A sticker on an arrow: where it is drawn depends on the arrow's route, which the importer does not lay out
-  case arrowSticker
   /// A sticker from a sticker pack, or a built-in glyph the format does not have
   case stickerPack
   /// A section or parent that does not exist: left out
@@ -475,7 +473,10 @@ private struct Run {
       for (n, j) in shown(i) where parent[j] == i && done.insert(j).inserted {
         guard case .own(var content) = mapped[i].board.cards[n].content else { continue }
         let folder = own[j].map { String($0.split(separator: "/").last ?? "") }
-        content.body = .board(folder.map { SubBoard(folder: $0) } ?? SubBoard(board: mapped[j].board.id, auto: true))
+        let two = if case .board(let s) = content.body { s.twoColumnPreview } else { false }
+        content.body = .board(
+          folder.map { SubBoard(folder: $0, twoColumnPreview: two) }
+            ?? SubBoard(board: mapped[j].board.id, auto: true, twoColumnPreview: two))
         mapped[i].board.cards[n].content = .own(content)
       }
     }
@@ -803,17 +804,21 @@ private struct Mapper {
       }
       return out
     }
-    func stickers(_ list: [Obj]) throws -> [Sticker] {
+    /// `among`: the arrows of the same scope (the board's, or the shelf entry's), which an arrow's sticker must be on
+    func stickers(_ list: [Obj], among: [Arrow]) throws -> [Sticker] {
       var out: [Sticker] = []
       for k in list {
         guard let sticker = try self.sticker(k) else { continue }
+        var ok = true
         if let card = sticker.anchor.card {
-          var ok = allCards.contains(card)
+          ok = allCards.contains(card)
           if case .line(_, let seg, _) = sticker.anchor { ok = segmentsOf(card)?.contains(seg) ?? false }
-          guard ok else {
-            skips.add(.stickerWithoutAnchor, sticker.id.rawValue)
-            continue
-          }
+        } else if let arrow = sticker.anchor.arrow {
+          ok = among.contains { $0.id == arrow }
+        }
+        guard ok else {
+          skips.add(.stickerWithoutAnchor, sticker.id.rawValue)
+          continue
         }
         out.append(sticker)
       }
@@ -837,14 +842,16 @@ private struct Mapper {
     for (i, e) in oldShelf.enumerated() {
       let eid = try e.string("id")
       only(e, ["id", "at", "place", "sections", "links", "stickers"], id: eid)
+      let entryArrows = try arrows(try e.objects("links"))
       shelf.append(
         ShelfEntry(
-          id: eid, at: try e.double("at"), cards: shelfCards[i], sections: shelfSections[i],
-          arrows: try arrows(try e.objects("links")), stickers: try stickers(try e.objects("stickers"))))
+          id: eid, at: try e.double("at"), cards: shelfCards[i], sections: shelfSections[i], arrows: entryArrows,
+          stickers: try stickers(try e.objects("stickers"), among: entryArrows)))
     }
+    let boardArrows = try arrows(try o.objects("links"))
     var board = Board(
-      id: id, cards: cards, arrows: try arrows(try o.objects("links")), sections: sections, sidenotes: notes,
-      stickers: try stickers(try o.objects("stickers")), shelf: shelf, seal: try seal(o, id: bid),
+      id: id, cards: cards, arrows: boardArrows, sections: sections, sidenotes: notes,
+      stickers: try stickers(try o.objects("stickers"), among: boardArrows), shelf: shelf, seal: try seal(o, id: bid),
       hideComments: try o.flag("hideAllComments"))
     // main keeps 同一块白板的共享卡 the same; should a file not, the first place is what they all show
     board.syncTwins(since: Board(id: id))
@@ -918,9 +925,11 @@ private struct Mapper {
     case "board":
       let board = try c.string("board")
       guard Vault.isSafeID(board) else { throw Bad("\(c.at("board")): \(board) is not a board id") }
-      body = .board(SubBoard(board: BoardID(rawValue: board)))
-      // pcols: how many columns its preview showed, a choice of the moment
-      only(c, common.union(["board"]), id: id)
+      // pcols: its preview in two columns (2, or absent: one)
+      let two = c.fields["pcols"] as? Int == 2
+      if c.has("pcols") && !two { skips.add(.field, "\(id).pcols") }
+      body = .board(SubBoard(board: BoardID(rawValue: board), twoColumnPreview: two))
+      only(c, common.union(["board", "pcols"]), id: id)
     default:
       throw Bad("\(c.at("kind")): unknown card kind \(kind)")
     }
@@ -1236,7 +1245,7 @@ private struct Mapper {
       boardOnly: try n.flag("boardOnly"), review: try n.optString("review"), why: kind == "code" ? why : nil)
   }
 
-  /// A sticker; nil (reported) for one on an arrow or from a sticker pack
+  /// A sticker; nil (reported) for one from a sticker pack
   private mutating func sticker(_ k: Obj) throws -> Sticker? {
     let id = try k.string("id")
     only(k, ["id", "icon", "color", "at"], id: id)
@@ -1270,11 +1279,14 @@ private struct Mapper {
       let y = try at.double("y")
       let size = try at.optDouble("size")
       if let on = try at.optObject("on") {
-        guard on.has("card") else {
-          skips.add(.arrowSticker, id)
-          return nil
+        if on.has("card") {
+          anchor = .card(CardID(rawValue: try on.string("card")), x: x, y: y, size: size)
+        } else {
+          // along an arrow (StickerOn's link and t, kept within 0…1 as the board draws it)
+          anchor = .arrow(
+            ArrowID(rawValue: try on.string("link")), position: min(max(try on.double("t"), 0), 1), x: x, y: y,
+            size: size)
         }
-        anchor = .card(CardID(rawValue: try on.string("card")), x: x, y: y, size: size)
       } else {
         anchor = .canvas(x: x, y: y, size: size)
       }
@@ -1470,7 +1482,9 @@ extension CardContent {
       t.text = r.markdown(t.text)
       body = .text(t)
     case .board(let b):
-      if let id = b.board { body = .board(SubBoard(board: r.boards[id] ?? id, auto: b.auto)) }
+      if let id = b.board {
+        body = .board(SubBoard(board: r.boards[id] ?? id, auto: b.auto, twoColumnPreview: b.twoColumnPreview))
+      }
     case .code, .image, .web, .links: break
     }
   }
@@ -1500,7 +1514,7 @@ extension Sidenote {
 extension Sticker {
   fileprivate mutating func rename(_ r: Renames) {
     switch anchor {
-    case .canvas: break
+    case .canvas, .arrow: break
     case .card(let c, let x, let y, let size): anchor = .card(r.card(c), x: x, y: y, size: size)
     case .line(let c, let s, let l): anchor = .line(r.card(c), segment: s, line: l)
     }

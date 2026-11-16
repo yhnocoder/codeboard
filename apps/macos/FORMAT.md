@@ -79,8 +79,10 @@ one line of text per JSON line, so a git diff shows the lines that changed.
 Read strictly: the file must be exactly what the writer would write for the value it decodes to. An unknown field, a
 `null`, a left-out field (every non-optional field, including `false` and `[]`, is written) or another `version` is an
 error naming the file and the JSON path. So are broken references: a card twice (on the canvas and the shelf together),
-an arrow end, sidenote anchor or sticker on a card, segment or section that is not there, a section that does not exist or
-contains itself, an arrow width other than 1–3, a label position outside 0–1, a Text with a font size outside 10–240, a seal text that is not 1–5 CJK and 1–12 other characters without spaces.
+an arrow end, sidenote anchor or sticker on a card, segment or section that is not there, a sticker on an arrow that is not
+among the arrows of its own list (the board's, or its shelf entry's), a section that does not exist or contains itself,
+an arrow width other than 1–3, a label position outside 0–1, a sticker's size not above 0 or position on its arrow
+outside 0–1, a sub-board card's `previewColumns` other than 2, a Text with a font size outside 10–240, a seal text that is not 1–5 CJK and 1–12 other characters without spaces.
 
 ### Versions: how format 2 grows (decided)
 
@@ -163,7 +165,8 @@ an animated image rests on; `loops`: it always plays.
 
 **links**: `items: [{id, url, title?, meta?, rich?}], rich`: a link list; an item's `rich` absent: the card's.
 
-**board**: `board: {board: <board id>, auto?}` or `board: {folder: <name>, auto: true}`: another board shown inside this
+**board**: `board: {board: <board id>, auto?, previewColumns?}` or `board: {folder: <name>, auto: true,
+previewColumns?}`: another board shown inside this
 one (a sub-board card), by id, or a subfolder of a folder board's folder by its name (it shows that folder's folder
 board, when it has one). `auto: true` (only written when true) marks a folder board's automatic card, which the app keeps
 in step with the folder: one for each board and subfolder in it, in sidebar order; one for what came goes after the last
@@ -175,7 +178,8 @@ something on it) it stays where it is with all on it, drawn as missing; that is 
 and when a board of that id (or one of the title it last had, seen while the app runs) is there again the same card shows
 it. The user deletes a missing card as any card. A subfolder renamed in the app keeps its card; renamed in Finder it is a
 missing card and a new one. A plain card (no `auto`) is the user's own and can be on any board.
-Its preview's column count, a choice of the moment, is not kept.
+`previewColumns: 2` (only written as 2; absent: one column): its preview, when open, is in two columns, as the
+extension's `pcols`; which previews are open is a choice of the moment and is not kept.
 
 **Summary** (a card's, a section's `summary` and `directSummary`): `text, title?, at, sig, edited, pairs: [{ai, user, at}],
 input?`, as core `summary.ts` keeps it: `sig` a fingerprint of what it was written from (another one now: out of date),
@@ -191,12 +195,13 @@ line on why it is there, shown under its code; a text sidenote has none (an old 
 **Sticker**: `id, glyph, color?, anchor`. `glyph`: `builtin: star|exclaim|check|flag|zap|bug|todo|heart|hourglass|warning|
 todo-text` (the web board's own, without its `?`) or `emoji: "<one emoji>"`. `color` `#RRGGBB`, absent: the glyph's own.
 `anchor`: `canvas: {x, y, size?}` (its top left; size absent: 32), `card: {card, x, y, size?}` (moves with the card, from
-its top left), `line: {card, segment, line}` (in the line numbers). Stickers on arrows and sticker packs are not part of
+its top left), `line: {card, segment, line}` (in the line numbers), `arrow: {arrow, position, x, y, size?}` (moves with the
+arrow: its top left this far from the point at `position`, 0–1, along the arrow's curve). Sticker packs are not part of
 the format.
 
 **ShelfEntry**: `id, at, cards: [Card], sections: [Section], arrows: [Arrow], stickers: [Sticker]`: what was put aside
 together, as the extension's shelf: the cards with where they were and their `measuredHeight`, the sections with them
-(outermost first), every arrow touching one of them, the stickers on them. Their sidenotes stay in the board's list. A
+(outermost first), every arrow touching one of them, the stickers on them and on those arrows. Their sidenotes stay in the board's list. A
 shelved card's `section` may be one of the board's.
 
 **Seal**: `text?, color?` (`vermilion amber olive teal ink plum rose graphite`): what a [[ref]] to this board from another
@@ -394,7 +399,7 @@ files that are not in the vault yet; a file that is there is never written, what
 | image `alt bg frame loop` | `alt framed stillFrame loops` |
 | web `url meta{title desc site image icon at failed} style` | `web {url, meta {title description site image icon fetchedAt failed}, style (absent: automatic)}`; `image`, `icon` as image sources |
 | links `items{id url title meta rich} rich` | `links {items, rich}` |
-| board `board` | `board {board}` |
+| board `board pcols` | `board {board, previewColumns}` (`pcols: 2` → `previewColumns: 2`) |
 | shared ref `{id, kind: "shared"}` | `shared: true`; `cards/<id>.json` → `.codeboard/shared/<id>.json` with its sidenotes |
 | link `from to label at` | arrow `from to label labelPosition` |
 | link `style{dash,width,head,color}` | `dashed`, `width` (absent: 2), `startHead` (absent: no), `endHead` (absent: yes), `color` |
@@ -406,7 +411,7 @@ files that are not in the vault yet; a file that is there is never written, what
 | sidenote code `why code` | `why`, `code` (a Segment) |
 | sidenote `lineRemoved boardOnly review` | the same |
 | sticker `icon{pack: builtin / emoji, name} color` | `glyph {builtin / emoji}`, `color` |
-| sticker `at` line / canvas / canvas `on.card` | `anchor` `line` / `canvas` / `card` |
+| sticker `at` line / canvas / canvas `on.card` / canvas `on.link t` | `anchor` `line` / `canvas` / `card` / `arrow {arrow, position}` (`t` kept within 0–1) |
 | shelf entry `id at place sections links stickers` | `id at cards sections arrows stickers` |
 | `seal{text color}` | `seal` |
 
@@ -441,12 +446,12 @@ holds more. Kinds:
   `classMembers` (a class card keeps its code), `messageNote` (kept as a plain Note), `processes` (process tags)
 - `callMark`: an arrow's `call`, `rpc`, `back` or `gen` (the arrow is kept plain)
 - `arrowWithoutEnd`, `sidenoteWithoutAnchor` (on a card, segment or section not imported or not there, or on a Variant the
-  card does not show), `stickerWithoutAnchor`, `danglingReference` (a card's section or a section's parent that does not
+  card does not show), `stickerWithoutAnchor` (on a card, segment or arrow not imported or not there),
+  `danglingReference` (a card's section or a section's parent that does not
   exist: left out)
-- `arrowSticker`: a sticker on an arrow (where it is drawn depends on the arrow's route, which the importer does not lay
-  out), `stickerPack`: a sticker from a sticker pack or a built-in glyph the format does not have
+- `stickerPack`: a sticker from a sticker pack or a built-in glyph the format does not have
 - `missingImage`: named but not in `assets/` (the reference is kept); `imageNameTaken`: a shared card's image whose name
   the vault's shared images already have for other bytes (left as it is)
 - `field` (`<owner id>.<field>`): any other field, known or unknown: e.g. `born`, `seq`, `marks`, `legend`, `hideNumbers`
   (it hides the call graph marks, which are not drawn; line numbers are always drawn), `place.collapsed`, `place.start`,
-  `segment.keep`, `keepOld`, a sub-board's `pcols`, a Note's `fill fs wrap`, a seal text or colour the format does not accept
+  `segment.keep`, `keepOld`, a sub-board's `pcols` other than 2, a Note's `fill fs wrap`, a seal text or colour the format does not accept

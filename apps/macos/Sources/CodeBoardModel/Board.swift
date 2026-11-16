@@ -626,15 +626,19 @@ public struct SubBoard: Equatable, Sendable {
   /// One of a folder board's own cards, one for each board and subfolder in its folder: kept in step with the folder,
   /// never deleted on the board
   public var auto: Bool
+  /// Its preview, when open, in two columns (which previews are open is a choice of the moment, never kept)
+  public var twoColumnPreview: Bool
 
-  public init(board: BoardID, auto: Bool = false) {
+  public init(board: BoardID, auto: Bool = false, twoColumnPreview: Bool = false) {
     target = .board(board)
     self.auto = auto
+    self.twoColumnPreview = twoColumnPreview
   }
 
-  public init(folder: String) {
+  public init(folder: String, twoColumnPreview: Bool = false) {
     target = .folder(folder)
     auto = true
+    self.twoColumnPreview = twoColumnPreview
   }
 
   /// The board it shows, when it shows a board
@@ -749,12 +753,18 @@ public struct Sticker: Equatable, Sendable {
     case card(CardID, x: Double, y: Double, size: Double?)
     /// In the line numbers of a code line, following the line through new versions
     case line(CardID, segment: SegmentID, line: Int)
+    /// Moves with an arrow: its top left this far from the point at `position` (0…1) along the arrow's curve
+    case arrow(ArrowID, position: Double, x: Double, y: Double, size: Double?)
 
     public var card: CardID? {
       switch self {
-      case .canvas: nil
+      case .canvas, .arrow: nil
       case .card(let id, _, _, _), .line(let id, _, _): id
       }
+    }
+
+    public var arrow: ArrowID? {
+      if case .arrow(let id, _, _, _, _) = self { id } else { nil }
     }
   }
 

@@ -65,6 +65,8 @@ extension CanvasView {
           StickerSpot(
             id: k.id, glyph: k.glyph, color: k.color, owner: c, frame: f, board: f.offsetBy(dx: r.minX, dy: r.minY),
             line: false))
+      // one on an arrow is not drawn yet
+      case .arrow: continue
       case .line(let c, let seg, let n):
         guard let r = rects[c], let p = scene.placed[c], !p.folded, let code = p.code,
           case .code(let card)? = scene.parts[c]?.content.body,
