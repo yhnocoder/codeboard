@@ -630,6 +630,48 @@ extension CanvasSidenoteTests {
 }
 
 extension CanvasSidenoteTests {
+  /// The other boards are read with their shared cards (core collectQuestions): a question that travels with one is
+  /// listed once, on the first board in the vault that shows it, this one among them; a board-only one on its lines
+  /// says its file
+  @Test func otherBoardsQuestionsOnASharedCardAreListedOnceOnTheFirstBoardThatShowsIt() throws {
+    let fm = FileManager.default
+    let vault = Vault(root: fm.temporaryDirectory.appending(path: "questions-shared-\(UUID().uuidString)"))
+    defer { try? fm.removeItem(at: vault.root) }
+    try fm.createDirectory(at: vault.sharedFolderURL, withIntermediateDirectories: true)
+    let sc = cid("sc")
+    let seg = Segment(
+      id: s1, source: .file(path: "engine/sched.py", hash: nil), language: "python", firstLine: 10,
+      lines: ["def step():", "    take()", "    run()"])
+    try SharedCard(
+      id: sc, content: CardContent(body: .code(CodeCard(segments: [seg]))),
+      sidenotes: [
+        Sidenote(id: nid("tq"), anchor: .card(sc), body: .text(TextNote(text: "跟着卡走", question: Question(at: 7))))
+      ]
+    ).encoded().write(to: vault.sharedFolderURL.appending(path: "sc.json"))
+    for name in ["a", "m", "z"] {
+      var b = Board(
+        id: BoardID(rawValue: name), cards: [Card(id: sc, x: 0, y: 0, width: 300, content: .shared)])
+      if name == "z" {
+        b.sidenotes = [
+          Sidenote(
+            id: nid("bq"), anchor: .card(sc, segment: s1, lines: 11...11),
+            body: .text(TextNote(text: "只在这块", question: Question(at: 8))), boardOnly: true)
+        ]
+      }
+      try vault.newBoard(in: "", title: name, board: b)
+    }
+    let all = try vault.tree().allBoards
+    func listed(current id: String) throws -> [String: [String]] {
+      let vb = try #require(all.first { $0.id.rawValue == id })
+      let current = try vault.board(at: vb.path).inflated { try? vault.sharedCard($0) }
+      let others = CanvasView.otherQuestions(in: vault, current: current, at: vb)
+      return Dictionary(
+        uniqueKeysWithValues: others.map { o in (o.0.id.rawValue, o.1.map { "\($0.note) \($0.where)" }) })
+    }
+    #expect(try listed(current: "m") == ["a": ["tq sched.py 10–12"], "z": ["bq sched.py:11"]])
+    #expect(try listed(current: "a") == ["m": [], "z": ["bq sched.py:11"]], "on this board, so on no other")
+  }
+
   @Test func theInputOpenedAtOnceOffersTheReferenceListOnceItsCandidatesCome() async throws {
     let r = try await Rig(sidenoteBoard(), zoom: 1)
     defer { r.close() }
