@@ -121,6 +121,15 @@ final class PDFTabView: NSView, NSDraggingSource, ReadingLookFollower {
           MainActor.assumeIsolated { self?.followPage() }
         })
     }
+    // the popup over the window follows the tab as the window is resized
+    watching.append(
+      center.addObserver(forName: NSWindow.didResizeNotification, object: nil, queue: .main) { [weak self] n in
+        let resized = (n.object as AnyObject?).map(ObjectIdentifier.init)
+        MainActor.assumeIsolated {
+          guard let self, let w = self.window, resized == ObjectIdentifier(w) else { return }
+          self.placePop()
+        }
+      })
     // a translation's progress, or its version added
     watching.append(
       center.addObserver(forName: Translations.changed, object: nil, queue: .main) { [weak self] _ in
@@ -168,6 +177,8 @@ final class PDFTabView: NSView, NSDraggingSource, ReadingLookFollower {
   override func layout() {
     super.layout()
     placeVersions()
+    // the popup over the window follows the tab as the pane is resized
+    placePop()
   }
 
   var title: String { context.pane.tabs.first { $0.id == context.tab }?.title ?? "" }
@@ -206,12 +217,18 @@ final class PDFTabView: NSView, NSDraggingSource, ReadingLookFollower {
   // MARK: What floats over the pages
 
   /// `view` at `origin` (this view's space), kept there on `page` as it scrolls; one pinned already moves there without
-  /// being hidden in between (hiding it would take the keys from the view in it that has them: the popup's input)
+  /// being hidden in between (hiding it would take the keys from the view in it that has them: the popup's input). A
+  /// view hosted outside this one (the popup, over the window) is placed at the same point of the window
   func pin(_ view: NSView, at origin: CGPoint, on page: PDFPage) {
     pinned.removeAll { $0.view === view }
-    view.setFrameOrigin(origin)
+    place(view, at: origin)
     view.isHidden = false
     pinned.append((view, page, pdf.convert(pdf.convert(origin, from: self), to: page)))
+  }
+
+  private func place(_ view: NSView, at origin: CGPoint) {
+    guard let host = view.superview, host !== self else { return view.setFrameOrigin(origin) }
+    view.frame = host.convert(CGRect(origin: origin, size: view.frame.size), from: self)
   }
 
   func unpin(_ view: NSView) {
@@ -221,7 +238,7 @@ final class PDFTabView: NSView, NSDraggingSource, ReadingLookFollower {
 
   /// Scrolled: what floats stays where it was on its page
   private func followPage() {
-    for p in pinned { p.view.setFrameOrigin(convert(pdf.convert(p.at, from: p.page), from: pdf)) }
+    for p in pinned { place(p.view, at: convert(pdf.convert(p.at, from: p.page), from: pdf)) }
   }
 
   /// Everything that floats goes, and the region with it: a press elsewhere, the tab left
@@ -248,6 +265,12 @@ final class PDFTabView: NSView, NSDraggingSource, ReadingLookFollower {
   override func viewDidHide() {
     super.viewDidHide()
     dismiss()
+  }
+
+  /// The tab closed (or its window): what floats over the window goes with it
+  override func viewWillMove(toWindow newWindow: NSWindow?) {
+    super.viewWillMove(toWindow: newWindow)
+    if newWindow == nil { dismiss() }
   }
 
   /// `lines` (page space) in this view (y-down)

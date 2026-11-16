@@ -100,9 +100,15 @@ extension PDFTabView {
     if pop == nil {
       guard let make = context.pane.makePop else { return }
       let p = make({ [weak self] in self?.popAction($0) }, { [weak self] in self?.placePop() })
-      addSubview(p.view)
+      // over the window, where no pane clips it (in a narrow pane it reaches over the board); the keys it does not
+      // take come to this tab
+      let host = window?.contentView ?? self
+      host.addSubview(p.view, positioned: .above, relativeTo: nil)
+      p.view.nextResponder = self
       pop = p
     }
+    // it offers what the bar does: its input, and Remove Highlight in its title bar
+    unpin(highlightBar)
     let ls = lines(of: shownHighlight)
     let pages = Set(ls.compactMap { pdf.document?.index(for: $0.0) }).map { $0 + 1 }.sorted()
     let range = label(shownHighlight.map(\.place), pages: pages)
@@ -115,7 +121,8 @@ extension PDFTabView {
   }
 
   /// The popup beside the shown highlight's lines; the side is chosen once, with room for one more note, and kept: a
-  /// note added grows it away from the highlight
+  /// note added grows it away from the highlight. In a tab too narrow for it, its right edge is the tab's and it
+  /// reaches left over the board, inside the window
   func placePop() {
     guard let p = pop else { return }
     let ls = lines(of: shownHighlight)
@@ -125,10 +132,18 @@ extension PDFTabView {
     let below =
       p.below ?? AnnotationPop.below(height: size.height + AnnotationPop.oneMoreNote, lines: ls.map(\.1), visible: area)
     pop?.below = below
-    let f = p.frame(AnnotationPop.origin(size: size, lines: ls.map(\.1), visible: area, below: below))
+    var o = AnnotationPop.origin(size: size, lines: ls.map(\.1), visible: area, below: below)
+    if size.width > area.width {
+      let room = window?.contentView.map { convert($0.bounds, from: $0) } ?? bounds
+      o.x = max(room.minX + Self.popMargin, area.maxX - Self.popMargin - size.width)
+    }
+    let f = p.frame(o)
     p.view.setFrameSize(f.size)
     pin(p.view, at: f.origin, on: first.0)
   }
+
+  /// How far a popup wider than the tab stays in from the tab's right edge and the window's left
+  static let popMargin: CGFloat = 8
 
   /// The popup closed: what is being written in it is added first
   func closePop() {

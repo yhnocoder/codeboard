@@ -376,4 +376,74 @@ import Testing
     #expect(e.highlights.isEmpty && e.sidenotes.isEmpty && t.pop == nil && t.highlightBar.isHidden)
     #expect(!page.annotations.contains { $0.type == "Highlight" || $0.type == "Circle" })
   }
+
+  /// In a reading pane narrower than the popup it is whole: over the window, its right edge the tab's and the rest
+  /// over the board, Close and its input under the pointer, the board beside it; it moves with the page as it
+  /// scrolls and goes when another tab is shown
+  @Test(arguments: [420.0, 280.0])
+  func inANarrowPaneThePopupReachesOverTheBoardWhole(_ width: Double) async throws {
+    let (vault, shell, r) = try vault()
+    defer { try? fm.removeItem(at: vault.root) }
+    let pdf = try outside("Field notes.pdf", "The river runs north.")
+    let other = try outside("Other.pdf", "Evening light.")
+    defer { for u in [pdf, other] { try? fm.removeItem(at: u.deletingLastPathComponent()) } }
+    shell.addPDFs([pdf], to: r)
+    shell.reading.width = width
+    // the whole window, never shown: off the screen, short enough that the page scrolls
+    let (window, _) = makeMainWindow(shell: shell)
+    defer { window.close() }
+    window.setFrame(CGRect(x: -30000, y: -30000, width: 1200, height: 420), display: false)
+    let root = try #require(window.contentView)
+    root.layoutSubtreeIfNeeded()
+    func find<T: NSView>(_ v: NSView) -> T? { v as? T ?? v.subviews.lazy.compactMap { find($0) }.first }
+    let paneView: ReadingPaneView = try #require(find(root))
+    paneView.sync()
+    root.layoutSubtreeIfNeeded()
+    let t: PDFTabView = try #require(find(paneView))
+    t.layoutSubtreeIfNeeded()
+    #expect(abs(t.bounds.width - width) < 40, "the tab is about as wide as the pane: \(t.bounds.width)")
+    let page = try #require(t.pdf.document?.page(at: 0))
+    t.pdf.setCurrentSelection(page.selection(for: (page.string! as NSString).range(of: "north")), animate: false)
+    t.highlight()
+    t.pdf.clearSelection()
+    t.dismiss()
+    let lit = try #require(page.annotations.first { $0.type == "Highlight" }).bounds
+    t.released(at: t.pdf.convert(CGPoint(x: lit.midX, y: lit.midY), from: page))
+    t.annotate()
+    let pop = try sidenotePop(t)
+    #expect(t.highlightBar.isHidden, "the popup, not the bar")
+    func box() -> CGRect { pop.view.convert(pop.view.popRect, to: nil) }
+    let inWindow = root.convert(root.bounds, to: nil)
+    let tab = t.convert(t.floatArea, to: nil)
+    #expect(inWindow.contains(box()), "whole in the window: \(box()) in \(inWindow)")
+    #expect(box().maxX <= tab.maxX + 0.5 && box().maxX >= tab.maxX - 8.5, "its right edge the tab's: \(box()) \(tab)")
+    #expect(box().minX < tab.minX && box().width == 460, "over the board")
+    // under the pointer: Close, the input; beside it, not the popup
+    let frame = try #require(root.superview)
+    func hit(_ p: CGPoint) -> NSView? { frame.hitTest(frame.convert(p, from: nil)) }
+    let close = try #require(PopButton.find("Close", in: pop.view))
+    let c = close.convert(CGPoint(x: close.bounds.midX, y: close.bounds.midY), to: nil)
+    #expect(hit(c) === close)
+    let field = try #require(pop.field)
+    type(pop, "Why")
+    try await until("the input laid out") { field.frame.height > 0 }
+    let f = field.convert(CGPoint(x: field.bounds.midX, y: field.bounds.midY), to: nil)
+    #expect(hit(f).map { $0 === field || $0.isDescendant(of: field) } == true && window.firstResponder === field)
+    let beside = CGPoint(x: box().minX - 12, y: box().midY)
+    #expect(hit(beside).map { $0.isDescendant(of: pop.view) } == false, "the board beside it gets the press")
+    // scrolled: it stays by the highlight
+    func line() -> CGRect { t.lines(of: t.shownHighlight).first.map { t.convert($0.1, to: nil) } ?? .null }
+    let before = line()
+    let gap = box().maxY - before.minY
+    let clip = try #require(t.pdf.documentView?.enclosingScrollView?.contentView)
+    clip.scroll(to: CGPoint(x: clip.bounds.minX, y: clip.bounds.minY + (clip.isFlipped ? 30 : -30)))
+    clip.enclosingScrollView?.reflectScrolledClipView(clip)
+    try await until("scrolled") { abs(line().minY - before.minY) > 10 }
+    #expect(abs(box().maxY - line().minY - gap) < 0.5, "moved with the page")
+    #expect(inWindow.contains(box()) && box().maxX <= tab.maxX + 0.5)
+    // another tab shown: it goes
+    shell.addPDFs([other], to: r)
+    paneView.sync()
+    #expect(t.pop == nil && pop.view.superview == nil)
+  }
 }

@@ -150,7 +150,10 @@ import Testing
     #expect(opened.title == "Field notes" && opened.range == "p. 1" && opened.folder == v.vault.url(of: t.entryPath!))
     // under the highlight's last line, from where it starts
     let line = try #require(t.lines(of: t.shownHighlight).first?.1)
-    #expect(abs(pop.view.frame.minY - (line.maxY + 6)) < 0.5 && abs(pop.view.frame.minX - line.minX) < 0.5)
+    let box = t.convert(pop.view.frame, from: pop.view.superview)
+    #expect(abs(box.minY - (line.maxY + 6)) < 0.5 && abs(box.minX - line.minX) < 0.5)
+    #expect(pop.view.superview === w.window.contentView, "over the window, where no pane clips it")
+    #expect(t.highlightBar.isHidden, "the popup offers what its bar does")
     fake.act?(.add("Which mill?", ask: true))
     fake.act?(.add("Look at the map", ask: false))
     let e = try entry(v)
@@ -170,7 +173,7 @@ import Testing
     t.dismiss()
     #expect(t.pop == nil && fake.ended == 1, "what was being written is added as it closes")
     t.released(at: t.pdf.convert(CGPoint(x: mark.bounds.midX, y: mark.bounds.midY), from: page))
-    #expect(!t.highlightBar.isHidden && t.pop != nil && fake.shown.last?.notes.count == 2)
+    #expect(t.highlightBar.isHidden && t.pop != nil && fake.shown.last?.notes.count == 2, "the popup, not the bar")
     #expect(fake.shown.last?.write == false && fake.focused == 1)
     for n in e.sidenotes { fake.act?(.delete(n.id)) }
     #expect(try entry(v).sidenotes.isEmpty && fake.shown.last?.notes.isEmpty == true && t.pop != nil)
