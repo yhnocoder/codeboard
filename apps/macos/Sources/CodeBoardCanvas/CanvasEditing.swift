@@ -33,6 +33,8 @@ struct Gesture {
     case sticker(StickerDrag)
     /// A Link List's row dragged
     case row(RowDrag)
+    /// A sub-board card's preview dragged by its header (CanvasSubPreviews)
+    case preview(PreviewDrag)
     /// The text of the one card selected, selected at rest (CanvasRestText)
     case text(CardID)
   }
@@ -374,6 +376,7 @@ extension CanvasView {
     if openPop != nil { refreshPop() }
     questionsChanged()
     summariesChanged()
+    subPreviewsChanged()
     // a swap made here otherwise reaches the screen a frame later than the layers it replaces go
     CATransaction.flush()
     arrive()
@@ -594,6 +597,7 @@ extension CanvasView {
       if let acts = sectionActsLayer() { chrome.addSublayer(acts) }
       drawHoverLine()
       placeHeadActs()
+      placeSubPreviews()
       if restText != nil { drawRestText() }
       placeAlignBar()
       drawPorts()
@@ -1004,6 +1008,7 @@ extension CanvasView {
     defer { hoverSticker(onSticker) }
     if spaceHeld { return NSCursor.openHand.set() }
     hoverChip(at: camera.board(v))
+    let onPreview = hoverSubPreview(at: camera.board(v))
     let onBar = alignBarButton(at: v)
     hoverAlignBar(onBar ?? nil)
     if onBar != nil {
@@ -1040,6 +1045,11 @@ extension CanvasView {
     hoverHead(head)
     if head != nil {
       hoverPorts(at: v)
+      NSCursor.arrow.set()
+      hover(nil)
+      return
+    }
+    if onPreview {
       NSCursor.arrow.set()
       hover(nil)
       return
@@ -1104,6 +1114,7 @@ extension CanvasView {
     hoverRow(at: CGPoint(x: CGFloat.infinity, y: .infinity))
     hoverTitle(nil, act: nil)
     hoverSummary(nil)
+    _ = hoverSubPreview(at: CGPoint(x: CGFloat.infinity, y: .infinity))
     hover(nil)
     hoverMark(nil)
     guard gesture == nil, hoveredCard != nil else { return }
@@ -1122,6 +1133,8 @@ extension CanvasView {
     dropPicture()
     // a press anywhere puts away a row's bookmark (WebBody.tsx: pointerdown leaves the row)
     closeRowPeek()
+    // and a title row of the previews opened in place, but on itself
+    foldPeek(at: camera.board(convert(e.locationInWindow, from: nil)))
     // and the text selected at rest (the browser's selection goes with a press)
     clearRestText()
     if spacePanDown(e) { return }
@@ -1247,6 +1260,8 @@ extension CanvasView {
       }
       return
     }
+    // a preview beside a sub-board card
+    if pressSubPreview(e, at: p) { return }
     // a card header's button
     if let (id, a) = headAct(at: p) {
       if e.clickCount == 1 {
@@ -1309,7 +1324,7 @@ extension CanvasView {
           if edges == [.right, .bottom] || edges == .bottom && note { fitCards([id]) }
         }
       } else {
-        doubleClick(at: p)
+        doubleClick(at: p, command: e.modifierFlags.contains(.command))
       }
       return
     }
@@ -1489,6 +1504,11 @@ extension CanvasView {
       dragRow(&d, view: v)
       g.kind = .row(d)
       gesture = g
+    case .preview(var d):
+      guard d.moved || hypot(v.x - g.startView.x, v.y - g.startView.y) >= dragSlop else { return }
+      dragPreview(&d, by: CGVector(dx: p.x - g.start.x, dy: p.y - g.start.y))
+      g.kind = .preview(d)
+      gesture = g
     case .text(let id):
       dragRestText(id, from: g.start, to: p)
     case .nudge, .still:
@@ -1550,6 +1570,7 @@ extension CanvasView {
       } else if case .card(let id)? = item, was, !toggle, doc.selection == [.card(id)] {
         clickEdit(id, at: g.start)
       }
+      if case .card(let id)? = item, !toggle { clickMap(id, at: g.start) }
       if let item {
         if toggle && was {
           doc.select(doc.selection.subtracting([item]))
@@ -1595,6 +1616,9 @@ extension CanvasView {
       commitSticker(d, at: p, free: e.modifierFlags.contains(.option))
     case .row(let d):
       commitRow(d, view: convert(e.locationInWindow, from: nil))
+    case .preview(let d):
+      gesture = nil
+      dropPreview(d)
     case .nudge, .still:
       gesture = nil
     }

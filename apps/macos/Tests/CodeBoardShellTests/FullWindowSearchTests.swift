@@ -1,6 +1,7 @@
 import AppKit
 import CodeBoardModel
 import Foundation
+import Synchronization
 import Testing
 
 @testable import CodeBoardCanvas
@@ -8,7 +9,49 @@ import Testing
 @testable import CodeBoardShell
 
 // ⌘K and ⌘F in the whole window (keymap.ts search, searchBoard; ui/Palette.tsx): the palette over the board, its
-// groups, ↑ ↓ and Return, Tab between all boards and this one, Esc; the toolbar's Search; both keys in the shortcut list
+// groups, ↑ ↓ and Return, Tab between all boards and this one, Esc; the toolbar's Search; both keys in the shortcut list;
+// Related by Meaning over a fake index (never box itself), with settings in a defaults suite and the key in memory
+
+/// box as Related by Meaning asks it: the nth search's answer, the reranker's hits (nil: it fails as a server without a
+/// reranking model), and every request
+final class FakeMeaning: MeaningIndex {
+  struct Log: Sendable {
+    var syncs: [(embedder: BoxEmbedder, items: [BoxItem])] = []
+    var searches: [BoxQuery] = []
+    var reranks: [BoxQuery] = []
+  }
+  let answer: @Sendable (Int) throws -> BoxResult
+  let reranked: [BoxHit]?
+  let log = Mutex(Log())
+  /// Holding: the reranker answers once `release` is yielded to
+  let hold: Bool
+  let release = AsyncStream<Void>.makeStream()
+
+  init(reranked: [BoxHit]? = nil, hold: Bool = false, answer: @escaping @Sendable (Int) throws -> BoxResult) {
+    self.answer = answer
+    self.reranked = reranked
+    self.hold = hold
+  }
+
+  func sync(source: String, ref: String, embedder: BoxEmbedder, items: [BoxItem]) async throws -> Int {
+    log.withLock { $0.syncs.append((embedder, items)) }
+    return items.count
+  }
+  func search(_ q: BoxQuery) async throws -> BoxResult {
+    let n = log.withLock {
+      $0.searches.append(q)
+      return $0.searches.count
+    }
+    return try answer(n)
+  }
+  func rerank(_ q: BoxQuery) async throws -> BoxResult {
+    log.withLock { $0.reranks.append(q) }
+    if hold { for await _ in release.stream { break } }
+    guard let reranked else { throw BoxError.service(boxNoReranker) }
+    return BoxResult(hits: reranked, source: q.source, ref: q.ref)
+  }
+  func status(source: String, ref: String) async throws -> BoxStatus { throw BoxError.unavailable }
+}
 
 @MainActor @Suite(.serialized) struct FullWindowSearchTests {
   let board = BoardID(rawValue: "w")
@@ -34,7 +77,11 @@ import Testing
             body: .text(TextNote(text: "waiting is FIFO")))
         ],
         shelf: [ShelfEntry(id: "e1", at: 0, cards: [note("put", "# Waiting room", x: 300)])]))
-    try vault.newBoard(in: "", title: "Other", board: Board(id: other, cards: [note("on", "# Waiting elsewhere")]))
+    try vault.newBoard(
+      in: "", title: "Other",
+      board: Board(
+        id: other, cards: [note("on", "# Waiting elsewhere"), note("q", "# Queue theory", x: 400)],
+        shelf: [ShelfEntry(id: "e2", at: 0, cards: [note("stow", "# Stowed sketch", x: 800)])]))
     return vault
   }
 
@@ -77,6 +124,11 @@ import Testing
     var empty: String?
     var focused: Bool
     var busy: Bool
+    var maybe: [Bool]
+    var error: String?
+    var off: String?
+    var sliding: Int
+    var marked: String
   }
 
   func shown() async -> Shown? {
@@ -86,7 +138,9 @@ import Testing
       here: s["here"] as? Bool ?? false, groups: s["groups"] as? [String] ?? [],
       rows: rows.map { $0["label"] as? String ?? "" }, details: rows.map { $0["detail"] as? String ?? "" },
       on: s["on"] as? Int ?? -1, empty: s["empty"] as? String, focused: s["focused"] as? Bool ?? false,
-      busy: s["busy"] as? Bool ?? false)
+      busy: s["busy"] as? Bool ?? false, maybe: rows.map { $0["maybe"] as? Bool ?? false },
+      error: s["error"] as? String, off: s["off"] as? String, sliding: s["sliding"] as? Int ?? 0,
+      marked: s["marked"] as? String ?? "")
   }
 
   func open(_ w: FullWindowEditTests.Window, _ key: String) async throws {
@@ -145,17 +199,32 @@ import Testing
     #expect(w.window.firstResponder === w.canvas, "the keys back on the board")
   }
 
-  @Test func aShelvedCardPickedIsPutBack() async throws {
+  /// A shelved card picked is shown as a click on its thumbnail shows it: the Shelf open, the entry large beside it, its
+  /// thumbnail ringed; the board not edited (no undo step, nothing to save), the card still on the Shelf; Esc lets it go
+  func shownOnTheShelf(_ w: FullWindowEditTests.Window, _ entry: String, _ card: String) async throws {
+    await until("shown on the Shelf", in: w) {
+      w.pane?.previewing == entry && w.pane?.shelfPreview != nil && w.pane?.shelfPanel?.lit == entry
+    }
+    let doc = try #require(w.pane?.document)
+    #expect(doc.board.card(CardID(rawValue: card)) == nil && doc.board.shelf.map(\.id) == [entry])
+    #expect(!doc.history.canUndo && !doc.isDirty && doc.selection.isEmpty)
+    #expect(w.window.firstResponder === w.canvas, "the keys back on the board")
+    let esc = NSEvent.keyEvent(
+      with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: w.window.windowNumber,
+      context: nil, characters: "\u{1b}", charactersIgnoringModifiers: "\u{1b}", isARepeat: false, keyCode: 53)!
+    w.canvas.keyDown(with: esc)
+    #expect(w.canvas.previewing == nil && w.canvas.shelfPreview == nil, "Esc closes it")
+    #expect(doc.board.shelf.map(\.id) == [entry] && !doc.history.canUndo && !doc.isDirty)
+  }
+
+  @Test func aShelvedCardPickedIsShownOnTheShelfAndLeftThere() async throws {
     let w = try await opened()
     defer { w.close() }
     try await open(w, "k")
     _ = await type(w, "waiting room", rows: 1)
     await press("Enter")
-    let put = CardID(rawValue: "put")
-    await until("back on the board, selected", in: w) {
-      w.pane?.document?.board.card(put) != nil && w.pane?.document?.selection == [.card(put)]
-    }
-    #expect(w.pane?.document?.board.shelf.isEmpty == true)
+    try await shownOnTheShelf(w, "e1", "put")
+    #expect(w.shows(board))
   }
 
   @Test func commandFSearchesThisBoardTabSwitchesAndEscClosesWithTheCameraWhereItWas() async throws {
@@ -200,6 +269,170 @@ import Testing
     #expect(await shown()?.here == false)
     await press("Escape")
     await until("closed", in: w) { !BoardPanes.search.isOpen }
+  }
+
+  // MARK: Related by Meaning
+
+  /// box's hits for these items, still embedding `left`
+  nonisolated static func hits(_ hits: [BoxHit], left: Int = 0) -> BoxResult {
+    BoxResult(hits: hits, left: left, source: "", ref: "")
+  }
+
+  /// ⌘K with Related by Meaning answered by `index`, an embedding address set (or not) and its key in memory; the app's
+  /// own put back after
+  func withMeaning(
+    _ index: FakeMeaning, address: String? = "http://127.0.0.1:11001/v1", _ body: () async throws -> Void
+  ) async rethrows {
+    let name = "codeboard-tests-\(UUID().uuidString)"
+    let d = UserDefaults(suiteName: name)!
+    let was = (BoardPanes.meaningIndex, BoardPanes.searchSettings, BoardPanes.embeddingKeys)
+    defer {
+      // a palette left open would not open again
+      BoardPanes.search.close()
+      d.removePersistentDomain(forName: name)
+      (BoardPanes.meaningIndex, BoardPanes.searchSettings, BoardPanes.embeddingKeys) = was
+    }
+    if let address { d.set(address, forKey: SearchSettings.embeddingURLKey) }
+    BoardPanes.meaningIndex = index
+    BoardPanes.searchSettings = SearchSettings(defaults: d)
+    BoardPanes.embeddingKeys = MemoryKeyStore("ek-1")
+    try await body()
+  }
+
+  @Test func relatedByMeaningComesAfterCardsAndSidenotesLessWhatTheWordsFoundItsMaybesFaint() async throws {
+    let index = FakeMeaning { _ in
+      Self.hits([
+        BoxHit(id: "card:far", score: 0.8), BoxHit(id: "card:n", score: 0.7, piece: 1, range: [2, 8]),
+        BoxHit(id: "sidenote:sn", score: 0.69), BoxHit(id: "card:q", score: 0.6),
+      ])
+    }
+    try await withMeaning(index) {
+      let w = try await opened()
+      defer { w.close() }
+      try await open(w, "k")
+      let s = try #require(await type(w, "waiting", rows: 6))
+      #expect(s.groups == ["Cards on Boards", "Sidenotes", "Related by Meaning"])
+      // the list and the sidenote the words found are not listed again
+      #expect(s.rows.suffix(2) == ["A plan", "Queue theory"] && s.details.suffix(2) == ["This board", "Other"])
+      #expect(s.maybe == [false, false, false, false, false, true], "the one below 0.635 is a maybe")
+      // its passage marked in the preview
+      for _ in 0..<4 { await press("ArrowDown") }
+      await until("the passage marked", in: w) { await shown()?.marked == "A plan" }
+      // every board's items handed to box when ⌘K opened (the shelved card too), the key with them
+      let sync = try #require(index.log.withLock { $0.syncs.first })
+      #expect(sync.embedder == BoxEmbedder(base: "http://127.0.0.1:11001/v1", key: "ek-1"))
+      #expect(
+        Set(sync.items.map(\.id)) == [
+          "card:n", "card:far", "card:put", "sidenote:sn", "card:on", "card:q", "card:stow",
+        ])
+      #expect(index.log.withLock { $0.searches.map(\.q) } == ["waiting"])
+    }
+  }
+
+  @Test func whileIndexingItSaysHowManyAreLeftAndAsksAgain() async throws {
+    let index = FakeMeaning { n in Self.hits([BoxHit(id: "card:q", score: 0.7)], left: n == 1 ? 3 : 0) }
+    try await withMeaning(index) {
+      let w = try await opened()
+      defer { w.close() }
+      try await open(w, "k")
+      let s = try #require(await type(w, "lobby", rows: 1))
+      #expect(s.groups == ["Related by Meaning · indexing, 3 left"] && s.rows == ["Queue theory"])
+      await until("asked again, and done", in: w) { await shown()?.groups == ["Related by Meaning"] }
+      #expect(index.log.withLock { $0.searches.map(\.q) } == ["lobby", "lobby"])
+    }
+  }
+
+  @Test func theRerankersOrderReplacesTheFirstTheRowsSliding() async throws {
+    let index = FakeMeaning(
+      reranked: [BoxHit(id: "card:q", score: 0.68), BoxHit(id: "card:n", score: 0.7)], hold: true
+    ) { _ in Self.hits([BoxHit(id: "card:n", score: 0.7), BoxHit(id: "card:q", score: 0.68)]) }
+    // a server of its own: another test's, found to have no reranker, is not asked again
+    try await withMeaning(index, address: "http://127.0.0.1:11002/v1") {
+      let w = try await opened()
+      defer { w.close() }
+      try await open(w, "k")
+      #expect(await type(w, "lobby", rows: 2)?.rows == ["A plan", "Queue theory"])
+      await until("the reranker asked", in: w) { index.log.withLock { $0.reranks.count } == 1 }
+      await press("ArrowDown")
+      index.release.continuation.yield()
+      await until("in the reranker's order", in: w) { await shown()?.rows == ["Queue theory", "A plan"] }
+      let s = try #require(await shown())
+      #expect(s.on == 0, "the row highlighted stays highlighted")
+      #expect(s.sliding > 0, "the rows slide there")
+    }
+  }
+
+  @Test func anErrorIsTheGroupsLine() async throws {
+    let index = FakeMeaning { _ in throw BoxError.unavailable }
+    try await withMeaning(index) {
+      let w = try await opened()
+      defer { w.close() }
+      try await open(w, "k")
+      _ = await type(w, "waiting", rows: 4)
+      await until("the error line", in: w) { await shown()?.error != nil }
+      let s = try #require(await shown())
+      #expect(s.groups == ["Cards on Boards", "Sidenotes", "Related by Meaning"])
+      #expect(s.error?.hasPrefix("Related by Meaning needs box, the index service") == true)
+    }
+  }
+
+  @Test func withoutAnEmbeddingAddressItIsOffAndNothingIsAsked() async throws {
+    let index = FakeMeaning { _ in Self.hits([BoxHit(id: "card:q", score: 0.7)]) }
+    try await withMeaning(index, address: nil) {
+      let w = try await opened()
+      defer { w.close() }
+      try await open(w, "k")
+      _ = await type(w, "zzzq", rows: 0)
+      await until("said to be off", in: w) { await shown()?.off != nil }
+      let s = try #require(await shown())
+      #expect(s.empty == "No matches" && s.off?.hasPrefix("Related by Meaning is off") == true)
+      // with words found, it is not said
+      _ = await BoardPanes.search.run("document.querySelector('.palette .pin').select()")
+      _ = await type(w, "waiting", rows: 4)
+      #expect(await shown()?.off == nil)
+      let log = index.log.withLock { $0 }
+      #expect(log.syncs.isEmpty && log.searches.isEmpty && log.reranks.isEmpty)
+    }
+  }
+
+  @Test func aRowPickedGoesToItsCardOnAnotherBoard() async throws {
+    let index = FakeMeaning { _ in Self.hits([BoxHit(id: "card:q", score: 0.7)]) }
+    try await withMeaning(index) {
+      let w = try await opened()
+      defer { w.close() }
+      try await open(w, "k")
+      _ = await type(w, "lobby", rows: 1)
+      await press("Enter")
+      await until("the other board shown", in: w) { w.shows(other) }
+      await until("its card selected", in: w) { w.pane?.document?.selection == [.card(CardID(rawValue: "q"))] }
+    }
+  }
+
+  @Test func aShelvedCardPickedIsShownOnTheShelfAsTheWordsDo() async throws {
+    let index = FakeMeaning { _ in Self.hits([BoxHit(id: "card:put", score: 0.7)]) }
+    try await withMeaning(index) {
+      let w = try await opened()
+      defer { w.close() }
+      try await open(w, "k")
+      #expect(await type(w, "lobby", rows: 1)?.rows == ["Waiting room"])
+      await press("Enter")
+      try await shownOnTheShelf(w, "e1", "put")
+    }
+  }
+
+  /// Words find another board's shelved cards not at all (Search.swift: only from their own board); meaning does
+  @Test func aCardShelvedOnAnotherBoardPickedOpensThatBoardAndShowsItOnItsShelf() async throws {
+    let index = FakeMeaning { _ in Self.hits([BoxHit(id: "card:stow", score: 0.7)]) }
+    try await withMeaning(index) {
+      let w = try await opened()
+      defer { w.close() }
+      try await open(w, "k")
+      #expect(await type(w, "lobby", rows: 1)?.details == ["Other"])
+      await press("Enter")
+      await until("the other board shown", in: w) { w.shows(other) }
+      try await shownOnTheShelf(w, "e2", "stow")
+      #expect(w.shows(other))
+    }
   }
 
   @Test func bothKeysAreInTheShortcutList() {

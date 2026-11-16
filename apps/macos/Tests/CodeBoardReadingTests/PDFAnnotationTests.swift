@@ -96,6 +96,37 @@ import Testing
     #expect(try #require(doc.page(at: 1)).annotations.isEmpty)
   }
 
+  @Test func aLineEndingWhereThereIsNoGlyphOrAtThePagesLastOneHasItsMarkAfterIt() throws {
+    let v = try PDFVault()
+    defer { v.remove() }
+    let page = try #require(PDFDocument(url: v.vault.url(of: v.file))?.page(at: 0))
+    let box = page.bounds(for: .mediaBox)
+    // a line drawn into the margin, as a block's is to its column's edge: no glyph at its end
+    let empty = CGRect(x: box.maxX - 40, y: box.minY + 2, width: 38, height: 10)
+    #expect(page.characterIndex(at: CGPoint(x: empty.maxX - 0.5, y: empty.midY)) == NSNotFound)
+    #expect(PDFPlaces.nextGlyph(after: empty, on: page) == nil)
+    #expect(PDFPlaces.mark(after: empty, on: page, .yellow, id: "h").bounds.minX > empty.maxX)
+    // the page's last glyph that has a box
+    let n = page.numberOfCharacters
+    let last = try #require((0..<n).reversed().map { page.characterBounds(at: $0) }.first { $0.width > 1 })
+    _ = PDFPlaces.nextGlyph(after: last, on: page)
+    #expect(PDFPlaces.mark(after: last, on: page, .yellow, id: "h").bounds.width == 3)
+  }
+
+  @Test func theMarkOfAHighlightEndingInAWordSitsAboveTheLineAtItsEnd() throws {
+    let v = try PDFVault()
+    defer { v.remove() }
+    let w = try PDFWindow(v)
+    defer { w.close() }
+    let t = try w.tab(try #require(w.pane.openPDF(.file(v.file))))
+    try highlighted(w, t, "runs nor")
+    let page = try #require(t.pdf.document?.page(at: 0))
+    let lit = try #require(page.annotations.first { $0.type == "Highlight" }).bounds
+    let mark = PDFPlaces.mark(after: lit, on: page, .yellow, id: "h")
+    let next = try #require(PDFPlaces.nextGlyph(after: lit, on: page))
+    #expect(mark.bounds.maxX > next.minX && mark.bounds.minY >= lit.maxY && abs(mark.bounds.midX - lit.maxX) < 0.5)
+  }
+
   @Test func anAnnotationIsWrittenAtTheHighlightMarksItsEndAndShowsWhenItIsClickedAgain() throws {
     let v = try PDFVault()
     defer { v.remove() }
@@ -123,7 +154,10 @@ import Testing
     #expect(pop.notes.map(\.text) == ["Which mill?", "Look at the map"] && pop.notes.map(\.question) == [true, false])
     let page = try #require(t.pdf.document?.page(at: 0))
     let mark = try #require(page.annotations.first { $0.type == "Circle" })
-    #expect(mark.bounds.minX >= (page.annotations.first { $0.type == "Highlight" }?.bounds.maxX ?? .infinity))
+    let lit = try #require(page.annotations.first { $0.type == "Highlight" }).bounds
+    // raised like a superscript in the gap after the last glyph, clear of the next word
+    #expect(mark.bounds.minX >= lit.maxX && abs(mark.bounds.maxY - lit.maxY) < 0.5 && mark.bounds.width <= 3)
+    #expect(mark.bounds.maxX < (try #require(PDFPlaces.nextGlyph(after: lit, on: page))).minX)
 
     // clicked again: the bar and, under it, the annotations
     t.dismiss()
@@ -139,6 +173,31 @@ import Testing
     #expect(!page.annotations.contains { $0.type == "Circle" }, "no annotations: no mark")
     // Esc closes it
     #expect(again.textView(again.input, doCommandBy: #selector(NSResponder.cancelOperation(_:))) && t.pop == nil)
+  }
+
+  /// The keys stay in the popup's input after ↵ adds a note and after one is removed: more is written, Esc closes it
+  @Test func theKeysStayInTheAnnotationInputAfterANoteIsAddedOrRemoved() throws {
+    let v = try PDFVault()
+    defer { v.remove() }
+    let w = try PDFWindow(v)
+    defer { w.close() }
+    let t = try w.tab(try #require(w.pane.openPDF(.file(v.file))))
+    try highlighted(w, t, "runs north")
+    t.released(at: try point(on: t))
+    press(t.highlightBar.buttons[0])
+    let pop = try #require(t.pop)
+    #expect(w.window.firstResponder === pop.input)
+    func keys() -> NSTextView? { w.window.firstResponder as? NSTextView }
+    pop.input.string = "Which mill?"
+    keys()?.doCommand(by: #selector(NSResponder.insertNewline(_:)))
+    #expect(pop.notes.count == 1 && w.window.firstResponder === pop.input, "after ↵ adds")
+    keys()?.insertText("Another", replacementRange: NSRange(location: NSNotFound, length: 0))
+    keys()?.doCommand(by: #selector(NSResponder.insertNewline(_:)))
+    #expect(pop.notes.map(\.text) == ["Which mill?", "Another"])
+    press(try #require(pop.subviews.first { $0.accessibilityIdentifier() == "ui-annotationremove1" } as? NSButton))
+    #expect(pop.notes.count == 1 && w.window.firstResponder === pop.input, "after one is removed")
+    keys()?.doCommand(by: #selector(NSResponder.cancelOperation(_:)))
+    #expect(t.pop == nil, "Esc closes it")
   }
 
   /// Questions on the entries' passages, for the board's question list: listed with their anchors, done and answered
@@ -157,7 +216,8 @@ import Testing
     t.pop?.addWritten()
     t.pop?.input.string = "Not a question"
     t.pop?.addWritten()
-    let s = ReadingSources(pane: w.pane)
+    // what the board asks, through the protocol
+    let s: any SourceProvider = ReadingSources(pane: w.pane)
     let e = try entry(v)
     let qs = s.questions()
     #expect(qs.count == 1 && s.questions(in: e.id) == qs && s.questions(in: EntryID(rawValue: "other")).isEmpty)
@@ -186,6 +246,43 @@ import Testing
       let r = CGRect(origin: AnnotationPop.origin(size: size, lines: ls, visible: visible), size: size)
       #expect(!ls.contains { $0.intersects(r) }, "\(r) over \(ls)")
     }
+  }
+
+  /// The side is chosen once with room for one more note: low on the page, where the empty popup would fit below but
+  /// not with a note added, it goes above, and stays there as it grows, growing upwards
+  @Test func theAnnotationPopupKeepsItsSideAndGrowsAwayFromTheHighlight() {
+    let visible = CGRect(x: 0, y: 0, width: 400, height: 600)
+    let lines = [CGRect(x: 60, y: 440, width: 200, height: 16)]
+    let empty = CGSize(width: 200, height: 120)
+    // 440 + 16 + 6 + 120 = 582 fits; with a note of 24 more it does not
+    #expect(AnnotationPop.origin(size: empty, lines: lines, visible: visible).y == 462)
+    #expect(!AnnotationPop.below(height: empty.height + 24, lines: lines, visible: visible))
+    #expect(AnnotationPop.origin(size: empty, lines: lines, visible: visible, below: false).y == CGFloat(440 - 6 - 120))
+    let grown = CGSize(width: 200, height: 200)
+    #expect(AnnotationPop.origin(size: grown, lines: lines, visible: visible, below: false).y == CGFloat(440 - 6 - 200))
+    // high on the page it goes below, and stays below as it grows
+    let high = [CGRect(x: 60, y: 40, width: 200, height: 16)]
+    #expect(AnnotationPop.below(height: empty.height + 24, lines: high, visible: visible))
+    #expect(AnnotationPop.origin(size: grown, lines: high, visible: visible, below: true).y == 62)
+    // no room either side: the side with more room
+    #expect(AnnotationPop.below(height: 400, lines: [CGRect(x: 60, y: 250, width: 200, height: 16)], visible: visible))
+    #expect(!AnnotationPop.below(height: 400, lines: [CGRect(x: 60, y: 350, width: 200, height: 16)], visible: visible))
+  }
+
+  /// What floats over the pages stays above the versions bar: the popup, the bars, a link's preview
+  @Test func theAnnotationPopupAndTheBarsStayAboveTheVersionsBar() throws {
+    let p = try PaperVault()
+    defer { p.v.remove() }
+    let w = try PDFWindow(p.v)
+    defer { w.close() }
+    let t = try w.tab(try #require(w.pane.openPDF(.entry(p.entry.id, version: VersionID(rawValue: "v7")))))
+    #expect(!t.versions.isHidden && t.floatArea.maxY <= t.versions.frame.minY - 6)
+    let plain = try w.tab(try #require(w.pane.openPDF(.file(p.v.file))))
+    #expect(plain.floatArea == plain.bounds, "no bar: the whole tab")
+    // a passage just above the bar: the popup goes above it, clear of the bar
+    let lines = [CGRect(x: 40, y: t.versions.frame.minY - 30, width: 200, height: 16)]
+    let o = AnnotationPop.origin(size: CGSize(width: 300, height: 140), lines: lines, visible: t.floatArea)
+    #expect(o.y + 140 <= t.versions.frame.minY)
   }
 
   // MARK: Regions
@@ -275,12 +372,24 @@ import Testing
     let a = try #require(await s.blockImage(anchor, pixelWidth: 300))
     let b = try #require(await s.blockImage(anchor, pixelWidth: 300))
     #expect(a === b && a.width == 300 && a.height == 75)
-    let url = try #require(w.pane.locate(.entry(anchor.entry, version: anchor.place.version), scanning: false)?.url)
+    let placed = try #require(anchor.place)
+    let url = try #require(w.pane.locate(.entry(anchor.entry, version: placed.version), scanning: false)?.url)
     #expect(s.document(url) === s.document(url))
     let doc = s.document(url)
     s.sourcesChanged()
     #expect(changed == 1)
     let c = try #require(await s.blockImage(anchor, pixelWidth: 300))
     #expect(c !== a && s.document(url) !== doc)
+  }
+
+  @Test func theQuestionButtonIsFilledWhileWhatIsWrittenWillBeAsked() {
+    let look = ReadingBarLook.warmInk(dark: false)
+    let pop = AnnotationPop(notes: [], width: 280, look: look)
+    #expect(pop.ask.layer?.backgroundColor != look.ask)
+    pop.ask.performClick(nil)
+    #expect(pop.ask.state == .on && pop.ask.layer?.backgroundColor == look.ask)
+    pop.input.string = "why"
+    pop.addWritten()
+    #expect(pop.ask.state == .off && pop.ask.layer?.backgroundColor != look.ask, "off again for the next one")
   }
 }

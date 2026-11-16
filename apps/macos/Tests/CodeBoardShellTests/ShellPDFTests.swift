@@ -3,6 +3,7 @@ import CodeBoardModel
 import CodeBoardResources
 import Foundation
 import PDFKit
+import Synchronization
 import Testing
 
 @testable import CodeBoardReading
@@ -76,6 +77,52 @@ import Testing
     #expect(!shell.addPDFs([other], to: r), "nothing to add")
   }
 
+  @Test func addArxivPaperMakesAnEntryOpensItAndTheSameIdAgainOpensThatEntry() async throws {
+    let (vault, shell, r) = try vault()
+    defer { try? fm.removeItem(at: vault.root) }
+    let asked = Mutex<[String]>([])
+    shell.reading.arxiv = Arxiv { req in
+      let url = req.url!.absoluteString
+      asked.withLock { $0.append(url) }
+      let known = url.contains("1706.03762")
+      let body =
+        !known
+        ? "<feed xmlns=\"http://www.w3.org/2005/Atom\"></feed>"
+        : url.contains("api/query")
+          ? "<feed xmlns=\"http://www.w3.org/2005/Atom\"><entry><id>http://arxiv.org/abs/1706.03762v7</id>"
+            + "<published>2017-06-12T17:57:34Z</published><title>Attention Is All You Need</title>"
+            + "<author><name>Ashish Vaswani</name></author></entry></feed>" : "%PDF-1.4 v7"
+      return (Data(body.utf8), HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+    }
+    let machine = fm.temporaryDirectory.appending(path: "machine-\(UUID().uuidString)")
+    defer { try? fm.removeItem(at: machine) }
+    shell.reading.translations = Translations(folder: machine, tongtu: { nil })
+    // the row's menu: Add arXiv Paper… asks with the sheet (here: nothing shown)
+    var sheetFor: VaultResource?
+    shell.askArxiv = { sheetFor = $0 }
+    shell.menu(resource: r).compactMap { $0 }.first { $0.title == "Add arXiv Paper…" }?.run()
+    #expect(sheetFor == r)
+
+    #expect(await shell.addArxiv("attention", translate: false, to: r) == "“attention” is not an arXiv id or address.")
+    #expect(await shell.addArxiv("2401.00001", translate: false, to: r) == "arXiv has no paper 2401.00001.")
+    #expect(await shell.addArxiv("https://arxiv.org/abs/1706.03762", translate: true, to: r) == nil)
+    let e = try #require(shell.reading.entries.arxiv("1706.03762"))
+    #expect(e.path == "Papers.resource/Attention Is All You Need" && e.entry.authors == ["Ashish Vaswani"])
+    #expect(e.entry.versions.map(\.label) == ["v7"])
+    #expect(try Data(contentsOf: vault.url(of: "\(e.path)/1706.03762v7.pdf")) == Data("%PDF-1.4 v7".utf8))
+    let tab = try #require(shell.reading.tabs.first)
+    #expect(shell.reading.tabs.count == 1 && tab.kind == "pdf" && tab.title == "Attention Is All You Need")
+    #expect(tab.payload == ["entry": e.entry.id.rawValue, "version": e.entry.versions[0].id.rawValue])
+    #expect(shell.reading.translations?.jobs.map(\.paper) == ["1706.03762v7"], "Translate ticked")
+    #expect(asked.withLock { $0.last } == "https://arxiv.org/pdf/1706.03762v7")
+
+    // again, as arXiv:…: that entry, not a second one, and nothing asked of arXiv
+    let before = asked.withLock { $0.count }
+    #expect(await shell.addArxiv("arXiv:1706.03762v7", translate: false, to: r) == nil)
+    #expect(asked.withLock { $0.count } == before)
+    #expect(try vault.items(in: r.path).count == 1 && shell.reading.tabs.count == 1)
+  }
+
   @Test func addToBoardAndOptionReturnHandTheSameCollectedPassageToTheShell() throws {
     let (vault, shell, r) = try vault()
     defer { try? fm.removeItem(at: vault.root) }
@@ -103,7 +150,7 @@ import Testing
     let c = try #require(shell.collected)
     #expect(c.body == .note(markdown: "river") && c.title == "Field notes" && c.label == "p. 1")
     let e = try #require(shell.reading.tabs.first?.payload["entry"])
-    #expect(c.source?.entry.rawValue == e && c.source?.place.range == 4..<9)
+    #expect(c.source?.entry.rawValue == e && c.source?.place?.range == 4..<9)
   }
 
   /// A highlight makes the file an entry; the tree read again, the tab is the entry's and stays open, and a source
@@ -167,5 +214,33 @@ import Testing
     #expect((view.views[tab.id] as? PDFTabView)?.pdf.document?.pageCount == 1)
     again.apply(.success(try vault.tree()))
     #expect(again.reading.tabs.map(\.id) == [tab.id])
+  }
+
+  /// A resource's tab, opened from its row, lists its entries and follows every tree read the shell applies: a PDF
+  /// added is a row at once, which opens the PDF's tab; renamed, the tab takes the resource's name; gone, it closes
+  @Test func aResourcesListFollowsTheTreeReadsTheShellApplies() throws {
+    let (vault, shell, r) = try vault()
+    defer { try? fm.removeItem(at: vault.root) }
+    let pdf = try outside("Field notes.pdf", "The river runs north.")
+    defer { try? fm.removeItem(at: pdf.deletingLastPathComponent()) }
+    shell.openResource(r)
+    let pane = ReadingPaneView(pane: shell.reading)
+    pane.sync()
+    let listTab = try #require(shell.reading.tabs.first?.id)
+    let list = try #require(pane.views[listTab] as? ListTabView)
+    #expect(list.rows.isEmpty && !list.empty.isHidden)
+
+    #expect(shell.addPDFs([pdf], to: r))
+    #expect(list.rows.map(\.title) == ["Field notes"] && list.rows[0].kind == "PDF" && list.empty.isHidden)
+    shell.reading.select(listTab)
+    pane.sync()
+    list.open(0)
+    #expect(shell.reading.tabs.map(\.kind) == ["list", "pdf"] && shell.reading.selected == shell.reading.tabs[1].id)
+
+    shell.rename(resource: r, to: "Field work")
+    #expect(shell.reading.tabs[0].title == "Field work" && list.rows.map(\.title) == ["Field notes"])
+    try fm.removeItem(at: vault.url(of: "Field work.resource"))
+    shell.apply(.success(try vault.tree()))
+    #expect(!shell.reading.tabs.contains { $0.id == listTab })
   }
 }

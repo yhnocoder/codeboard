@@ -1,0 +1,376 @@
+import AppKit
+import CodeBoardModel
+import CodeBoardResources
+import Foundation
+import PDFKit
+import Testing
+
+@testable import CodeBoardReading
+
+/// A made-up two-page paper read by its blocks: a PDF made here, its block list built from where PDFKit finds each
+/// line, the TeX its lines are of, and a link from "(1)" to the equation
+@MainActor struct BlockPaper {
+  let v: PDFVault
+  let path: String
+  let entry: Entry
+  let version = VersionID(rawValue: "zh")
+
+  static let pages = [
+    "1 Intro\nThe river runs north past the mill.\nBirds rest (1) by the bank.\n\nE = mc2 (1)\n\n[picture]\nFigure 1: A boat.",
+    "Evening light falls on the water.\nTable 1: Numbers.",
+  ]
+
+  static let tex = #"""
+    \documentclass{article}
+    \newcommand{\R}{\mathbb{R}}
+    \begin{document}
+    \section{Intro}
+    The river runs \emph{north} past the mill.
+    Birds rest (\ref{eq:e}) by the bank.
+    \begin{equation}
+    E = mc^2 \label{eq:e}
+    \end{equation}
+    \begin{figure}
+    \caption{A boat.}
+    \end{figure}
+    Evening light falls on the water.
+    \begin{table}
+    \caption{Numbers.}
+    \end{table}
+    \end{document}
+    """#
+
+  init() throws {
+    v = try PDFVault()
+    let doc = try #require(PDFDocument(data: makePDF(Self.pages)))
+    func line(_ page: Int, _ text: String) throws -> CGRect {
+      let p = try #require(doc.page(at: page - 1))
+      let str = try #require(p.string) as NSString
+      let sel = try #require(p.selection(for: str.range(of: text)))
+      return sel.bounds(for: p)
+    }
+    func block(
+      _ id: String, _ kind: String, _ lines: ClosedRange<Int>, _ page: Int, _ texts: [String], parent: String? = nil
+    )
+      throws -> [String: Any]
+    {
+      let r = try texts.map { try line(page, $0) }.reduce(CGRect.null) { $0.union($1) }
+      var b: [String: Any] = [
+        "id": id, "kind": kind, "first_line": lines.lowerBound, "last_line": lines.upperBound,
+        "rects": [["page": page, "x0": r.minX, "y0": r.minY, "x1": r.maxX, "y1": r.maxY]],
+      ]
+      if let parent { b["parent"] = parent }
+      return b
+    }
+    let blocks = [
+      try block("PAR-0-0", "heading", 4...4, 1, ["1 Intro"]),
+      try block("PAR-1-0", "text", 5...6, 1, ["The river runs north past the mill.", "Birds rest (1) by the bank."]),
+      try block("BLK-0", "math", 7...9, 1, ["E = mc2 (1)"]),
+      try block("BLK-1", "figure", 10...12, 1, ["[picture]", "Figure 1: A boat."]),
+      try block("CAP-0", "caption", 11...11, 1, ["Figure 1: A boat."], parent: "BLK-1"),
+      try block("PAR-2-0", "text", 13...13, 2, ["Evening light falls on the water."]),
+      try block("BLK-2", "table", 14...16, 2, ["Table 1: Numbers."]),
+      try block("CAP-1", "caption", 15...15, 2, ["Table 1: Numbers."], parent: "BLK-2"),
+    ]
+    let anchors = try JSONSerialization.data(withJSONObject: [
+      "pdf": "p.zh.pdf", "tex": "zh.tex", "pages": [[String: Any]](), "blocks": blocks,
+    ])
+    // "(1)" links to just above the equation
+    let p1 = try #require(doc.page(at: 0))
+    let link = PDFAnnotation(bounds: try line(1, "(1) by"), forType: .link, withProperties: nil)
+    let eq = try line(1, "E = mc2 (1)")
+    link.action = PDFActionGoTo(destination: PDFDestination(page: p1, at: CGPoint(x: eq.minX, y: eq.maxY + 4)))
+    p1.addAnnotation(link)
+    let pdf = Self.pointingAtPage(try #require(doc.dataRepresentation()))
+    let e = Entry(
+      id: EntryID(rawValue: "e-paper"), title: "Rivers and Mills: A Study of Banks", added: 0,
+      origin: .arxiv("2401.00001"),
+      versions: [
+        Version(
+          id: version, label: "v1 中文", added: 0, language: "zh",
+          content: .pdf(file: "p.zh.pdf", blocks: "p.zh.anchors.json", source: "p.zh.tex"))
+      ])
+    path = try v.vault.newEntry(
+      e, in: v.resource.path, with: ["p.zh.pdf": pdf, "p.zh.anchors.json": anchors, "p.zh.tex": Data(Self.tex.utf8)])
+    entry = e
+  }
+
+  /// PDFKit writes a link's destination page as a name no reader resolves (`/D [ /##1 /XYZ … ]`): the first page's
+  /// object put there instead, padded to the same length so the file's offsets hold
+  static func pointingAtPage(_ pdf: Data) -> Data {
+    guard var text = String(data: pdf, encoding: .isoLatin1), let page = text.firstMatch(of: /\/Kids \[ (\d+) 0 R/),
+      let dest = text.firstMatch(of: /\/D \[ (\/\S+) \/XYZ/)
+    else { return pdf }
+    let ref = "\(page.1) 0 R"
+    guard ref.count <= dest.1.count else { return pdf }
+    text.replaceSubrange(
+      dest.1.startIndex..<dest.1.endIndex, with: ref.padding(toLength: dest.1.count, withPad: " ", startingAt: 0))
+    return text.data(using: .isoLatin1) ?? pdf
+  }
+
+  func anchor(_ id: String, _ range: Range<Int>? = nil) -> SourceAnchor {
+    SourceAnchor(entry: entry.id, place: Place(version: version, block: .id(id), range: range))
+  }
+}
+
+@MainActor @Suite(.serialized) struct PDFBlockTests {
+  func open(_ p: BlockPaper) throws -> (PDFWindow, PDFTabView) {
+    let w = try PDFWindow(p.v)
+    let t = try w.tab(try #require(w.pane.openPDF(.entry(p.entry.id, version: p.version))))
+    return (w, t)
+  }
+
+  /// A point of a page (page space) in the PDF view
+  func at(_ t: PDFTabView, _ page: Int, _ text: String) throws -> CGPoint {
+    let pg = try #require(t.pdf.document?.page(at: page - 1))
+    let str = try #require(pg.string) as NSString
+    let sel = try #require(pg.selection(for: str.range(of: text)))
+    let b = sel.bounds(for: pg)
+    return t.pdf.convert(CGPoint(x: b.midX, y: b.midY), from: pg)
+  }
+
+  func select(_ t: PDFTabView, _ text: String, page: Int = 1) throws {
+    let pg = try #require(t.pdf.document?.page(at: page - 1))
+    let str = try #require(pg.string) as NSString
+    t.pdf.setCurrentSelection(pg.selection(for: str.range(of: text)), animate: false)
+    t.released()
+  }
+
+  @Test func aClickOnAFigureOrAFormulaTakesTheWholeObjectFramedAndOneOnTextClearsIt() throws {
+    let p = try BlockPaper()
+    defer { p.v.remove() }
+    let (w, t) = try open(p)
+    defer { w.close() }
+    #expect(t.paper?.list.blocks.count == 8)
+    // the caption is the figure's
+    #expect(t.clickObject(at: try at(t, 1, "A boat.")))
+    #expect(
+      t.object?.id == "BLK-1" && !t.regionFrame.isHidden && t.regionFrame.accessibilityIdentifier() == "ui-pdfobject")
+    #expect(
+      !t.regionBar.isHidden
+        && t.regionBar.buttons.map { $0.accessibilityIdentifier() } == ["ui-selectionadd", "ui-selectioncopy"])
+    // framed (and collected) standing off its glyphs, so the frame's line is on none of them
+    let fig = try #require(p.anchorBlock(t, "BLK-1"))
+    let c = try #require(t.collecting())
+    guard case .image(alt: nil, width: let width, height: let height) = c.body else {
+      Issue.record("not a picture: \(c.body)")
+      return
+    }
+    #expect(abs(width - fig.width - 8) < 0.01 && abs(height - fig.height - 8) < 0.01)
+    let page = try #require(t.pdf.document?.page(at: 0))
+    let union = try #require(t.paper?.block("BLK-1")?.union(on: 1))
+    let framed = t.convert(t.regionFrame.frame, to: t.pdf)
+    #expect(t.pdf.convert(framed, to: page).insetBy(dx: 2, dy: 2).contains(union))
+    #expect(c.source == p.anchor("BLK-1") && c.label == "图 1" && c.title == "Rivers and Mills: A Study of Banks")
+    // the formula: its LaTeX
+    #expect(t.clickObject(at: try at(t, 1, "E = mc2")))
+    #expect(t.collecting()?.body == .note(markdown: "$$\nE = mc^2\n$$"))
+    #expect(t.collecting()?.label == "式 (1)")
+    t.copySelection()
+    #expect(w.pasteboard.string(forType: .string) == "E = mc^2")
+    // text is not an object: the click goes on to PDFKit, which clears it
+    #expect(!t.clickObject(at: try at(t, 1, "river")))
+    t.dismiss()
+    #expect(t.object == nil && t.regionFrame.isHidden && t.regionFrame.accessibilityIdentifier() == "ui-pdfregion")
+  }
+
+  @Test func aTripleClickedLineIsItsWholeBlockAndASelectionIsPlacesOfBlocks() throws {
+    let p = try BlockPaper()
+    defer { p.v.remove() }
+    let (w, t) = try open(p)
+    defer { w.close() }
+    try select(t, "Birds rest (1) by the bank.")
+    t.selectParagraph()
+    #expect(
+      t.selectedText?.hasPrefix("The river runs north") == true && t.selectedText?.hasSuffix("by the bank.") == true)
+    let whole = try #require(t.pdf.currentSelection)
+    #expect(t.places(whole, version: p.version) == [Place(version: p.version, block: .id("PAR-1-0"))])
+    // a part: the span of the block's TeX it is of
+    try select(t, "runs north past")
+    let part = try #require(t.pdf.currentSelection)
+    let text = try #require(t.paper?.block("PAR-1-0").flatMap { t.paper?.text($0) })
+    let span = (text as NSString).range(of: "runs \\emph{north} past")
+    let places = t.places(part, version: p.version)
+    #expect(places == [Place(version: p.version, block: .id("PAR-1-0"), range: span.location..<span.upperBound)])
+    let c = try #require(t.collecting())
+    #expect(c.body == .note(markdown: "runs *north* past") && c.label == "§ 1")
+    t.copySelection()
+    #expect(w.pasteboard.string(forType: .string) == "runs *north* past")
+    // across two blocks
+    let pg = try #require(t.pdf.document?.page(at: 0))
+    let str = try #require(pg.string) as NSString
+    t.pdf.setCurrentSelection(
+      t.pdf.document?.selection(
+        from: pg, atCharacterIndex: str.range(of: "Intro").location, to: pg,
+        atCharacterIndex: str.range(of: "river").upperBound - 1), animate: false)
+    #expect(
+      t.pdf.currentSelection.map { t.places($0, version: p.version) }?.map(\.block) == [
+        .id("PAR-0-0"), .id("PAR-1-0"),
+      ])
+  }
+
+  @Test func aBlocksSpanIsRevealedAsItsTextAndAnObjectAsItsFrame() throws {
+    let p = try BlockPaper()
+    defer { p.v.remove() }
+    let (w, t) = try open(p)
+    defer { w.close() }
+    let text = try #require(t.paper?.block("PAR-1-0").flatMap { t.paper?.text($0) })
+    let span = (text as NSString).range(of: "runs \\emph{north} past")
+    t.reveal(Place(version: p.version, block: .id("PAR-1-0"), range: span.location..<span.upperBound))
+    #expect(t.selectedText == "runs north past")
+    t.reveal(Place(version: p.version, block: .id("PAR-1-0")))
+    #expect(t.selectedText?.hasSuffix("by the bank.") == true)
+    t.reveal(Place(version: p.version, block: .id("BLK-2")))
+    #expect(t.object?.id == "BLK-2" && !t.regionFrame.isHidden)
+  }
+
+  @Test func aHighlightOnABlockPlaceIsDrawnOverItsSpan() throws {
+    let p = try BlockPaper()
+    defer { p.v.remove() }
+    let (w, t) = try open(p)
+    defer { w.close() }
+    try select(t, "runs north past")
+    t.highlight()
+    let e = try p.v.vault.entry(at: p.path)
+    guard case .id("PAR-1-0")? = e.highlights.first?.place.block else {
+      Issue.record("not on the block")
+      return
+    }
+    #expect(e.highlights.first?.place.range != nil)
+    let drawn = t.drawn.filter { $0.1.type == "Highlight" }
+    #expect(drawn.count == 1)
+  }
+
+  @Test func theSourcesLabelBlocksByThePapersNumbersAndDrawThemWithTheMacros() async throws {
+    let p = try BlockPaper()
+    defer { p.v.remove() }
+    let pane = ReadingPane()
+    pane.vault = p.v.vault
+    pane.entries = EntryIndex(p.v.vault, try p.v.vault.tree())
+    let s = ReadingSources(pane: pane)
+    #expect(s.sourceLabel(p.anchor("BLK-0")) == SourceLabel(title: "Rivers and Mills", number: "式 (1)", icon: .paper))
+    #expect(s.sourceLabel(p.anchor("BLK-2"))?.number == "表 1")
+    #expect(s.sourceLabel(p.anchor("PAR-2-0"))?.number == "§ 1")
+    #expect(s.mathPreamble(for: p.anchor("BLK-0")) == "\\newcommand{\\R}{\\mathbb{R}}")
+    // the picture a figure is collected as is its frame: with its caption, standing off its glyphs
+    let size = try #require(s.blockSize(p.anchor("BLK-1")))
+    let paper = try #require(Paper.read(p.entry.versions[0].content, in: p.v.vault.url(of: p.path)))
+    let union = try #require(paper.block("BLK-1")?.union(on: 1))
+    #expect(abs(size.width - union.width - 8) < 0.01 && abs(size.height - union.height - 8) < 0.01)
+    let image = try #require(await s.blockImage(p.anchor("BLK-1"), pixelWidth: 200))
+    #expect(image.width == 200)
+  }
+
+  @Test func aSourceOfAnEntryAsAWholeShowsItsTitleAndOpensItsPDFOrItsAddress() throws {
+    let p = try BlockPaper()
+    defer { p.v.remove() }
+    let page = Entry(
+      id: EntryID(rawValue: "e-page"), title: "Notes on mills", added: 0, origin: .web("https://example.com/mills"),
+      versions: [])
+    _ = try p.v.vault.newEntry(page, in: p.v.resource.path, with: [:])
+    let pane = ReadingPane()
+    pane.vault = p.v.vault
+    pane.entries = EntryIndex(p.v.vault, try p.v.vault.tree())
+    let s = ReadingSources(pane: pane)
+    let paper = SourceAnchor(entry: p.entry.id)
+    #expect(s.sourceLabel(paper) == SourceLabel(title: "Rivers and Mills", number: nil, icon: .paper))
+    #expect(s.blockSize(paper) == nil && s.mathPreamble(for: paper) == nil)
+    s.reveal(paper)
+    #expect(pane.tabs.count == 1 && pane.tabs[0].kind == "pdf")
+    let link = SourceAnchor(entry: page.id)
+    #expect(s.sourceLabel(link) == SourceLabel(title: "Notes on mills", number: nil, icon: .site))
+    s.reveal(link)
+    #expect(pane.tabs.count == 2 && pane.tabs[1].kind == "web")
+    #expect(pane.tabs[1].payload == ["url": "https://example.com/mills"])
+    #expect(s.sourceLabel(SourceAnchor(entry: EntryID(rawValue: "gone"))) == nil)
+  }
+
+  @Test func aLinksTargetIsTheBlockItGoesToPreviewedAfterAMoment() async throws {
+    let p = try BlockPaper()
+    defer { p.v.remove() }
+    let (w, t) = try open(p)
+    defer { w.close() }
+    let link = try at(t, 1, "(1) by")
+    #expect(t.linkTarget(at: link)?.0.id == "BLK-0")
+    #expect(t.linkTarget(at: try at(t, 1, "river")) == nil)
+    t.pointerMoved(to: link)
+    #expect(t.refPreview.isHidden, "not at once")
+    await t.previewTask?.value
+    #expect(
+      !t.refPreview.isHidden && t.refPreview.accessibilityIdentifier() == "ui-refpreview" && t.refPreview.image != nil)
+    t.pointerMoved(to: try at(t, 1, "river"))
+    #expect(t.refPreview.isHidden)
+    // a link is not an object click
+    #expect(!t.clickObject(at: try at(t, 1, "Birds")))
+  }
+}
+
+/// A block's rects go round other text in the page's string (top to bottom, not in reading order), and a block runs
+/// on to the next page: made here on BlockPaper's pages
+@MainActor @Suite struct PDFBlockTextTests {
+  @Test func aBlocksTextIsWhatItsRectsHoldAndASpanAcrossPagesIsRevealedAgain() throws {
+    let doc = try #require(PDFDocument(data: makePDF(BlockPaper.pages)))
+    func rect(_ page: Int, _ text: String) throws -> BlockList.Rect {
+      let p = try #require(doc.page(at: page - 1))
+      let str = try #require(p.string) as NSString
+      let r = try #require(p.selection(for: str.range(of: text))).bounds(for: p)
+      return BlockList.Rect(page: page, x0: r.minX, y0: r.minY, x1: r.maxX, y1: r.maxY)
+    }
+    let tex =
+      "The river runs north past the mill.\nFigure 1: A boat.\nBirds rest (1) by the bank.\nE = mc2 (1)\n"
+      + "Evening light falls on the water."
+    let paper = Paper(
+      list: BlockList(blocks: [
+        BlockList.Block(
+          id: "X", kind: "text", firstLine: 1, lastLine: 2,
+          rects: [try rect(1, "The river runs north past the mill."), try rect(1, "Figure 1: A boat.")]),
+        BlockList.Block(
+          id: "Y", kind: "text", firstLine: 3, lastLine: 3, rects: [try rect(1, "Birds rest (1) by the bank.")]),
+        BlockList.Block(
+          id: "Z", kind: "text", firstLine: 4, lastLine: 5,
+          rects: [try rect(1, "E = mc2 (1)"), try rect(2, "Evening light falls on the water.")]),
+      ]), source: tex)
+    let v = VersionID(rawValue: "zh")
+    let x = try #require(paper.block("X"))
+    #expect(PDFBlocks.characters(of: x, in: doc).count == 2, "not the lines between")
+    // rects that end before each line's last full-width punctuation, as a CJK line's do: one range, the punctuation in it
+    // (U+FF61: the full stop the fonts here keep as text; a drawn "。" or "，" does not come back as itself)
+    let cjk = try #require(PDFDocument(data: makePDF(["The river runs north\u{FF61}\nBirds rest by the bank\u{FF61}"])))
+    let cjkPage = try #require(cjk.page(at: 0))
+    let cjkText = try #require(cjkPage.string) as NSString
+    func cjkRect(_ text: String) throws -> BlockList.Rect {
+      let r = try #require(cjkPage.selection(for: cjkText.range(of: text))).bounds(for: cjkPage)
+      return BlockList.Rect(page: 1, x0: r.minX, y0: r.minY, x1: r.maxX, y1: r.maxY)
+    }
+    let w = BlockList.Block(
+      id: "W", kind: "text", firstLine: 1, lastLine: 1,
+      rects: [try cjkRect("The river runs north"), try cjkRect("Birds rest by the bank")])
+    let wr = PDFBlocks.characters(of: w, in: cjk).map(\.1)
+    #expect(
+      wr.count == 1 && wr.first.map(cjkText.substring) == "The river runs north\u{FF61}\nBirds rest by the bank\u{FF61}"
+    )
+    let whole = try #require(PDFBlocks.selection(of: x, in: doc))
+    #expect(PDFBlocks.places(whole, in: doc, paper: paper, version: v) == [Place(version: v, block: .id("X"))])
+    // from page 1 to page 2, in one block
+    let (p1, p2) = (try #require(doc.page(at: 0)), try #require(doc.page(at: 1)))
+    let from = (try #require(p1.string) as NSString).range(of: "mc2").location
+    let to = (try #require(p2.string) as NSString).range(of: "light").upperBound - 1
+    let s = try #require(doc.selection(from: p1, atCharacterIndex: from, to: p2, atCharacterIndex: to))
+    let places = PDFBlocks.places(s, in: doc, paper: paper, version: v)
+    #expect(places.map(\.block) == [.id("X"), .id("Z")], "the selection takes in X's last line too")
+    let z = try #require(places.last)
+    let range = try #require(z.range)
+    let zText = try #require(paper.block("Z").flatMap(paper.text)) as NSString
+    #expect(zText.substring(with: NSRange(range)) == "mc2 (1)\nEvening light")
+    let back = try #require(PDFBlocks.selection([z], in: doc, paper: paper)?.string)
+    #expect(back.hasPrefix("mc2") && back.hasSuffix("light") && back.count < 25)
+  }
+}
+
+extension BlockPaper {
+  /// A block's rects on its first page together
+  @MainActor func anchorBlock(_ t: PDFTabView, _ id: String) -> CGSize? {
+    guard let b = t.paper?.block(id), let n = b.firstPage else { return nil }
+    return b.union(on: n)?.size
+  }
+}

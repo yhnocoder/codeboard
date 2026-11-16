@@ -1,0 +1,57 @@
+{
+ "version": 15,
+ "id": "batlas",
+ "name": "Atlas",
+ "cards": [
+  {
+   "id": "cnote",
+   "kind": "note",
+   "look": "note",
+   "md": "# Atlas\nThe board with the sub-board cards."
+  },
+  {
+   "id": "csub",
+   "kind": "board",
+   "board": "bkids"
+  },
+  {
+   "id": "cshsub",
+   "kind": "shared"
+  },
+  {
+   "id": "cmany",
+   "kind": "board",
+   "board": "bmany"
+  }
+ ],
+ "place": {
+  "cnote": {
+   "x": 80,
+   "y": 80,
+   "w": 300,
+   "h": 140
+  },
+  "csub": {
+   "x": 480,
+   "y": 80,
+   "w": 360,
+   "h": 240
+  },
+  "cshsub": {
+   "x": 480,
+   "y": 620,
+   "w": 360,
+   "h": 240
+  },
+  "cmany": {
+   "x": 1300,
+   "y": 80,
+   "w": 360,
+   "h": 240
+  }
+ },
+ "links": [],
+ "sections": [],
+ "stickers": [],
+ "sidenotes": []
+}

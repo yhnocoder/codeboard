@@ -38,7 +38,7 @@ extension Vault {
         throw VaultError.unwritable(url(of: resource), "page \(item.id) was saved without its hash and size")
       }
       let has = entry.versions.contains {
-        if case .page(hash, _) = $0.content { true } else { false }
+        if case .page(hash, _, _) = $0.content { true } else { false }
       }
       if !has {
         var n = entry.versions.count + 1

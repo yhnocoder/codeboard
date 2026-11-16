@@ -3,15 +3,17 @@ import CodeBoardModel
 import CodeBoardResources
 import PDFKit
 
-/// What the board asks about the sources its cards name, answered from the pane's entries: an entry's title and the
-/// page for its source line; a region of a plain PDF's page (the whole page without a rect) as a picture; the passage
-/// shown in a tab; and the entries' questions, for the board's question list. The PDFs read and the pictures drawn are
-/// kept until the sources change
+/// What the board asks about the sources its cards name, answered from the pane's entries: an entry's short title
+/// and the page, or for a version read by blocks the paper's own number, for its source line; a region of a plain
+/// PDF's page (the whole page without a rect), or a block of a version read by blocks (its rects on its first page),
+/// as a picture; the author's macros; the passage shown in a tab; and the entries' questions, for the board's question
+/// list. The PDFs and block lists read and the pictures drawn are kept until the sources change
 @MainActor public final class ReadingSources: SourceProvider {
   let pane: ReadingPane
   public var onSourcesChanged: (() -> Void)?
   private var documents: [URL: PDFDocument] = [:]
   private var pictures: [String: CGImage] = [:]
+  private var papers: [String: Paper?] = [:]
 
   public init(pane: ReadingPane) {
     self.pane = pane
@@ -21,16 +23,24 @@ import PDFKit
   public func sourcesChanged() {
     documents = [:]
     pictures = [:]
+    papers = [:]
     onSourcesChanged?()
   }
 
   public func sourceLabel(_ a: SourceAnchor) -> SourceLabel? {
-    guard let found = pane.entries[a.entry], found.entry.versions.contains(where: { $0.id == a.place.version }) else {
-      return nil
+    guard let found = pane.entries[a.entry] else { return nil }
+    // the entry as a whole: its title alone
+    guard let place = a.place else {
+      if case .web = found.entry.origin { return SourceLabel(title: found.entry.title, number: nil, icon: .site) }
+      return SourceLabel(title: Paper.shortTitle(found.entry.title), number: nil, icon: .paper)
     }
+    guard found.entry.versions.contains(where: { $0.id == place.version }) else { return nil }
     var number: String?
-    if case .page(let n, _) = a.place.block { number = "p. \(n)" }
-    return SourceLabel(title: found.entry.title, number: number, icon: .paper)
+    switch place.block {
+    case .page(let n, _): number = "p. \(n)"
+    case .id(let id): number = paper(a)?.labels[id]
+    }
+    return SourceLabel(title: Paper.shortTitle(found.entry.title), number: number, icon: .paper)
   }
 
   public func blockSize(_ a: SourceAnchor) -> CGSize? { region(a).map(\.rect.size) }
@@ -45,17 +55,52 @@ import PDFKit
     return image
   }
 
+  public func mathPreamble(for a: SourceAnchor) -> String? { paper(a)?.mathPreamble }
+
+  /// The block list and TeX of the anchor's version, read once; nil for a version without a list
+  func paper(_ a: SourceAnchor) -> Paper? {
+    guard let place = a.place else { return nil }
+    let key = "\(a.entry.rawValue)/\(place.version.rawValue)"
+    if let kept = papers[key] { return kept }
+    var p: Paper?
+    if let vault = pane.vault, let found = pane.entries[a.entry],
+      let v = found.entry.versions.first(where: { $0.id == place.version })
+    {
+      p = Paper.read(v.content, in: vault.url(of: found.path))
+    }
+    papers[key] = .some(p)
+    return p
+  }
+
   public func reveal(_ a: SourceAnchor) {
-    guard let tab = pane.openPDF(.entry(a.entry, version: a.place.version)) else { return }
-    PDFTabView.reveal(a.place, in: tab)
+    guard let place = a.place else { return revealEntry(a.entry) }
+    guard let tab = pane.openPDF(.entry(a.entry, version: place.version)) else { return }
+    PDFTabView.reveal(place, in: tab)
+  }
+
+  /// The entry as a whole shown: a page's address in a web tab, else its first version that is a PDF
+  private func revealEntry(_ id: EntryID) {
+    guard let e = pane.entries[id]?.entry else { return }
+    if case .web(let address) = e.origin, let url = URL(string: address) {
+      pane.open(url.host() ?? e.title, kind: "web", payload: ["url": url.absoluteString])
+    } else if let v = e.versions.first(where: { if case .pdf = $0.content { true } else { false } }) {
+      pane.openPDF(.entry(id, version: v.id))
+    }
   }
 
   /// The page a page block is on and its region (in the page's space, from its crop box's bottom left; the whole box
-  /// without a rect)
+  /// without a rect); a listed block's first page and its frame there (Paper.frame, as framed when it is clicked)
   private func region(_ a: SourceAnchor) -> (page: PDFPage, rect: CGRect)? {
-    guard case .page(let n, let rect) = a.place.block,
-      let found = pane.locate(.entry(a.entry, version: a.place.version), scanning: false),
-      let doc = document(found.url), n >= 1, n <= doc.pageCount, let page = doc.page(at: n - 1)
+    guard let place = a.place, let found = pane.locate(.entry(a.entry, version: place.version), scanning: false),
+      let doc = document(found.url)
+    else { return nil }
+    if case .id(let id) = place.block {
+      guard let paper = paper(a), let b = paper.block(id), let n = b.firstPage, n <= doc.pageCount,
+        let page = doc.page(at: n - 1), let r = paper.frame(b, on: n, within: page.bounds(for: .cropBox))
+      else { return nil }
+      return (page, r)
+    }
+    guard case .page(let n, let rect) = place.block, n >= 1, n <= doc.pageCount, let page = doc.page(at: n - 1)
     else { return nil }
     let box = page.bounds(for: .cropBox)
     let r = rect.map { CGRect(x: box.minX + $0.x, y: box.minY + $0.y, width: $0.width, height: $0.height) } ?? box
@@ -74,17 +119,8 @@ import PDFKit
 
   // MARK: Questions
 
-  /// An annotation of an entry that is a question, and where it is
-  public struct EntryQuestion: Equatable, Sendable {
-    public var anchor: SourceAnchor
-    public var sidenote: SidenoteID
-    /// Its Markdown, and its question (when asked, done, the answers)
-    public var note: TextNote
-    public var entryTitle: String
-  }
-
   /// The questions on an entry's passages (every entry's when nil), in the order they were written in each entry
-  public func questions(in entry: EntryID? = nil) -> [EntryQuestion] {
+  public func questions(in entry: EntryID?) -> [EntryQuestion] {
     let found = entry.map { pane.entries[$0].map { [$0] } ?? [] } ?? pane.entries.all
     return found.flatMap { f in
       f.entry.sidenotes.filter { $0.note.question != nil }.map {

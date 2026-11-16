@@ -137,6 +137,7 @@
             "CodeBoardCanvas/CanvasSubBoards.swift",
             "CodeBoardCanvas/CanvasCrumbs.swift",
             "CodeBoardCanvas/SubBoardMap.swift",
+            "CodeBoardCanvas/CanvasSubPreviews.swift",
             "CodeBoardModel/SubBoards.swift"
           ],
           "tests": [
@@ -437,7 +438,8 @@
             "DeleteTests",
             "OpeningWritesNothingTests",
             "WritingWhenClosingTests",
-            "ShellPDFTests/addPDFCopiesTheFileUnderAFreeNameAndOpensItsTab"
+            "ShellPDFTests/addPDFCopiesTheFileUnderAFreeNameAndOpensItsTab",
+            "ShellPDFTests/addArxivPaperMakesAnEntryOpensItAndTheSameIdAgainOpensThatEntry"
           ]
         },
         "search": {
@@ -501,7 +503,8 @@
       "changed": "files",
       "important": [
         "ReadingPaneTests/tabsOpenSwitchAndCloseAndTheSameKeyGoesToItsTab",
-        "PDFPlaceTests/aSelectionAcrossPagesIsOnePlacePerPageAndComesBackWhole"
+        "PDFPlaceTests/aSelectionAcrossPagesIsOnePlacePerPageAndComesBackWhole",
+        "PDFVersionTests/aSegmentShowsItsVersionInTheSameTabAndATranslationKeepsThePage"
       ],
       "areas": {
         "reading: frame": {
@@ -510,7 +513,7 @@
         },
         "reading: pdf": {
           "sources": ["CodeBoardReading/PDF", "CodeBoardResources"],
-          "tests": ["PDFPlaceTests", "PDFTabTests", "PDFSourceTests", "PDFAnnotationTests"]
+          "tests": ["PDFPlaceTests", "PDFTabTests", "PDFSourceTests", "PDFAnnotationTests", "PDFVersionTests", "PDFBlockTests"]
         },
         "reading: web": {
           "sources": ["CodeBoardReading/Web"],

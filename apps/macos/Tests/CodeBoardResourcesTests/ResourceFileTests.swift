@@ -24,11 +24,18 @@ private func everything() -> Entry {
       Version(id: v1, label: "v7", added: 1_700_000_000_000, content: .pdf(file: "1706.03762v7.pdf")),
       Version(
         id: v2, label: "v7 中文", added: 1_700_000_100_000, language: "zh", of: v1,
-        content: .pdf(file: "1706.03762v7.zh.pdf", blocks: "1706.03762.zh.anchors.json")),
+        content: .pdf(
+          file: "1706.03762v7.zh.pdf", blocks: "1706.03762.zh.anchors.json", source: "1706.03762v7.zh.tex")),
       Version(
         id: VersionID(rawValue: "v3"), added: 1_700_000_200_000, content: .page(hash: "9f86d081884c7d65", bytes: 52_113)
       ),
       Version(id: VersionID(rawValue: "v4"), label: "slides", added: 1_700_000_250_000, content: .file("talk.key")),
+      Version(
+        id: VersionID(rawValue: "v5"), label: "v3 中文", added: 1_700_000_260_000, language: "zh",
+        of: VersionID(rawValue: "v3"), content: .translation(file: "v3.zh.json")),
+      Version(
+        id: VersionID(rawValue: "v6"), added: 1_700_000_270_000,
+        content: .page(hash: "2c26b46b68ffc68f", bytes: 9_001, blocks: "v6.blocks.json")),
     ],
     highlights: colors.enumerated().map { i, c in
       Highlight(id: "h\(i)", place: i.isMultiple(of: 2) ? page : block, color: c, at: 1_700_000_300_000 + Double(i))
@@ -192,6 +199,16 @@ private func at(_ json: inout [String: Any], _ list: String, _ i: Int, _ change:
       { j in at(&j, "versions", 0) { $0["content"] = ["pdf": ["file": "../x.pdf"]] } }
     ),
     (
+      "versions[0].content.pdf: a source without a block list",
+      { j in at(&j, "versions", 0) { $0["content"] = ["pdf": ["file": "x.pdf", "source": "x.tex"]] } }
+    ),
+    (
+      "versions[0].content.pdf: a/x.tex is not a file name",
+      { j in
+        at(&j, "versions", 0) { $0["content"] = ["pdf": ["file": "x.pdf", "blocks": "x.json", "source": "a/x.tex"]] }
+      }
+    ),
+    (
       "versions[3].content.file: .key is not a file name",
       { j in at(&j, "versions", 3) { $0["content"] = ["file": ["file": ".key"]] } }
     ),
@@ -243,6 +260,18 @@ private func at(_ json: inout [String: Any], _ list: String, _ i: Int, _ change:
     ("sidenote n1 is there twice", { j in at(&j, "sidenotes", 1) { $0["id"] = "n1" } }),
     ("version v2: no other version v9 to translate", { j in at(&j, "versions", 1) { $0["of"] = "v9" } }),
     ("version v2: no other version v2 to translate", { j in at(&j, "versions", 1) { $0["of"] = "v2" } }),
+    ("version v5: a translation is of a saved page", { j in at(&j, "versions", 4) { $0["of"] = "v1" } }),
+    ("version v5: a translation is of a saved page", { j in at(&j, "versions", 4) { $0["of"] = nil } }),
+    ("version v5: a translation without its language", { j in at(&j, "versions", 4) { $0["language"] = nil } }),
+    (
+      "versions[2].content.page: ../blocks.json is not a file name",
+      { j in at(&j, "versions", 2) { $0["content"] = ["page": ["hash": "9f", "bytes": 1, "blocks": "../blocks.json"]] }
+      }
+    ),
+    (
+      "versions[4].content.translation: a/b.json is not a file name",
+      { j in at(&j, "versions", 4) { $0["content"] = ["translation": ["file": "a/b.json"]] } }
+    ),
     (
       "highlight h1: no version v9",
       { j in at(&j, "highlights", 1) { $0["place"] = ["version": "v9", "block": ["id": "p"]] } }

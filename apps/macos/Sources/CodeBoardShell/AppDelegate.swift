@@ -1,6 +1,7 @@
 import AppKit
 import CodeBoardCanvas
 import CodeBoardModel
+import CodeBoardResources
 
 /// Starts the app; the executable's only call
 @MainActor public func runApp() {
@@ -59,6 +60,15 @@ import CodeBoardModel
     }
     if let id = UserDefaults.standard.string(forKey: Self.themeKey).flatMap(Theme.ID.init) { shell.theme = id }
     appearance = follow(NSApp, into: shell)
+    // beside the cameras: Application Support/<this app's id>. Before the vault and the window: the reading tabs kept
+    // from the last run are made with the window, and a PDF tab's versions bar reads the translations as it is made
+    shell.machineFolder = cameras?.folder.deletingLastPathComponent()
+    // tongtu's work, beside it: never in the vault
+    shell.reading.translations = shell.machineFolder.map { folder in
+      Translations(folder: folder.appending(path: "Translations", directoryHint: .isDirectory)) {
+        Tongtu.find(setting: AISettings(defaults: .standard).tongtuPath)
+      }
+    }
     if let saved, FileManager.default.fileExists(atPath: saved.vault) {
       open(URL(filePath: saved.vault, directoryHint: .isDirectory), restoring: saved)
     } else if saved == nil, let first = Bundle.main.object(forInfoDictionaryKey: "CodeBoardFirstVault") as? String,
@@ -72,8 +82,6 @@ import CodeBoardModel
     self.panes = panes
     panes.onVaultChanged = { [weak self] in self?.readTree(reloadBoards: true) }
     panes.cameras = cameras
-    // beside the cameras: Application Support/<this app's id>
-    shell.machineFolder = cameras?.folder.deletingLastPathComponent()
     panes.pictures = CanvasView.defaultPictures
     let ai = AISettings(defaults: .standard)
     let keys = KeychainKeyStore()
@@ -229,7 +237,10 @@ import CodeBoardModel
   @objc func showSettings(_ sender: Any?) {
     let ai = AISettings(defaults: .standard)
     let keys = KeychainKeyStore()
-    let s = settings ?? SettingsWindow(settings: ai, keys: keys)
+    let s =
+      settings
+      ?? SettingsWindow(
+        settings: ai, keys: keys, search: BoardPanes.searchSettings, searchKeys: BoardPanes.embeddingKeys)
     s.onSwitchChange = { [weak self] in self?.panes?.summarySwitch = $0 }
     s.onKeyChange = { [weak self] set in self?.panes?.summaryWriter = set ? ai.writer(keys: keys) : nil }
     settings = s
@@ -300,7 +311,7 @@ import CodeBoardModel
     // no keys yet: the shortcut list (CanvasKeys) has no rows for them
     file.addItem(withTitle: "New Web Tab", action: #selector(newWebTab(_:)), keyEquivalent: "")
     // a web tab's view answers it
-    file.addItem(withTitle: "Open Location…", action: NSSelectorFromString("openLocation:"), keyEquivalent: "")
+    file.addItem(withTitle: "Open Location…", action: NSSelectorFromString("openLocation:"), keyEquivalent: "l")
     file.addItem(.separator())
     file.addItem(withTitle: "Close Tab", action: #selector(closeTab(_:)), keyEquivalent: "w")
     file.addItem(item("Close Window", #selector(NSWindow.performClose(_:)), "w", [.command, .shift]))

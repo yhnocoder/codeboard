@@ -79,7 +79,7 @@ enum PDFPlaces {
       }
       let count = page.numberOfCharacters
       let r = p.range ?? 0..<count
-      guard r.lowerBound < count,
+      guard r.lowerBound >= 0, r.lowerBound < count,
         let s = page.selection(for: NSRange(location: r.lowerBound, length: min(r.upperBound, count) - r.lowerBound))
       else { continue }
       if let o = out { o.add(s) } else { out = s }
@@ -98,9 +98,9 @@ enum PDFPlaces {
     return a == b ? "p. \(a)" : "p. \(a)–\(b)"
   }
 
-  /// The annotations that draw a highlight: one a line, the colour laid over the text
-  static func annotations(_ h: Highlight, in doc: PDFDocument) -> [(PDFPage, PDFAnnotation)] {
-    guard let s = selection([h.place], in: doc) else { return [] }
+  /// The annotations that draw a highlight over its text `s`: one a line, the colour laid over the text
+  static func annotations(_ h: Highlight, on s: PDFSelection?) -> [(PDFPage, PDFAnnotation)] {
+    guard let s else { return [] }
     return s.selectionsByLine().flatMap { line in
       line.pages.map { page -> (PDFPage, PDFAnnotation) in
         let b = line.bounds(for: page)
@@ -146,15 +146,38 @@ enum PDFPlaces {
     return out
   }
 
-  /// The mark at the end of a highlight's last line that says it has annotations: a small dot of its colour, darker
-  static func mark(after line: CGRect, _ c: Highlight.Color, id: String) -> PDFAnnotation {
-    let a = PDFAnnotation(
-      bounds: CGRect(x: line.maxX + 1, y: line.maxY - 6, width: 5, height: 5), forType: .circle, withProperties: nil)
+  /// The mark at the end of a highlight's last line that says it has annotations: a small dot of its colour, darker,
+  /// raised like a superscript just after the line's last glyph, or above the line at its end when the next glyph on
+  /// the line is too near to leave it the gap
+  static func mark(after line: CGRect, on page: PDFPage, _ c: Highlight.Color, id: String) -> PDFAnnotation {
+    let d: CGFloat = 3
+    var r = CGRect(x: line.maxX + 0.5, y: line.maxY - d, width: d, height: d)
+    if let next = nextGlyph(after: line, on: page), next.midY > line.minY, next.midY < line.maxY,
+      next.minX < r.maxX + 0.5
+    {
+      r.origin = CGPoint(x: line.maxX - d / 2, y: line.maxY + 0.5)
+    }
+    let a = PDFAnnotation(bounds: r, forType: .circle, withProperties: nil)
     let dark = color(c).withAlphaComponent(1).blended(withFraction: 0.35, of: .black) ?? .black
     a.color = dark
     a.interiorColor = dark
+    a.border = PDFBorder()
+    a.border?.lineWidth = 0
     a.userName = id
     return a
+  }
+
+  /// The box of the first glyph that is not a space after a line's last one, on the same page
+  static func nextGlyph(after line: CGRect, on page: PDFPage) -> CGRect? {
+    let i = page.characterIndex(at: CGPoint(x: line.maxX - 0.5, y: line.midY))
+    // no glyph there (a line drawn to its column's edge): NSNotFound, or -1 on some systems
+    guard let text = page.string as NSString?, i >= 0, i < text.length - 1 else { return nil }
+    for j in (i + 1)..<min(i + 3, text.length) {
+      let ch = text.substring(with: NSRange(location: j, length: 1))
+      if ch.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { continue }
+      return page.characterBounds(at: j)
+    }
+    return nil
   }
 
   /// A region of a page (page space, from its media box's origin) drawn into a picture `pixelWidth` wide, on white

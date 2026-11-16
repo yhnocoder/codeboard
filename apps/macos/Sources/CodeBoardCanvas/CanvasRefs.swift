@@ -153,8 +153,10 @@ extension CanvasView {
     }
   }
 
-  /// Another board opened at a card a ref points to: it is brought into view, selected and flashed
+  /// Another board opened at a card a ref points to: it is brought into view, selected and flashed; one on the Shelf
+  /// is shown there, left on it
   public func arrive(at c: CardID) {
+    if let e = document?.board.shelf.first(where: { $0.cards.contains { $0.id == c } }) { return showShelved(e.id) }
     guard document?.board.card(c) != nil else { return }
     goToRef(.card(c), writing: false)
   }

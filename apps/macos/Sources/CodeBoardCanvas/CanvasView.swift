@@ -331,6 +331,9 @@ public final class CanvasView: NSView {
   /// How a Web card's page is read and opened (tests give their own: never the network or a browser)
   package var fetchPage: WebFetch = WebFetcher.live
   package var openURL: (URL) -> Void = { NSWorkspace.shared.open($0) }
+  /// Where a double-click opens a Web card's page, with its title when it has one (the shell: its reading pane); nil,
+  /// and with ⌘, the browser
+  public var onOpenWeb: ((URL, String?) -> Void)?
   /// Where the pointer is in the window (tests give their own: never the person's pointer); nil: the window's
   package var pointerInWindow: CGPoint?
   /// How an image card's picture at a web address is read (tests give their own: never the network), and the folder the
@@ -411,6 +414,8 @@ public final class CanvasView: NSView {
   /// The card last flashed (tests), its ring and how it is drawn some way out
   package var flashed: CardID?
   var flashRing: (CAShapeLayer, (CGFloat) -> CGPath)?
+  /// The previews open beside sub-board cards (CanvasSubPreviews.swift)
+  var subPreviews = SubPreviews()
   /// Lines selected by their numbers in a code card
   package var lineSel: Lines?
   /// A free marker pressed (its index in `marks`), where, and whether it has moved; what it would land on, tinted
@@ -824,15 +829,7 @@ public final class CanvasView: NSView {
         box.setAffineTransform(CGAffineTransform(rotationAngle: item.tilt))
         box.allowsEdgeAntialiasing = true
       }
-      if let shadow {
-        let l = CALayer()
-        l.frame = box.bounds.insetBy(dx: -shadow.margin, dy: -shadow.margin)
-        l.contents = shadow.0
-        l.contentsScale = 2
-        let side = CGFloat(shadow.0.width) / 2
-        l.contentsCenter = CGRect(x: (side / 2 - 1) / side, y: (side / 2 - 1) / side, width: 2 / side, height: 2 / side)
-        box.addSublayer(l)
-      }
+      if let shadow { box.addSublayer(CanvasView.shadowLayer(shadow, around: box.bounds)) }
       for l in [held, rest] {
         l.frame = box.bounds.insetBy(dx: -item.bleed, dy: -item.bleed)
         l.contentsGravity = .resize
@@ -980,6 +977,7 @@ public final class CanvasView: NSView {
     if openPop != nil { refreshPop() }
     if listShown, !keepCamera { closeQuestionList() }
     if !keepCamera {
+      subPreviews = SubPreviews()
       closeChip()
       cancelPlacing()
       closeStickerPalette()
@@ -988,6 +986,7 @@ public final class CanvasView: NSView {
     }
     shelfChanged()
     questionsChanged()
+    subPreviewsChanged()
     drawChrome()
   }
 
@@ -1008,6 +1007,17 @@ public final class CanvasView: NSView {
       Shadow.draw(t, card: card, scale: 2, in: ctx)
     }
     return s.map { ($0, m) }
+  }
+
+  /// The shadow nine-sliced round `r`
+  static func shadowLayer(_ shadow: (IOSurface, margin: CGFloat), around r: CGRect) -> CALayer {
+    let l = CALayer()
+    l.frame = r.insetBy(dx: -shadow.margin, dy: -shadow.margin)
+    l.contents = shadow.0
+    l.contentsScale = 2
+    let side = CGFloat(shadow.0.width) / 2
+    l.contentsCenter = CGRect(x: (side / 2 - 1) / side, y: (side / 2 - 1) / side, width: 2 / side, height: 2 / side)
+    return l
   }
 
   /// A Section's frame: a tray (fill, hairline, light inner top line) or the fill under its brush strokes

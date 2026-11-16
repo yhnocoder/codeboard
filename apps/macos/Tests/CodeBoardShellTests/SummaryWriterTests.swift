@@ -184,7 +184,9 @@ private func withDefaults(_ body: (UserDefaults, String) throws -> Void) rethrow
     _ = NSApplication.shared
     try withDefaults { d, name in
       let keys = MemoryKeyStore()
-      let w = SettingsWindow(settings: AISettings(defaults: d), keys: keys)
+      let w = SettingsWindow(
+        settings: AISettings(defaults: d), keys: keys, search: SearchSettings(defaults: d), searchKeys: MemoryKeyStore()
+      )
       w.window.setFrameOrigin(CGPoint(x: -30000, y: -30000))
       w.window.level = .underDesktop
       w.window.orderFrontRegardless()
@@ -195,6 +197,9 @@ private func withDefaults(_ body: (UserDefaults, String) throws -> Void) rethrow
       w.onKeyChange = { hasKey.append($0) }
       #expect(w.switchControl.selectedSegment == 0)
       #expect(w.keyField.stringValue == "" && w.keyStatus.stringValue == "")
+      // no key: no line under it, and no gap where it would be
+      @MainActor func statusRowShown() -> Bool { w.grid.cell(for: w.keyStatus)?.row?.isHidden == false }
+      #expect(!statusRowShown())
 
       w.switchControl.selectedSegment = 1
       w.switchControl.sendAction(w.switchControl.action, to: w.switchControl.target)
@@ -206,7 +211,7 @@ private func withDefaults(_ body: (UserDefaults, String) throws -> Void) rethrow
       #expect(keys.key() == "sk-secret")
       #expect(hasKey == [true])
       // shown as a stand-in, never the key; committing it unchanged keeps the key
-      #expect(w.keyField.stringValue == SettingsWindow.saved && w.keyStatus.stringValue == "已保存")
+      #expect(w.keyField.stringValue == SettingsWindow.saved && w.keyStatus.stringValue == "已保存" && statusRowShown())
       w.commitKey(nil)
       #expect(keys.key() == "sk-secret" && hasKey == [true])
       let stored = try #require(d.persistentDomain(forName: name))
@@ -221,7 +226,39 @@ private func withDefaults(_ body: (UserDefaults, String) throws -> Void) rethrow
       w.keyField.stringValue = ""
       w.commitKey(nil)
       #expect(keys.key() == nil && hasKey == [true, true, false])
-      #expect(w.keyStatus.stringValue == "")
+      #expect(w.keyStatus.stringValue == "" && !statusRowShown())
+    }
+  }
+
+  /// Where tongtu is, however long its path: one line as wide as the fields, cut in its middle; the window keeps its
+  /// width
+  @MainActor @Test func theSettingsWindowSaysWhichTongtuInOneLineThatDoesNotWidenIt() throws {
+    _ = NSApplication.shared
+    let fm = FileManager.default
+    let dir = fm.temporaryDirectory.appending(path: "tongtu-" + String(repeating: "a-long-folder-name-", count: 8))
+    try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+    defer { try? fm.removeItem(at: dir) }
+    let exe = dir.appending(path: "tongtu")
+    try Data("#!/bin/sh\n".utf8).write(to: exe)
+    try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: exe.path)
+    withDefaults { d, _ in
+      let w = SettingsWindow(
+        settings: AISettings(defaults: d), keys: MemoryKeyStore(), search: SearchSettings(defaults: d),
+        searchKeys: MemoryKeyStore())
+      w.window.setFrameOrigin(CGPoint(x: -30000, y: -30000))
+      w.window.level = .underDesktop
+      w.window.orderFrontRegardless()
+      defer { w.window.close() }
+      w.window.layoutIfNeeded()
+      let width = w.window.frame.width
+      w.tongtuField.stringValue = exe.path
+      w.commitTongtu(nil)
+      w.window.layoutIfNeeded()
+      #expect(w.tongtuStatus.stringValue == "使用 \(exe.path)" && w.tongtuStatus.toolTip == exe.path)
+      #expect(w.window.frame.width == width && width < 600)
+      func drawnWidth(_ v: NSView) -> CGFloat { v.alignmentRect(forFrame: v.frame).width }
+      #expect(drawnWidth(w.tongtuStatus) == drawnWidth(w.tongtuField))
+      #expect(w.tongtuStatus.lineBreakMode == .byTruncatingMiddle && w.tongtuStatus.usesSingleLineMode)
     }
   }
 
@@ -231,7 +268,9 @@ private func withDefaults(_ body: (UserDefaults, String) throws -> Void) rethrow
     _ = NSApplication.shared
     withDefaults { d, _ in
       let keys = MemoryKeyStore("sk-1")
-      let w = SettingsWindow(settings: AISettings(defaults: d), keys: keys)
+      let w = SettingsWindow(
+        settings: AISettings(defaults: d), keys: keys, search: SearchSettings(defaults: d), searchKeys: MemoryKeyStore()
+      )
       w.window.setFrameOrigin(CGPoint(x: -30000, y: -30000))
       w.window.level = .underDesktop
       w.window.orderFrontRegardless()
@@ -256,7 +295,9 @@ private func withDefaults(_ body: (UserDefaults, String) throws -> Void) rethrow
       #expect(writer.endpoint?.absoluteString == "http://127.0.0.1:8080/v1/chat/completions" && writer.model == "qwen3")
 
       // a new window shows what was saved; cleared, DeepSeek's again
-      let again = SettingsWindow(settings: AISettings(defaults: d), keys: keys)
+      let again = SettingsWindow(
+        settings: AISettings(defaults: d), keys: keys, search: SearchSettings(defaults: d), searchKeys: MemoryKeyStore()
+      )
       #expect(again.baseURLField.stringValue == "http://127.0.0.1:8080/v1" && again.modelField.stringValue == "qwen3")
       again.baseURLField.stringValue = ""
       again.modelField.stringValue = ""
@@ -264,6 +305,45 @@ private func withDefaults(_ body: (UserDefaults, String) throws -> Void) rethrow
       #expect(
         AISettings(defaults: d).writer(keys: keys).endpoint?.absoluteString
           == "https://api.deepseek.com/chat/completions")
+    }
+  }
+
+  /// settings.ts search.embeddingUrl, search.embeddingModel, search.rerank (on by default) and search.rerankModel in
+  /// the defaults; the embedding key in its own store, never the AI key's, and handed to box only in memory
+  @MainActor @Test func theSettingsWindowStoresTheSearchSettingsAndTheEmbeddingKey() {
+    _ = NSApplication.shared
+    #expect(KeychainKeyStore().account == "deepseekApiKey", "the AI key's item is where it was")
+    #expect(KeychainKeyStore(account: SearchSettings.keyAccount).account == "embeddingApiKey")
+    withDefaults { d, _ in
+      let keys = MemoryKeyStore("sk-1")
+      let searchKeys = MemoryKeyStore()
+      let w = SettingsWindow(
+        settings: AISettings(defaults: d), keys: keys, search: SearchSettings(defaults: d), searchKeys: searchKeys)
+      w.window.setFrameOrigin(CGPoint(x: -30000, y: -30000))
+      w.window.level = .underDesktop
+      w.window.orderFrontRegardless()
+      defer { w.window.close() }
+      #expect(SearchSettings(defaults: d).embedder(keys: searchKeys) == nil, "no address: off")
+      #expect(w.embeddingURLField.stringValue == "" && w.rerankSwitch.state == .on)
+
+      w.embeddingURLField.stringValue = " http://127.0.0.1:11001/v1 "
+      w.embeddingURLField.sendAction(w.embeddingURLField.action, to: w.embeddingURLField.target)
+      w.embeddingModelField.stringValue = "embeddinggemma"
+      w.rerankModelField.stringValue = "hs-rerank-1"
+      w.rerankSwitch.state = .off
+      w.rerankSwitch.sendAction(w.rerankSwitch.action, to: w.rerankSwitch.target)
+      w.embeddingKeyField.stringValue = "ek-2"
+      w.embeddingKeyField.sendAction(w.embeddingKeyField.action, to: w.embeddingKeyField.target)
+      #expect(searchKeys.key() == "ek-2" && keys.key() == "sk-1")
+      #expect(w.embeddingKeyField.stringValue == SettingsWindow.saved && w.embeddingKeyStatus.stringValue == "已保存")
+      #expect(d.dictionaryRepresentation().values.contains { $0 as? String == "ek-2" } == false, "never in defaults")
+      w.window.close()
+      let s = SearchSettings(defaults: d)
+      #expect(s.embeddingURL == "http://127.0.0.1:11001/v1" && s.embeddingModel == "embeddinggemma")
+      #expect(s.rerank == false && s.rerankModel == "hs-rerank-1")
+      #expect(
+        s.embedder(keys: searchKeys)
+          == BoxEmbedder(base: "http://127.0.0.1:11001/v1", model: "embeddinggemma", key: "ek-2"))
     }
   }
 }

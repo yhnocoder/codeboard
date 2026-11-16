@@ -142,6 +142,9 @@ public struct ShellState: Codable, Equatable, Sendable {
   /// Asks which PDF files to add (Add PDF…): an open panel in a sheet on the main window (makeMainWindow); with no
   /// window to ask in, none
   @ObservationIgnored public var askPDFs: @MainActor () async -> [URL] = { [] }
+  /// Add arXiv Paper… for a resource: a sheet on the main window (makeMainWindow) asking for the id, which adds it with
+  /// `addArxiv`; with no window, nothing
+  @ObservationIgnored public var askArxiv: @MainActor (VaultResource) -> Void = { _ in }
   /// Asks a question before a delete, the first button the yes: a sheet on the main window (makeMainWindow); with no
   /// window to ask in, nothing is deleted
   @ObservationIgnored public var confirm: @MainActor (NSAlert) async -> Bool = { _ in false }
@@ -221,13 +224,16 @@ public struct ShellState: Codable, Equatable, Sendable {
       byID = Dictionary(tree.allBoards.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
       for tab in tabs where byID[tab.board] == nil { close(tab.id) }
       if let vault { reading.entries = EntryIndex(vault, tree) }
-      // a resource's tab takes its new name, and closes when it is gone, as does any tab whose kind says so
+      // a resource's tab takes its new name, and closes when it is gone, as does any tab whose kind says so; its kind
+      // hears every read too
       let resources = Dictionary(
         tree.allFolders.flatMap(\.resources).map { (Self.readingKey($0.id), $0.title) }, uniquingKeysWith: { a, _ in a }
       )
       reading.follow { tab in
         guard let key = tab.key, key.hasPrefix("resource:") else { return ReadingKinds.follow(tab, in: reading) }
-        return resources[key]
+        guard let title = resources[key] else { return nil }
+        _ = ReadingKinds.follow(tab, in: reading)
+        return title
       }
       sources.sourcesChanged()
       // a crumb whose board is gone cuts the crumbs there: what is past it is no way back
@@ -319,12 +325,18 @@ public struct ShellState: Codable, Equatable, Sendable {
     reading.open(title, key: key)
   }
 
-  /// A resource's tab (its row clicked in the sidebar): opened, or gone to when it is open
+  /// A resource's tab (its row clicked in the sidebar), a list of its entries: opened, or gone to when it is open
   public func openResource(_ r: VaultResource) {
-    openReadingTab(title: r.title, key: Self.readingKey(r.id))
+    reading.open(r.title, key: Self.readingKey(r.id), kind: "list", payload: ["resource": r.id.rawValue])
   }
 
   static func readingKey(_ id: ResourceID) -> String { "resource:" + id.rawValue }
+
+  /// Whether the reading pane is showing this resource's list now: what its row in the sidebar marks (the board's row
+  /// keeps the selection, the board being what the board side shows)
+  public func readingShows(_ id: ResourceID) -> Bool {
+    reading.shown && reading.tabs.first { $0.id == reading.selected }?.key == Self.readingKey(id)
+  }
 
   /// A PDF in the reading pane (an entry's version, or a file that is an entry alone): opened, or gone to when it is
   /// open; nil when it is not in the vault
