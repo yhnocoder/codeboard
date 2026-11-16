@@ -305,6 +305,8 @@ public final class CanvasView: NSView {
   /// The glyph picked in the palette, following the pointer (its ghost, in the view's units) until a click
   package var placing: Sticker.Glyph?
   let stickerGhost = CALayer()
+  /// A card collected from a reading pane, in hand while its drag is over the board (CanvasCollect.swift)
+  var inHand: InHand?
   package var stickerPalette: StickerPalette?
   /// The Shelf: its button, its panel, the entry shown large, the pictures drawn of each entry, what flies in, the
   /// outline of where a hovered entry returns and of one dragged out (board units)
@@ -338,6 +340,23 @@ public final class CanvasView: NSView {
   /// The pictures at web addresses read so far, by address: their files; and the addresses asked for
   var remotePictures: [String: URL] = [:]
   var remoteAsked: Set<String> = []
+  /// What says where the cards' sources are and what they are called (the shell's reading side; CanvasSources.swift)
+  public var sources: SourceProvider? {
+    didSet {
+      // one provider serves every tab's canvas: each adds itself to those it tells
+      // ponytail: a closed tab's link stays in the chain (doing nothing); a list in the provider if tabs number thousands
+      let others = sources?.onSourcesChanged
+      sources?.onSourcesChanged = { [weak self] in
+        others?()
+        self?.sourcesChanged()
+      }
+      sourcesChanged()
+    }
+  }
+  /// A press on a card's source, which shows it when let go where it was pressed
+  var sourcePress: SourceAnchor?
+  /// The pictures of resource blocks the provider gave, and those asked for
+  var sourcePictures = SourcePictures()
   /// The pages being read now, by card ("card/row" for a list's row), and their tasks
   package var webFetching: Set<String> = []
   package var webTasks: [String: Task<Void, Never>] = [:]
@@ -493,7 +512,7 @@ public final class CanvasView: NSView {
     // a Note's [[reference]] points at a card
     MarkdownEditing.referenceTitle = "Link to Card"
     CanvasView.all.add(self)
-    registerForDraggedTypes([.string, .fileURL])
+    registerForDraggedTypes([.string, .fileURL, CanvasView.collectedType])
     // layer-hosting: the canvas owns its layer tree, y-down like the board
     let root = CALayer()
     root.isGeometryFlipped = true
@@ -609,6 +628,7 @@ public final class CanvasView: NSView {
     let known = CanvasView.highlighter
     let display = self.display
     let open = document?.board
+    let sources = open.map(sourceInfo) ?? [:]
     // where the camera will be once it is installed (install: arriving, else kept, else the board's top left at 100 %)
     let opensAt = keepCamera ? camera : arriving ?? keptCamera(of: board, in: vault)
     let work = Task.detached(priority: .userInitiated) {
@@ -623,7 +643,8 @@ public final class CanvasView: NSView {
       // the Note display's, compiled as the app starts: one in the app
       let highlighter = known ?? NativeNotes.highlighter
       let scene = Scene(
-        b, package: package, vault: vault, theme: theme, highlighter: highlighter, sizes: sizes, inline: inline)
+        b, package: package, vault: vault, theme: theme, highlighter: highlighter, sizes: sizes, inline: inline,
+        sources: sources)
       let fit = Camera.fit(scene.bounds, in: size).zoom
       let limits = ZoomLimits(view: size, content: scene.bounds)
       let first =
@@ -688,6 +709,7 @@ public final class CanvasView: NSView {
     }
     shown = (board, vault)
     install(scene, overviews: overviews, shadow: shadow, theme: theme, keepCamera: keepCamera)
+    askSourcePictures()
     if keepCamera { showCrumbs() } else { boardArrived() }
     // its pictures at web addresses: read now, or already kept from before (then drawn at once)
     let kept = remotePictures.count
@@ -1454,6 +1476,10 @@ public final class CanvasView: NSView {
         if job.note { ruleBreaks.noteRequests += 1 }
       }
       let item = scene.items[job.item]
+      // a resource block's picture drawn sharper than the one held: a wider one asked for
+      if case .image(let p) = item.drawing, let a = p.resource {
+        askSourcePicture(a, pixels: Int((item.rect.width * job.scale).rounded(.up)))
+      }
       let theme = self.theme
       let images = self.images
       let id = nextTask

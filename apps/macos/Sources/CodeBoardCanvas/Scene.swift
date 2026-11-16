@@ -96,6 +96,8 @@ struct Scene: Sendable {
   var fetching: Set<CardID> = []
   /// The pictures at web addresses read so far: their files
   var remote: [String: URL] = [:]
+  /// What the source provider said of the cards' sources, by anchor (Scene.key)
+  var sources: [String: Source] = [:]
 
   /// A card's drawing and what it was made from: the next scene reuses it while these are the same
   struct Part: Sendable {
@@ -114,6 +116,8 @@ struct Scene: Sendable {
     /// A code card's Always Show sidenotes as measured, and their text
     var always: [[CodeLayout.Always]] = []
     var alwaysText: [String] = []
+    /// What the source provider said of its source
+    var source: Source?
   }
 
   /// The tilt of a tilted card, as the board's (counter-clockwise)
@@ -236,11 +240,13 @@ struct Scene: Sendable {
   init(
     _ board: Board, package: URL, vault: Vault, theme t: Theme, highlighter: Highlighter,
     sizes: [CardID: NoteMetrics] = [:], inline: [SidenoteID: NoteMetrics] = [:],
-    reusing previous: Scene? = nil, vaultSeen: Int = 0, fetching: Set<CardID> = [], remote: [String: URL] = [:]
+    reusing previous: Scene? = nil, vaultSeen: Int = 0, fetching: Set<CardID> = [], remote: [String: URL] = [:],
+    sources: [String: Source] = [:]
   ) {
     self.vaultSeen = vaultSeen
     self.fetching = fetching
     self.remote = remote
+    self.sources = sources
     // what a folded Section hides: the cards and Sections inside it (the outermost folded one around each)
     let byID = Dictionary(board.sections.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
     func foldedAround(_ id: SectionID?) -> SectionID? {
@@ -298,6 +304,7 @@ struct Scene: Sendable {
       let tilt = c.tilted ? Scene.tilt : 0
       let mine = ends[c.id] ?? []
       let part: Part
+      let source = Scene.anchor(content).flatMap { sources[Scene.key($0)] }
       // what is drawn from other boards: a sub-board's map, the titles and seals of [[refs]]
       let showsOthers = {
         switch content.body {
@@ -313,7 +320,7 @@ struct Scene: Sendable {
         p.alwaysText == alwaysText,
         !showsOthers || previous?.vaultSeen == vaultSeen,
         previous?.fetching.contains(c.id) == fetching.contains(c.id),
-        Scene.remoteAddresses(content).allSatisfy({ previous?.remote[$0] == remote[$0] })
+        Scene.remoteAddresses(content).allSatisfy({ previous?.remote[$0] == remote[$0] }), p.source == source
       {
         part = p
         reused.insert(c.id)
@@ -324,13 +331,13 @@ struct Scene: Sendable {
             // whole points, as main lays a card out by its offsetWidth and offsetHeight (Card.tsx read)
             measured: sizes[c.id].map { CGSize(width: $0.size.width.rounded(), height: $0.size.height.rounded()) },
             theme: t, highlighter: highlighter,
-            refs: refs, fetching: fetching.contains(c.id), always: always, remote: remote)
+            refs: refs, fetching: fetching.contains(c.id), always: always, remote: remote, sources: sources)
         else { continue }
         part = Part(
           content: content, width: c.width, height: c.height, tilted: c.tilted, locked: c.locked == true,
           measured: sizes[c.id],
           ends: mine,
-          drawing: drawing, size: size, code: code, always: always, alwaysText: alwaysText)
+          drawing: drawing, size: size, code: code, always: always, alwaysText: alwaysText, source: source)
       }
       parts[c.id] = part
       let r = CGRect(origin: CGPoint(x: c.x, y: c.y), size: part.size)
@@ -610,11 +617,15 @@ struct Scene: Sendable {
   private static func card(
     _ c: Card, _ content: CardContent, board: Board, folder: URL, measured: CGSize?, theme t: Theme,
     highlighter: Highlighter, refs: RefResolver, fetching: Bool = false, always: [[CodeLayout.Always]] = [],
-    remote: [String: URL] = [:]
+    remote: [String: URL] = [:], sources: [String: Source] = [:]
   ) -> (
     Drawing, CGSize, (layout: CodeLayout, top: CGFloat, segments: [SegmentID])?
   )? {
     let images = folder.appending(path: Vault.imagesFolder)
+    // a Note's and an image card's source at its foot; its entry gone (or no provider): said so
+    let anchor = Scene.anchor(content)
+    let source = anchor.flatMap { sources[Scene.key($0)] }
+    let foot = anchor.map { source?.foot ?? Drawing.Foot($0, nil) }
     switch content.body {
     case .code(let code):
       let tokens = code.segments.map { highlighter.tokens(lines: $0.lines, language: $0.language) }
@@ -655,11 +666,14 @@ struct Scene: Sendable {
       return (.code(d), CGSize(width: c.width, height: top + body), (layout, top, code.segments.map(\.id)))
     case .note(let n):
       let title = content.title ?? heading(n.text)
-      // a Note the renderer could not measure is shown as paper of an arbitrary height
-      let size = CGSize(width: c.width, height: c.height ?? measured?.height ?? c.width * 0.6)
+      // its foot under its text (a stored height holds both); a Note the renderer could not measure is shown as paper
+      // of an arbitrary height
+      let band = foot == nil ? 0 : Drawing.Foot.noteBand
+      let size = CGSize(width: c.width, height: c.height ?? (measured?.height ?? c.width * 0.6) + band)
       let note = Drawing.Note(
-        id: c.id.rawValue, title: title, content: .note(n), folder: folder, height: c.height,
-        refs: refs.refs(in: n.text), hideHead: content.hidesHeading, locked: c.locked == true)
+        id: c.id.rawValue, title: title, content: .note(n), folder: folder, height: c.height.map { $0 - band },
+        refs: refs.refs(in: n.text), hideHead: content.hidesHeading, locked: c.locked == true,
+        foot: foot.map { Drawing.Foot.inNote($0, width: c.width, t) })
       return (.note(note), size, nil)
     case .text(let text):
       // as wide as its text unless it wraps at the card's width; as tall as its text unless its card keeps a height an
@@ -673,19 +687,23 @@ struct Scene: Sendable {
       return (.note(note), size, nil)
     case .image(let img):
       var url: URL?
+      var resource: SourceAnchor?
       switch img.source {
       case .file(let f): url = images.appending(path: f)
       case .url(let s): url = remote[s]
-      // drawing a resource's block is not in yet: a picture not there
-      case .resource: url = nil
+      // a block of a resource entry: the provider's picture, as tall as the block's proportions make it
+      case .resource(let a): resource = a
       }
       let size = url.flatMap(DecodeCache.pixelSize)
-      let h = c.height ?? size.map { c.width * $0.height / max($0.width, 1) } ?? c.width * 0.6
-      let desc = Scene.desc(content.description, width: c.width, folder: folder, theme: t)
-      let pic = Drawing.Picture(
+      let still = resource == nil ? nil : source?.picture
+      let shape = size ?? source?.size ?? still.map { CGSize(width: $0.width, height: $0.height) }
+      let h = c.height ?? shape.map { c.width * $0.height / max($0.width, 1) } ?? c.width * 0.6
+      var pic = Drawing.Picture(
         id: c.id.rawValue, url: size == nil ? nil : url, fileSize: size ?? .zero, frame: (img.stillFrame ?? 1) - 1,
-        framed: img.framed, desc: desc)
-      return (.image(pic), CGSize(width: c.width, height: h + (desc?.height ?? 0)), nil)
+        framed: img.framed, desc: Scene.desc(content.description, width: c.width, folder: folder, theme: t),
+        resource: resource, still: still)
+      if let foot { Drawing.Foot.inImage(foot, &pic, width: c.width, t) }
+      return (.image(pic), CGSize(width: c.width, height: h + pic.below), nil)
     case .board(let s):
       let tree = refs.vaultTree()
       var name = content.title ?? ""
