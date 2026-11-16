@@ -1,0 +1,25 @@
+{
+ "version": 15,
+ "id": "bzed",
+ "name": "Zed",
+ "cards": [
+  {
+   "id": "czed",
+   "kind": "note",
+   "look": "note",
+   "md": "# Zed\nAnother board."
+  }
+ ],
+ "place": {
+  "czed": {
+   "x": 80,
+   "y": 80,
+   "w": 300,
+   "h": 120
+  }
+ },
+ "links": [],
+ "sections": [],
+ "stickers": [],
+ "sidenotes": []
+}

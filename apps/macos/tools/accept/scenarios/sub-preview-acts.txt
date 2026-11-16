@@ -1,0 +1,57 @@
+# 子白板卡上面的按钮（PR 277）：Hide / Show 收起再展开；一列换两列，存进卡里、不是撤销的一步（⌘Z 不改回来）；Clear 全关；换白板再回来、关掉 app 再打开，两列还在、预览没了；预览前后的撤销重做只动白板，不动开着的预览（共享子白板卡上的列按钮见 sub-preview-shared）
+# only: mac
+# storage: storage-sub
+zoom 1
+center @cnote:c
+wait 600
+drag @cnote+150,20 @cnote+150,60 400
+wait 400
+expect cnote.y = 120
+center @csub:c+200,0
+wait 600
+click @csub+59,78
+wait 300
+click @csub+180,78
+wait 800
+expect subpv has open kalpha,kbeta
+rec acts
+click @csub+240,-33
+wait 500
+expect subpv has fold true
+shot hidden
+click @csub+240,-33
+wait 500
+expect subpv has fold false
+click @csub+289,-33
+wait 800
+expect cols:csub = 2
+expect subpv has cols 2
+shot twocols
+stop
+key cmd+z
+wait 600
+expect cnote.y = 80
+expect cols:csub = 2
+expect subpv has open kalpha,kbeta
+key cmd+shift+z
+wait 600
+expect cnote.y = 120
+expect subpv has open kalpha,kbeta
+click @csub+334,-33
+wait 600
+expect subpv = none
+click @csub+59,78
+wait 600
+click @row:Zed
+wait 1200
+click @row:Atlas
+wait 1500
+expect subpv = none
+expect cols:csub = 2
+reopen
+wait 1500
+expect cols:csub = 2
+expect subpv = none
+center @cnote:c
+wait 600
+expect cnote.y = 120
