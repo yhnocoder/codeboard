@@ -228,5 +228,31 @@ extension CanvasPasteTests {
         r.doc.selection == [.card(c.id)] && r.doc.undoName == "Add to Board" && r.doc.history.undoSteps.count == 1)
       await r.until("its page read") { pages.asked == ["https://harbour.example.org/log"] }
     }
+
+    /// An address with other words around it is no address alone: no Web card, the drag left alone as plain text is
+    @Test func anAddressWithOtherWordsDroppedIsNoWebCard() async throws {
+      let (r, _) = try await rig()
+      defer { r.close() }
+      let d = Drag(at: r.at(CGPoint(x: 700, y: 500))) {
+        $0.setString("see https://harbour.example.org/log", forType: .string)
+      }
+      defer { d.draggingPasteboard.releaseGlobally() }
+      #expect(r.canvas.draggingEntered(d) == [] && r.canvas.inHand == nil)
+      #expect(!r.canvas.performDragOperation(d))
+      #expect(r.doc.board.cards.count == 1 && !r.doc.history.canUndo)
+    }
+
+    /// An address that is not http or https is no Web card
+    @Test func anAddressNotHTTPDroppedIsNoWebCard() async throws {
+      let (r, _) = try await rig()
+      defer { r.close() }
+      let d = Drag(at: r.at(CGPoint(x: 700, y: 500))) { pb in
+        pb.writeObjects([URL(string: "ftp://harbour.example.org/log")! as NSURL])
+      }
+      defer { d.draggingPasteboard.releaseGlobally() }
+      #expect(r.canvas.draggingEntered(d) == [] && r.canvas.inHand == nil)
+      #expect(!r.canvas.performDragOperation(d))
+      #expect(r.doc.board.cards.count == 1 && !r.doc.history.canUndo)
+    }
   }
 }
