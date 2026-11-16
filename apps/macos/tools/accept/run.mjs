@@ -723,7 +723,8 @@ async function subject(d, subj) {
   // <title>", * on the one shown) and "pane shown|hidden"; webviews: each web view's address, title, whether it is
   // shown and what its page says of its visibility (Mac only)
   if (subj.startsWith("entry:")) return d.send(`entries ${subj.slice(6)}`);
-  if (subj === "readtabs" || subj === "webviews" || subj === "subpv" || subj === "vaultstamp") return d.send(subj);
+  if (["readtabs", "webviews", "subpv", "vaultstamp", "windows", "board"].includes(subj)) return d.send(subj);
+  if (subj.startsWith("wtext:")) return d.send(`wtext ${subj.slice(6)}`);
   if (subj.startsWith("cols:")) return d.send(`cols ${subj.slice(5)}`);
   // file:board / file:<path in the vault>: what the Mac app wrote there, read from disk (expect … has / lacks)
   if (subj.startsWith("file:") && d.side === "mac") {

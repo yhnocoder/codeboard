@@ -124,6 +124,9 @@ extension NSWindow {
       return
     }
     accMakeKeyAndOrderFront(sender)
+    // again once it is in: while it was ordered in, AppKit asked who is key, and a window not yet visible handed key
+    // back to the main window (gKey), so a Settings window came up with the keys still going to the board
+    gKey = self
   }
   @objc func accSetLevel(_ l: NSWindow.Level) { accSetLevel(onScreen ? l : deskLevel) }
   @objc func accOrderWindow(_ place: NSWindow.OrderingMode, relativeTo other: Int) {
@@ -798,7 +801,7 @@ func strings(_ x: Any) -> [String] {
       walk(root)
     }
     let ts = ProcessInfo.processInfo.systemUptime
-    func ev(_ t: NSEvent.EventType, _ v: NSView?) -> NSEvent {
+    func ev(_ t: NSEvent.EventType, _ v: NSView?, _ area: NSTrackingArea? = nil) -> NSEvent {
       let ww = v?.window ?? w ?? win!
       let lp = ww.convertPoint(fromScreen: p)
       if t == .mouseMoved {
@@ -808,18 +811,20 @@ func strings(_ x: Any) -> [String] {
       }
       return NSEvent.enterExitEvent(
         with: t, location: lp, modifierFlags: vFlags, timestamp: ts, windowNumber: ww.windowNumber, context: nil,
-        eventNumber: 0, trackingNumber: 0, userData: nil)!
+        // the area's own number, as AppKit sends it (event.trackingArea is that area): SwiftUI's hover takes only an
+        // enter or exit of its own area
+        eventNumber: 0, trackingNumber: area.map { unsafeBitCast($0, to: Int.self) } ?? 0, userData: nil)!
     }
     for (id, a) in inside where now[id] == nil {
       inside[id] = nil
       if a.options.contains(.mouseEnteredAndExited) {
-        tell(a.owner, #selector(NSResponder.mouseExited(with:)), ev(.mouseExited, nil))
+        tell(a.owner, #selector(NSResponder.mouseExited(with:)), ev(.mouseExited, nil, a))
       }
     }
     for (id, (a, v)) in now where inside[id] == nil {
       inside[id] = a
       if a.options.contains(.mouseEnteredAndExited) {
-        tell(a.owner, #selector(NSResponder.mouseEntered(with:)), ev(.mouseEntered, v))
+        tell(a.owner, #selector(NSResponder.mouseEntered(with:)), ev(.mouseEntered, v, a))
       }
     }
     if !dragging && moved {
@@ -1165,6 +1170,36 @@ func strings(_ x: Any) -> [String] {
   /// What type and keys take: \\n is Return and \\s a space (a scenario line's trailing spaces are trimmed)
   func typed(_ s: Substring) -> String {
     s.replacingOccurrences(of: "\\n", with: "\n").replacingOccurrences(of: "\\s", with: " ")
+  }
+
+  /// The app's visible windows, front to back; or the one a title or #n names
+  func shown() -> [NSWindow] { NSApp.orderedWindows.filter { $0.isVisible && !$0.title.isEmpty || $0 === gMain } }
+  func shown(_ ref: String) -> NSWindow? {
+    let ws = shown()
+    if ref.hasPrefix("#"), let n = Int(ref.dropFirst()) { return n >= 1 && n <= ws.count ? ws[n - 1] : nil }
+    return ws.first { $0.title == ref }
+  }
+  /// A window drawn off screen: its layers when it has them, else its views as they draw themselves
+  func picture(_ w: NSWindow) -> CGImage? {
+    if let img = Recorder.drawn(w) { return img }
+    guard let root = w.contentView?.superview ?? w.contentView,
+      let rep = root.bitmapImageRepForCachingDisplay(in: root.bounds)
+    else { return nil }
+    root.cacheDisplay(in: root.bounds, to: rep)
+    return rep.cgImage
+  }
+  /// Every line of words in a picture, top to bottom and left to right
+  func words(_ img: CGImage) -> String {
+    let request = VNRecognizeTextRequest()
+    request.recognitionLevel = .accurate
+    request.recognitionLanguages = ["zh-Hans", "en-US"]
+    request.usesLanguageCorrection = false
+    do { try VNImageRequestHandler(cgImage: img).perform([request]) } catch { return "text recognition: \(error)" }
+    let lines = (request.results ?? []).sorted {
+      abs($0.boundingBox.midY - $1.boundingBox.midY) > 0.01
+        ? $0.boundingBox.midY > $1.boundingBox.midY : $0.boundingBox.minX < $1.boundingBox.minX
+    }.compactMap { $0.topCandidates(1).first?.string }
+    return lines.isEmpty ? "none" : lines.joined(separator: "\n")
   }
 
   /// Words as a person reads them: the main window's picture read by text recognition inside a box (content
@@ -2008,6 +2043,27 @@ func strings(_ x: Any) -> [String] {
         }
       }
       return titles.isEmpty ? "none" : titles.joined(separator: "\n")
+    // windows: the app's visible windows front to back, one per line: its number (what #n names), title, key, main
+    case "windows":
+      let ws = shown()
+      return ws.isEmpty
+        ? "none"
+        : ws.enumerated().map { i, w in
+          "\(i + 1) \"\(w.title)\"" + (w === gKey ? " key" : "") + (w === gMain ? " main" : "")
+        }.joined(separator: "\n")
+    // wshot <window> <name>: one window's picture as <name>.png, drawn off screen (a window away from the main one is
+    // in no shot); wtext <window>: the words text recognition reads in it, a line each, top to bottom. <window> is a
+    // title, or #n from windows
+    case "wshot", "wtext":
+      let ref = a.count > 1 ? a[1] : ""
+      guard let w = shown(ref) else { return "no window \(ref)" }
+      guard let img = picture(w) else { return "no picture of \(ref)" }
+      if a[0] == "wshot" {
+        guard a.count > 2 else { return "wshot <window> <name>" }
+        Recorder.write(img, to: outDir.appending(path: a[2] + ".png"))
+        return ""
+      }
+      return words(img)
     // readtabs: the reading pane's tabs, one per line: its kind ("" a blank page), its title, * on the one shown; then
     // whether the pane is shown
     case "readtabs":
