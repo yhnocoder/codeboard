@@ -3,8 +3,8 @@ import Foundation
 
 // Translations of arXiv papers by tongtu (the owner's translation tool, a command of its own): one job at a time, each
 // `tongtu run <paper> --workdir <this machine's folder>/<paper>`, followed by polling `tongtu status <paper> --workdir
-// … --json`; once it is done its Chinese PDF and block list (`out/<paper>.zh.pdf`, `out/<paper>.zh.anchors.json`) are
-// copied into the entry's folder and named by a new Version. Nothing of tongtu's is ever in the vault. Jobs not finished
+// … --json`; once it is done its Chinese PDF, block list and the TeX the list's lines are of (`out/<paper>.zh.pdf`,
+// `out/<paper>.zh.anchors.json`, `build/zh.tex`) are copied into the entry's folder and named by a new Version. Nothing of tongtu's is ever in the vault. Jobs not finished
 // are kept in a file beside the work folders, so after a relaunch they are offered again (never restarted alone).
 
 /// Where a job is: tongtu's stage now, and how far through it when that is known
@@ -295,7 +295,7 @@ public enum Tongtu {
     var description: String
   }
 
-  /// Its PDF and block list copied into the entry's folder, each under a plain name nothing there has, and the new
+  /// Its PDF, block list and TeX copied into the entry's folder, each under a plain name nothing there has, and the new
   /// Version appended to the entry as it is now
   private func finish(_ job: TranslationJob, _ dir: URL) throws {
     let vault = Vault(root: URL(filePath: job.vault, directoryHint: .isDirectory))
@@ -309,16 +309,19 @@ public enum Tongtu {
     }
     let anchorsName = "\(job.name).zh.anchors.json"
     let anchors = try? Data(contentsOf: out.appending(path: anchorsName))
+    // the TeX the block list's line numbers are of: build/zh.tex (the list's `tex`)
+    let tex = anchors == nil ? nil : try? Data(contentsOf: dir.appending(path: "build/zh.tex"))
     var e = try vault.entry(at: found.path)
     guard e.versions.contains(where: { $0.id == job.version }) else {
       throw Unfinished(description: "The version it translates is no longer in the entry.")
     }
     let file = try vault.addEntryFile(pdf, named: pdfName, to: found.path)
     let blocks = try anchors.map { try vault.addEntryFile($0, named: anchorsName, to: found.path) }
+    let source = try tex.map { try vault.addEntryFile($0, named: "\(job.name).zh.tex", to: found.path) }
     e.versions.append(
       Version(
         id: VersionID(rawValue: Board.newID("v")), label: job.label, added: Entry.now, language: "zh", of: job.version,
-        content: .pdf(file: file, blocks: blocks)))
+        content: .pdf(file: file, blocks: blocks, source: source)))
     try vault.write(e, at: found.path)
   }
 

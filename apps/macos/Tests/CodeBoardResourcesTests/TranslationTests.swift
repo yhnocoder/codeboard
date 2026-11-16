@@ -72,6 +72,7 @@ struct FakeTongtu {
           > "$dir/status.json"
         exit 1
       fi
+      mkdir -p "$dir/build"; printf '%s\n' '\section{引言}' > "$dir/build/zh.tex"
       echo "translated $paper" > "$dir/out/$name.zh.pdf"
       echo '{"pdf":"'"$name"'.zh.pdf","tex":"zh.tex","pages":[],"blocks":[]}' > "$dir/out/$name.zh.anchors.json"
       stages "ok ok ok ok ok ok ok" "" '{"total":4,"done":4}' > "$dir/status.json" ;;
@@ -143,7 +144,12 @@ struct FakeTongtu {
     #expect(e.versions.first == r.entry.versions[0])
     let zh = try #require(e.versions.dropFirst().first)
     #expect(zh.label == "v7 中文" && zh.language == "zh" && zh.of == r.entry.versions[0].id)
-    #expect(zh.content == .pdf(file: "1706.03762v7.zh-2.pdf", blocks: "1706.03762v7.zh.anchors.json"))
+    #expect(
+      zh.content
+        == .pdf(
+          file: "1706.03762v7.zh-2.pdf", blocks: "1706.03762v7.zh.anchors.json", source: "1706.03762v7.zh.tex"))
+    #expect(
+      try String(contentsOf: r.vault.url(of: "\(r.path)/1706.03762v7.zh.tex"), encoding: .utf8) == "\\section{引言}\n")
     #expect(try String(contentsOf: r.vault.url(of: "\(r.path)/1706.03762v7.zh.pdf"), encoding: .utf8) == "mine")
     #expect(
       try String(contentsOf: r.vault.url(of: "\(r.path)/1706.03762v7.zh-2.pdf"), encoding: .utf8)

@@ -24,7 +24,8 @@ private func everything() -> Entry {
       Version(id: v1, label: "v7", added: 1_700_000_000_000, content: .pdf(file: "1706.03762v7.pdf")),
       Version(
         id: v2, label: "v7 中文", added: 1_700_000_100_000, language: "zh", of: v1,
-        content: .pdf(file: "1706.03762v7.zh.pdf", blocks: "1706.03762.zh.anchors.json")),
+        content: .pdf(
+          file: "1706.03762v7.zh.pdf", blocks: "1706.03762.zh.anchors.json", source: "1706.03762v7.zh.tex")),
       Version(
         id: VersionID(rawValue: "v3"), added: 1_700_000_200_000, content: .page(hash: "9f86d081884c7d65", bytes: 52_113)
       ),
@@ -190,6 +191,16 @@ private func at(_ json: inout [String: Any], _ list: String, _ i: Int, _ change:
     (
       "versions[0].content.pdf: ../x.pdf is not a file name",
       { j in at(&j, "versions", 0) { $0["content"] = ["pdf": ["file": "../x.pdf"]] } }
+    ),
+    (
+      "versions[0].content.pdf: a source without a block list",
+      { j in at(&j, "versions", 0) { $0["content"] = ["pdf": ["file": "x.pdf", "source": "x.tex"]] } }
+    ),
+    (
+      "versions[0].content.pdf: a/x.tex is not a file name",
+      { j in
+        at(&j, "versions", 0) { $0["content"] = ["pdf": ["file": "x.pdf", "blocks": "x.json", "source": "a/x.tex"]] }
+      }
     ),
     (
       "versions[3].content.file: .key is not a file name",
