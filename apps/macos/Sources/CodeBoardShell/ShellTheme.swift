@@ -53,24 +53,25 @@ enum ShellTheme {
   static let tabPadding: CGFloat = 20
   static let tabMinWidth: CGFloat = 72
   static let tabMaxWidth: CGFloat = 200
-  /// The surface under the tabs: the system material, the share of the canvas colour laid over it (all of it: the row
-  /// is opaque), and how far below the bar it dissolves into the canvas
-  static let glassMaterial = NSVisualEffectView.Material.contentBackground
-  static let glassTint: CGFloat = 1
+  /// Around the tabs inside their strip, which keeps the selected tab's ring and shadow from being cut
+  static let stripPadding: CGFloat = 2
+  /// How far below the bar the canvas colour under the tabs dissolves into the canvas
   static let glassDissolve: CGFloat = 13
 }
 
 extension View {
-  /// The white capsule of a selected row or tab: the mock's `box-shadow: 0 0 0 .5px shade/.12, 0 1px 3px shade/.10`, a
+  /// The white capsule of a selected row or tab, its corners continuous as the panel's are (a tab sits in the panel's
+  /// corner, concentric with it: `panelRadius` less the tab's distance from the edges is `rowRadius`): the mock's `box-shadow: 0 0 0 .5px shade/.12, 0 1px 3px shade/.10`, a
   /// hairline ring wholly outside the fill and a soft drop
   func capsule(_ on: Bool) -> some View {
     background {
       if on {
-        RoundedRectangle(cornerRadius: ShellTheme.rowRadius)
+        RoundedRectangle(cornerRadius: ShellTheme.rowRadius, style: .continuous)
           .fill(ShellTheme.capsule)
           .shadow(color: ShellTheme.drop.opacity(0.10), radius: 1.5, x: 0, y: 1)
           .background(
-            RoundedRectangle(cornerRadius: ShellTheme.rowRadius + 0.5).fill(ShellTheme.shade.opacity(0.12))
+            RoundedRectangle(cornerRadius: ShellTheme.rowRadius + 0.5, style: .continuous)
+              .fill(ShellTheme.shade.opacity(0.12))
               .padding(-0.5))
       }
     }
