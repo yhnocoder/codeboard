@@ -1,4 +1,5 @@
 import Foundation
+import TreeSitterCore
 
 // Code structure by tree-sitter, as packages/analysis/src/index.ts has it: symbols, calls, loops, comment, docstring and
 // blank lines. Syntax alone, no language service (the host asks the editor for definitions). Python, Triton and
@@ -37,10 +38,10 @@ public func analyze(_ lang: String, _ text: String, _ o: AnalyzeOptions = Analyz
   let q = Queries.of(g)
   if let r {
     // Structure (definitions, imports) is looked for in the whole file, calls, loops and comments in these lines only
-    if let structure = q.structure { run(g, cx, sorted(structure.captures(root))) }
-    if r.start <= r.end { run(g, cx, sorted(q.flow.captures(root, rows: cx.r0..<(cx.r1 + 1)))) }
+    if let structure = q.structure { run(g, cx, sorted(structure.captures(under: root))) }
+    if r.start <= r.end { run(g, cx, sorted(q.flow.captures(under: root, rows: cx.r0..<(cx.r1 + 1)))) }
   } else {
-    run(g, cx, sorted(q.all.captures(root)))
+    run(g, cx, sorted(q.all.captures(under: root)))
   }
   out = cx.out
   out.symbols = stableSorted(out.symbols) { a, b in a.start != b.start ? a.start < b.start : a.end > b.end }
@@ -165,7 +166,7 @@ private struct Cap {
   let rank: Int
 }
 
-private func sorted(_ caps: [(name: String, node: Node)]) -> [Cap] {
+private func sorted(_ caps: [QueryCapture]) -> [Cap] {
   stableSorted(
     caps.map { Cap(name: $0.name, node: $0.node, s: $0.node.startIndex, e: $0.node.endIndex, rank: rank($0.name)) }
   ) {
@@ -311,7 +312,7 @@ func assignedTo(_ n: Node, _ g: Grammar) -> [String]? {
     parent = p.parent
   }
   guard let p = parent else { return nil }
-  if g == .python && (p.type == "assignment" || p.type == "augmented_assignment") && cur.same(p.field("right")) {
+  if g == .python && (p.type == "assignment" || p.type == "augmented_assignment") && cur == p.field("right") {
     guard let left = p.field("left") else { return nil }
     var names: [String] = []
     walk(left) { x in
@@ -322,10 +323,10 @@ func assignedTo(_ n: Node, _ g: Grammar) -> [String]? {
     return names.isEmpty ? nil : names
   }
   if g == .cpp {
-    if p.type == "init_declarator" && cur.same(p.field("value")) {
+    if p.type == "init_declarator" && cur == p.field("value") {
       return p.field("declarator").map { [string($0.text.units.drop { isPointerMark($0) })] }
     }
-    if p.type == "assignment_expression" && cur.same(p.field("right")) {
+    if p.type == "assignment_expression" && cur == p.field("right") {
       return p.field("left").map { [$0.text] }
     }
   }

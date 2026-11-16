@@ -56,18 +56,26 @@ jobs:
         with: { token: "${{ secrets.SHIYI_READ_TOKEN }}" }
       # the last regular full run's build (see the app job): the driver is in it, so only what changed since is compiled
       - id: built
-        uses: actions/cache/restore@v5
+        uses: ./.github/actions/sealed-cache
         with:
-          path: apps/macos/.build
-          key: swift-build-${{ runner.os }}-${{ hashFiles('apps/macos/Package.resolved') }}-${{ github.sha }}
-          restore-keys: swift-build-${{ runner.os }}-${{ hashFiles('apps/macos/Package.resolved') }}-
+          do: restore
+          name: build
+          paths: apps/macos/.build
+          key: sealed-build-${{ runner.os }}-${{ hashFiles('apps/macos/Package.resolved') }}-${{ github.sha }}
+          restore-keys: sealed-build-${{ runner.os }}-${{ hashFiles('apps/macos/Package.resolved') }}-
+          secret: ${{ secrets.SHIYI_READ_TOKEN }}
+      # without a kept build, the package clones (restored only: the app job saves them)
       - if: ${{ !steps.built.outputs.cache-matched-key }}
-        uses: actions/cache@v5
+        uses: ./.github/actions/sealed-cache
         with:
-          path: |
+          do: restore
+          name: packages
+          paths: |
             apps/macos/.build/repositories
             apps/macos/.build/checkouts
-          key: swiftpm-${{ runner.os }}-${{ hashFiles('apps/macos/Package.resolved') }}
+          key: sealed-swiftpm-${{ runner.os }}-${{ hashFiles('apps/macos/Package.resolved') }}-${{ github.run_id }}
+          restore-keys: sealed-swiftpm-${{ runner.os }}-${{ hashFiles('apps/macos/Package.resolved') }}-
+          secret: ${{ secrets.SHIYI_READ_TOKEN }}
       - run: node apps/macos/tools/ci/source-times.mjs
       - run: npx playwright-core install chromium
       # (the boards were built above: --skip-build leaves the web builds out; the driver is built, debug, either way)
@@ -118,33 +126,57 @@ jobs:
       # A PR starts from the build the last regular full run made on main (.build, about 500 MB), so it compiles only
       # what differs from it: compiling everything takes 2 to 4.5 minutes, depending on the runner. The regular run
       # itself starts from nothing, so a wrong kept build lasts 6 hours at most. A cache saved on the default branch is
-      # readable by every PR's run
+      # readable by every PR's run. It is sealed with SHIYI_READ_TOKEN (the sealed-cache action), because the build
+      # holds the private package and a pull request from a fork can restore caches saved on main
       - id: built
         if: ${{ !inputs.everything }}
-        uses: actions/cache/restore@v5
+        uses: ./.github/actions/sealed-cache
         with:
-          path: apps/macos/.build
-          key: swift-build-${{ runner.os }}-${{ hashFiles('apps/macos/Package.resolved') }}-${{ github.sha }}
-          restore-keys: swift-build-${{ runner.os }}-${{ hashFiles('apps/macos/Package.resolved') }}-
+          do: restore
+          name: build
+          paths: apps/macos/.build
+          key: sealed-build-${{ runner.os }}-${{ hashFiles('apps/macos/Package.resolved') }}-${{ github.sha }}
+          restore-keys: sealed-build-${{ runner.os }}-${{ hashFiles('apps/macos/Package.resolved') }}-
+          secret: ${{ secrets.SHIYI_READ_TOKEN }}
       # without a kept build: the clones of tree-sitter and its grammars with their whole history, which took about a
-      # minute and a half to fetch on every run
-      - if: ${{ !steps.built.outputs.cache-matched-key }}
-        uses: actions/cache@v5
+      # minute and a half to fetch on every run. They are saved after the build below when none were restored, under a
+      # key of the run's own and found by its prefix, the newest first: clones sealed with a token that has since been
+      # replaced cannot be opened, and would otherwise be found again in every run
+      - id: packages
+        if: ${{ !steps.built.outputs.cache-matched-key }}
+        uses: ./.github/actions/sealed-cache
         with:
-          path: |
+          do: restore
+          name: packages
+          paths: |
             apps/macos/.build/repositories
             apps/macos/.build/checkouts
-          key: swiftpm-${{ runner.os }}-${{ hashFiles('apps/macos/Package.resolved') }}
+          key: sealed-swiftpm-${{ runner.os }}-${{ hashFiles('apps/macos/Package.resolved') }}-${{ github.run_id }}
+          restore-keys: sealed-swiftpm-${{ runner.os }}-${{ hashFiles('apps/macos/Package.resolved') }}-
+          secret: ${{ secrets.SHIYI_READ_TOKEN }}
       # the times the kept build saw on the sources (source-times.mjs), or everything would be compiled again
       - run: node tools/ci/source-times.mjs
       # one build of the app, its tools and the tests: swift build then swift test compiled twice
       - run: swift build --build-tests
       # saved here, not at the end of the job, so that a failing test does not lose the build
       - if: ${{ inputs.everything }}
-        uses: actions/cache/save@v5
+        uses: ./.github/actions/sealed-cache
         with:
-          path: apps/macos/.build
-          key: swift-build-${{ runner.os }}-${{ hashFiles('apps/macos/Package.resolved') }}-${{ github.sha }}
+          do: save
+          name: build
+          paths: apps/macos/.build
+          key: sealed-build-${{ runner.os }}-${{ hashFiles('apps/macos/Package.resolved') }}-${{ github.sha }}
+          secret: ${{ secrets.SHIYI_READ_TOKEN }}
+      - if: ${{ steps.packages.outcome == 'success' && !steps.packages.outputs.cache-matched-key }}
+        uses: ./.github/actions/sealed-cache
+        with:
+          do: save
+          name: packages
+          paths: |
+            apps/macos/.build/repositories
+            apps/macos/.build/checkouts
+          key: sealed-swiftpm-${{ runner.os }}-${{ hashFiles('apps/macos/Package.resolved') }}-${{ github.run_id }}
+          secret: ${{ secrets.SHIYI_READ_TOKEN }}
       # every test in the regular full run; on a PR the important ones and those of what it changed (Tests/tiers.json)
       - run: node tools/tests/pick.mjs ${{ inputs.everything && '--all' || '--base HEAD^1' }}
       - if: ${{ !cancelled() }}

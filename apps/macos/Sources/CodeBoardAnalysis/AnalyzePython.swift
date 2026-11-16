@@ -1,5 +1,7 @@
 // Python's symbols, calls, imports and docstrings, as packages/analysis/src/index.ts reads them
 
+import TreeSitterCore
+
 /// A body whose first statement is a string: its lines get the docstring flag, and its text is returned
 func docstring(_ cx: Context, _ body: Node?) -> String? {
   var first = body?.firstNamedChild

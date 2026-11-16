@@ -1,5 +1,5 @@
 {
-  "originHash" : "19abd8c62ba665db4ee44d32dc117f3909aac8bcbf79eb30009d28b816e7650c",
+  "originHash" : "22408c4f6b75030123ded54494a1be47c71665ebe5f4b5694d7396e577349c21",
   "pins" : [
     {
       "identity" : "better-swift-markdown",
@@ -7,7 +7,7 @@
       "location" : "https://github.com/yhnocoder/better-swift-markdown",
       "state" : {
         "branch" : "main",
-        "revision" : "7a0e299fcea76295403a55ee0cc32aae06b3ae97"
+        "revision" : "c3fb30457914477418e6db1f14154e97a71648bd"
       }
     },
     {
