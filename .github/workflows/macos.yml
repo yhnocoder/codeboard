@@ -156,8 +156,9 @@ jobs:
       # what differs from it: compiling everything takes 2 to 4.5 minutes, depending on the runner. A PR that changes
       # Package.resolved starts from the newest kept build of any: SwiftPM then fetches only the packages whose pins
       # changed and compiles what depends on them. The regular run itself starts from nothing, so a wrong kept build
-      # lasts 6 hours at most. A cache saved on the default branch is readable by every PR's run. It is sealed with SHIYI_READ_TOKEN (the sealed-cache action), because the build
-      # holds the private package and a pull request from a fork can restore caches saved on main
+      # lasts 6 hours at most. A cache saved on the default branch is readable by every PR's run. It is sealed with
+      # SHIYI_READ_TOKEN (the sealed-cache action), because the build holds the private package and a pull request from
+      # a fork can restore caches saved on main
       - id: built
         if: ${{ !inputs.everything }}
         uses: ./.github/actions/sealed-cache
@@ -202,7 +203,10 @@ jobs:
           paths: apps/macos/.build
           key: sealed-build-${{ runner.os }}-${{ hashFiles('apps/macos/Package.resolved') }}-${{ github.sha }}
           secret: ${{ secrets.SHIYI_READ_TOKEN }}
-      - if: ${{ steps.packages.outcome == 'success' && !steps.packages.outputs.cache-matched-key }}
+      # (clones restored from another Package.resolved are saved again, for this one)
+      - if: >-
+          ${{ steps.packages.outcome == 'success' && !startsWith(steps.packages.outputs.cache-matched-key,
+          format('sealed-swiftpm-{0}-{1}-', runner.os, hashFiles('apps/macos/Package.resolved'))) }}
         uses: ./.github/actions/sealed-cache
         with:
           do: save
