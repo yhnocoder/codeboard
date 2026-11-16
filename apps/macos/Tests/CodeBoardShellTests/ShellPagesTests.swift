@@ -322,7 +322,7 @@ struct ShiyiWebTabTests {
     }
     func drawn() async throws -> String? {
       try await v.web.callAsyncJavaScript(
-        "return [...(CSS.highlights.get('codeboard') ?? [])].map(r => r.toString()).join('|')",
+        "return [...(CSS.highlights.get('codeboard-yellow') ?? [])].map(r => r.toString()).join('|')",
         contentWorld: WebReading.selectionWorld) as? String
     }
     v.highlight()

@@ -311,7 +311,7 @@ import WebKit
     defer { done(tabs) }
     func drawn(_ v: WebPageView) async throws -> String? {
       try await v.web.callAsyncJavaScript(
-        "return [...(CSS.highlights.get('codeboard') ?? [])].map(r => r.toString()).join('|')",
+        "return [...(CSS.highlights.get('codeboard-yellow') ?? [])].map(r => r.toString()).join('|')",
         contentWorld: WebReading.selectionWorld) as? String
     }
     _ = try await client(
@@ -368,6 +368,26 @@ import WebKit
     let noted = try #require(tabs.pane.entries[entry.id]?.entry)
     #expect(noted.sidenotes.map(\.place) == [place] && noted.sidenotes.first?.note.text == "a thought")
     #expect(fake.shown.last?.notes.map(\.note.text) == ["a thought"])
+    func layer(_ name: String) async throws -> String? {
+      try await again.web.callAsyncJavaScript(
+        "return [...(CSS.highlights.get(name) ?? [])].map(r => r.toString()).join('|')", arguments: ["name": name],
+        contentWorld: WebReading.selectionWorld) as? String
+    }
+    try await until("underlined, having something written on it") { try await layer("codeboard-noted") == "second" }
+    // the popup is on the window, where no pane clips it, beside the highlight
+    #expect(again.pop?.view.superview === tabs.window.contentView)
+    // drawn in the colour the entry has for it
+    var green = noted
+    green.highlights[0].color = .green
+    try vault.write(green, at: try #require(tabs.pane.entries[entry.id]).path)
+    tabs.pane.entries.update(green, at: try #require(tabs.pane.entries[entry.id]).path)
+    again.entriesRead()
+    try await until("green") { try await layer("codeboard-green") == "second" }
+    #expect(try await drawn(again) == "")
+    try vault.write(noted, at: try #require(tabs.pane.entries[entry.id]).path)
+    tabs.pane.entries.update(noted, at: try #require(tabs.pane.entries[entry.id]).path)
+    again.entriesRead()
+    try await until("yellow again") { try await drawn(again) == "second" }
     // Remove takes the highlight and what was written on it; Undo brings both back, Redo takes them again
     let undo = try #require(again.undoManager)
     fake.act?(.remove)

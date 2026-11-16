@@ -8,13 +8,18 @@ import WebKit
 // Highlight API, so that the saved page's own elements are left as they are. A click on one brings a bar with Remove.
 
 extension WebReading {
-  /// Draws the highlights it is given (`codeboardHighlights.set([{id, block, start, end, text}])`: a block's text
+  /// Draws the highlights it is given, each in its colour and one with something written on it underlined
+  /// (`codeboardHighlights.set([{id, block, start, end, text, color, noted}])`: a block's text
   /// nodes in order, without a translation the reader put in it, cut at the offsets; when the text there is not
   /// `text`, where `text` is found in the block) and says which one a click was on (`{id, rect, scrollY}`, else null)
   static let highlightScript = """
     (() => {
       const style = document.createElement("style")
-      style.textContent = "::highlight(codeboard) { background-color: rgba(255, 212, 0, 0.45) }"
+      const colors = { yellow: "255, 212, 0", green: "70, 200, 90", blue: "80, 160, 255", pink: "255, 110, 170",
+        purple: "170, 120, 255" }
+      style.textContent = Object.entries(colors).map(([name, rgb]) =>
+        `::highlight(codeboard-${name}) { background-color: rgba(${rgb}, 0.45) }`).join(" ")
+        + " ::highlight(codeboard-noted) { text-decoration: underline 2px rgba(120, 90, 0, 0.8) }"
       let marks = []
       const range = m => {
         const el = document.querySelector(`[data-shiyi-block="${CSS.escape(m.block)}"]`)
@@ -50,8 +55,12 @@ extension WebReading {
       globalThis.codeboardHighlights = {
         set(list) {
           if (!style.isConnected) document.documentElement.append(style)
-          marks = list.map(m => ({ id: m.id, range: range(m) })).filter(m => m.range)
-          CSS.highlights.set("codeboard", new Highlight(...marks.map(m => m.range)))
+          marks = list.map(m => ({ ...m, range: range(m) })).filter(m => m.range)
+          for (const name in colors) {
+            CSS.highlights.set(`codeboard-${name}`,
+              new Highlight(...marks.filter(m => (m.color in colors ? m.color : "yellow") == name).map(m => m.range)))
+          }
+          CSS.highlights.set("codeboard-noted", new Highlight(...marks.filter(m => m.noted).map(m => m.range)))
           return marks.map(m => m.id)
         }
       }
@@ -124,7 +133,10 @@ extension WebPageView {
     let texts = Dictionary((blocks?.list ?? []).map { ($0.id, $0.text) }, uniquingKeysWith: { a, _ in a })
     let list = e.highlights.filter { $0.place.version == version }.compactMap { h -> [String: Any]? in
       guard case .id(let block) = h.place.block else { return nil }
-      var m: [String: Any] = ["id": h.id, "block": block, "start": h.place.range?.lowerBound ?? 0]
+      var m: [String: Any] = [
+        "id": h.id, "block": block, "start": h.place.range?.lowerBound ?? 0, "color": h.color.rawValue,
+        "noted": e.sidenotes.contains { $0.place == h.place },
+      ]
       if let r = h.place.range {
         m["end"] = r.upperBound
         if let t = texts[block]?.utf16, r.upperBound <= t.count {
@@ -219,7 +231,8 @@ extension WebPageView {
     if pop == nil {
       guard let make = context.pane.makePop else { return }
       let p = make({ [weak self] in self?.popAction($0) }, { [weak self] in self?.placePop() })
-      addSubview(p.view, positioned: .above, relativeTo: nil)
+      // over the window, where no pane clips it (in a narrow pane it reaches over the board), as a PDF's is
+      (window?.contentView ?? self).addSubview(p.view, positioned: .above, relativeTo: nil)
       p.view.nextResponder = self
       pop = p
     }
@@ -241,7 +254,14 @@ extension WebPageView {
     let below =
       p.below ?? AnnotationPop.below(height: size.height + AnnotationPop.oneMoreNote, lines: lines, visible: floatArea)
     pop?.below = below
-    p.view.frame = p.frame(AnnotationPop.origin(size: size, lines: lines, visible: floatArea, below: below))
+    var o = AnnotationPop.origin(size: size, lines: lines, visible: floatArea, below: below)
+    if size.width > floatArea.width {
+      // wider than the tab: its right edge the tab's, reaching left inside the window
+      let room = window?.contentView.map { convert($0.bounds, from: $0) } ?? bounds
+      o.x = max(room.minX + 8, floatArea.maxX - 8 - size.width)
+    }
+    let f = p.frame(o)
+    p.view.frame = p.view.superview.map { $0 === self ? f : $0.convert(f, from: self) } ?? f
   }
 
   /// The popup closed: what is being written in it is added first; the keys it had go back to the page
