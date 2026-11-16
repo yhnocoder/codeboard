@@ -177,12 +177,16 @@ final class PDFTabView: NSView, NSDraggingSource, ReadingLookFollower {
   override var acceptsFirstResponder: Bool { true }
 
   /// A key given to the pages comes back here when they do not take it (this view is above them in the responder
-  /// chain): it goes on up then, never to the pages again
+  /// chain): never to the pages again. With ⌘ or ⌃ it goes on up the chain; a plain key ends here, so a letter pressed
+  /// over a paper makes no sound
   private var keyAtPages = false
 
   override func keyDown(with event: NSEvent) {
     if collectKey(event) { return }
-    guard !keyAtPages, window?.firstResponder === self else { return super.keyDown(with: event) }
+    guard !keyAtPages, window?.firstResponder === self else {
+      if !event.modifierFlags.intersection([.command, .control]).isEmpty { super.keyDown(with: event) }
+      return
+    }
     keyAtPages = true
     defer { keyAtPages = false }
     pdf.keyDown(with: event)

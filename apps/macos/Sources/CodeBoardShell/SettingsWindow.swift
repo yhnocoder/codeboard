@@ -135,12 +135,6 @@ import CodeBoardResources
     keyStatus.stringValue = has ? "已保存" : ""
   }
 
-  func controlTextDidEndEditing(_ obj: Notification) {
-    if obj.object as? NSTextField === keyField { commitKey(nil) } else { commitAI(nil) }
-  }
-  func windowWillClose(_ notification: Notification) {
-    commitKey(nil)
-    commitAI(nil)
   @objc func commitTongtu(_ sender: Any?) {
     let typed = tongtuField.stringValue.trimmingCharacters(in: .whitespaces)
     guard typed != settings.tongtuPath else { return }
@@ -168,10 +162,12 @@ import CodeBoardResources
   }
 
   func controlTextDidEndEditing(_ obj: Notification) {
-    if obj.object as? NSTextField === tongtuField { commitTongtu(nil) } else { commitKey(nil) }
+    let field = obj.object as? NSTextField
+    if field === tongtuField { commitTongtu(nil) } else if field === keyField { commitKey(nil) } else { commitAI(nil) }
   }
   func windowWillClose(_ notification: Notification) {
     commitKey(nil)
+    commitAI(nil)
     commitTongtu(nil)
   }
 }
