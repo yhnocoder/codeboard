@@ -1,8 +1,11 @@
+import CodeBoardMarkdownLooks
 import CodeBoardModel
 import CodeBoardNotes
-import CodeBoardSyntax
+import CodeUI
 import CoreText
 import IOSurface
+import MarkdownUI
+import TreeSitterHighlight
 
 /// What one item's bitmap shows. Drawn off the main thread at any scale: a producer gets the item's size, a scale and
 /// the theme and draws into a context whose origin is the item's top left; it may draw `bleed(theme)` past each side
@@ -18,6 +21,24 @@ enum Drawing: Sendable {
   /// A Web card and a Link List (WebDrawing.swift)
   case web(Web)
   case links(Links)
+
+  /// A card's description (Card.tsx Desc, styles.css .cdesc): its Markdown laid out by the Markdown component, as
+  /// tall as it is with its padding and the line under it
+  struct Desc: Sendable {
+    var layout: BlockLayout
+    var card: MarkdownLooks.Card
+    var height: CGFloat
+
+    /// Drawn `y` from the card's top, as wide as the card: its text, then the line under it (.cdesc border-bottom)
+    func draw(_ ctx: CGContext, y: CGFloat, width: CGFloat, scale: CGFloat, _ t: Theme) {
+      ctx.saveGState()
+      ctx.translateBy(x: 0, y: y)
+      card.draw(layout, in: ctx, size: CGSize(width: width, height: height - 1), scale: scale) { _ in nil }
+      ctx.restoreGState()
+      ctx.setFillColor(t.line)
+      ctx.fill(CGRect(x: 0, y: y + height - 1, width: width, height: 1))
+    }
+  }
 
   struct Code: Sendable {
     /// The card's id: picks its paper
@@ -38,6 +59,10 @@ enum Drawing: Sendable {
     var inline: [InlineNote] = []
     /// Locked itself: its header starts with the lock (.lockb)
     var locked = false
+    /// Its description under its header (Card.tsx Desc in .carea), its code below it
+    var desc: Desc?
+    /// Where its code starts: under its header and description
+    var top: CGFloat = 0
   }
 
   /// An Always Show sidenote in a code card: its Markdown, drawn at `frame` (card points), its images in `folder`
@@ -80,6 +105,8 @@ enum Drawing: Sendable {
     var fileSize: CGSize
     var frame: Int
     var framed: Bool
+    /// Its description under the picture (Card.tsx ImageView's Desc)
+    var desc: Desc?
 
     /// Drawn by the Note renderer (WebKit), as the web board's <img> draws it
     var svg: Bool { url?.pathExtension.lowercased() == "svg" }
@@ -158,9 +185,10 @@ enum Drawing: Sendable {
     case .code(let c):
       if c.framed { Drawing.paper(ctx, r, t, id: c.id, rule: false) }
       Drawing.code(ctx, c, r, t)
+      c.desc?.draw(ctx, y: t.headerHeight, width: r.width, scale: scale, t)
       // its Always Show sidenotes, cut where its body ends as its rows are
       if let px = picture {
-        let top = c.framed ? t.headerHeight : 0
+        let top = c.top
         ctx.saveGState()
         ctx.clip(to: CGRect(x: 0, y: top, width: r.width, height: r.height - top))
         Raster.draw(
@@ -171,12 +199,9 @@ enum Drawing: Sendable {
     case .note(let n):
       switch n.content {
       case .note:
-        Drawing.paper(ctx, r, t, id: n.id, rule: !n.folded)
-        if n.folded {
-          Drawing.edge(ctx, r, t)
-          return decodes
-        }
-        Drawing.noteHeader(ctx, n, width: size.width, t)
+        // folded away as it is written in: no header bar under the editor's heading (.chead.fold: transparent)
+        Drawing.paper(ctx, r, t, id: n.id, rule: n.folded ? nil : true)
+        if !n.folded { Drawing.noteHeader(ctx, n, width: size.width, t) }
         Drawing.edge(ctx, r, t)
       case .text(let text) where text.look == .box:
         let p = Drawing.squircle(r, t.cardRadius)
@@ -203,11 +228,22 @@ enum Drawing: Sendable {
           px, in: CGRect(x: 0, y: 0, width: CGFloat(px.width) / scale, height: CGFloat(px.height) / scale), of: ctx)
       }
     case .image(let p):
-      if p.framed { Drawing.paper(ctx, r, t, id: p.id, rule: nil) }
-      let shape = Drawing.squircle(r, t.cardRadius)
+      // the picture over the card's width, its description (on the card's paper) under it
+      let full = r
+      let r = CGRect(x: 0, y: 0, width: full.width, height: full.height - (p.desc?.height ?? 0))
+      if p.framed || p.desc != nil { Drawing.paper(ctx, full, t, id: p.id, rule: nil) }
+      if let d = p.desc {
+        ctx.saveGState()
+        ctx.addPath(Drawing.squircle(full, t.cardRadius))
+        ctx.clip()
+        d.draw(ctx, y: r.maxY, width: full.width, scale: scale, t)
+        ctx.restoreGState()
+      }
+      let shape = Drawing.squircle(full, t.cardRadius)
       ctx.saveGState()
       ctx.addPath(shape)
       ctx.clip()
+      ctx.clip(to: r)
       if let px = picture {
         // as wide as the card and as tall as its proportions (.imgb img)
         Raster.draw(
@@ -232,7 +268,7 @@ enum Drawing: Sendable {
         }
       }
       ctx.restoreGState()
-      if p.framed { Drawing.edge(ctx, r, t) }
+      if p.framed || p.desc != nil { Drawing.edge(ctx, full, t) }
     case .board(let b):
       decodes += Drawing.subBoard(ctx, b, r, t, scale: scale)
     case .web(let w):
@@ -407,57 +443,47 @@ enum Drawing: Sendable {
     ].map(ctx.convertToUserSpace)
   }
 
+  /// A Highlight's band (styles.css .hx): 4 into the gutter, 14 short of the right, 2 inside its rows
+  static let band = CodeBandShape(left: -4, right: 14, inset: 2, radius: 6)
+
   private static func code(_ ctx: CGContext, _ c: Code, _ r: CGRect, _ t: Theme) {
     let m = t.metrics
-    let top = c.framed ? t.headerHeight : 0
+    let top = c.top
     if c.framed { header(ctx, c, r, t) }
     ctx.saveGState()
     ctx.clip(to: CGRect(x: 0, y: top, width: r.width, height: r.height - top))
     ctx.translateBy(x: 0, y: top)
     let l = c.layout
-    for p in l.rows {
-      if case .line(let s, let n?, _, _) = p.row, c.linked.contains([s, n]) {
-        ctx.setFillColor(t.linkedRow)
-        ctx.fill(CGRect(x: 0, y: p.y, width: r.width, height: p.height))
+    // rows arrows start from, segment by segment
+    var linked: [Int: [Int: CGColor]] = [:]
+    for k in c.linked where k.count == 2 { linked[k[0], default: [:]][k[1]] = t.linkedRow }
+    for (si, colors) in linked.sorted(by: { $0.key < $1.key }) {
+      let rows = l.rows.lazy.compactMap { p -> CodeLines.LineRow? in
+        if case .line(si, let n?, _, _) = p.row { CodeLines.LineRow(line: n, y: p.y, height: p.height) } else { nil }
       }
+      CodeDraw.backgrounds(colors, rows: rows, in: ctx, width: r.width)
     }
     for b in l.bands {
-      let band = CGRect(
-        x: l.gutter - 4, y: b.lowerBound + 2, width: r.width - 14 - (l.gutter - 4),
-        height: b.upperBound - b.lowerBound - 4)
-      ctx.addPath(CGPath(roundedRect: band, cornerWidth: 6, cornerHeight: 6, transform: nil))
-      ctx.setFillColor(t.highlight)
-      ctx.fillPath()
+      CodeDraw.band(b, color: t.highlight, in: ctx, gutter: l.gutter, width: r.width, shape: Drawing.band)
     }
     let numberRight = l.gutter - m.numberGap
+    let style = t.codeStyle
+    let fold = t.foldStyle
     for p in l.rows {
       let mid = p.y + p.height / 2
       switch p.row {
-      case .line(let si, let n, let s, let tokens):
+      case .line(let si, let n, let s, let runs):
         if let n {
-          let ns = String(n)
           let color = c.linked.contains([si, n]) ? t.linkedNumber : t.number
-          text(ctx, ns, t.code, color, x: numberRight - width(ns, t.code), midY: mid, width: .infinity)
+          CodeDraw.number(n, in: ctx, right: numberRight, midY: mid, font: t.code, color: color)
         }
-        codeLine(ctx, s, tokens, t, x: l.gutter + l.shift, midY: mid)
+        CodeDraw.line(s, runs: runs, in: ctx, x: l.gutter + l.shift, midY: mid, style: style)
       case .gap(_, let a, let b):
-        let row = CGRect(x: 0, y: p.y + 1, width: r.width, height: p.height - 2)
-        ctx.setFillColor(t.hiddenRow)
-        ctx.fill(row)
-        ctx.setStrokeColor(t.hair)
-        ctx.setLineWidth(1)
-        ctx.setLineDash(phase: 0, lengths: [3, 3])
-        ctx.strokeLineSegments(between: [
-          CGPoint(x: 0, y: row.minY + 0.5), CGPoint(x: r.width, y: row.minY + 0.5), CGPoint(x: 0, y: row.maxY - 0.5),
-          CGPoint(x: r.width, y: row.maxY - 0.5),
-        ])
-        ctx.setLineDash(phase: 0, lengths: [])
         let n = b - a + 1
-        let what = "··· \(n) line\(n > 1 ? "s" : "") hidden (\(a == b ? "\(a)" : "\(a)–\(b)")) · "
-        let x = l.gutter + 8
-        text(ctx, what, t.small, t.ink3, x: x, midY: mid, width: r.width - x - 8)
-        let shown = x + width(what, t.small) + 5
-        text(ctx, "Show", t.smallStrong, t.ink2, x: shown, midY: mid, width: r.width - shown - 8)
+        CodeDraw.fold(
+          in: ctx, row: CGRect(x: 0, y: p.y, width: r.width, height: p.height), x: l.gutter + 8,
+          label: "··· \(n) line\(n > 1 ? "s" : "") hidden (\(a == b ? "\(a)" : "\(a)–\(b)")) · ", action: "Show",
+          style: fold)
       case .file(let path):
         let x0 = max(0, l.gutter - 58)
         let bar = CGRect(x: x0, y: p.y + 2, width: r.width - 12 - x0, height: p.height - 4)
@@ -572,55 +598,16 @@ enum Drawing: Sendable {
       width: headerRight(nil, width: w, t) - reserve - x)
   }
 
-  /// A row of code in its token colours, with its middle at midY (the body's clip cuts it)
-  private static func codeLine(
-    _ ctx: CGContext, _ s: String, _ tokens: [Token], _ t: Theme, x: CGFloat, midY: CGFloat
-  ) {
-    guard !s.isEmpty else { return }
-    let font = NSAttributedString.Key(kCTFontAttributeName as String)
-    let color = NSAttributedString.Key(kCTForegroundColorAttributeName as String)
-    let a = NSMutableAttributedString(string: s, attributes: [font: t.code.ct, color: t.ink])
-    let units = a.length
-    for tok in tokens {
-      let r = tok.columns.clamped(to: 0..<units)
-      guard !r.isEmpty else { continue }
-      let range = NSRange(location: r.lowerBound, length: r.count)
-      a.addAttribute(color, value: t.syntax[tok.kind] ?? t.ink, range: range)
-      switch tok.kind {
-      case .comment: a.addAttribute(font, value: t.codeComment.ct, range: range)
-      case .keyword, .operator: a.addAttribute(font, value: t.codeKeyword.ct, range: range)
-      default: break
-      }
-    }
-    let f = t.code.ct
-    ctx.textPosition = CGPoint(x: x, y: midY + (CTFontGetAscent(f) - CTFontGetDescent(f)) / 2)
-    CTLineDraw(CTLineCreateWithAttributedString(a), ctx)
-  }
-
-  static func line(_ s: String, _ font: Font, _ color: CGColor? = nil) -> CTLine {
-    var attrs: [CFString: Any] = [kCTFontAttributeName: font.ct]
-    if let color { attrs[kCTForegroundColorAttributeName] = color }
-    if font.tracking != 0 { attrs[kCTKernAttributeName] = font.tracking }
-    return CTLineCreateWithAttributedString(CFAttributedStringCreate(nil, s as CFString, attrs as CFDictionary))
-  }
+  static func line(_ s: String, _ font: Font, _ color: CGColor? = nil) -> CTLine { CodeDraw.line(s, font, color) }
 
   /// One line of text with its middle at midY, cut with an ellipsis to `width`
   static func text(
     _ ctx: CGContext, _ s: String, _ font: Font, _ color: CGColor, x: CGFloat, midY: CGFloat, width w: CGFloat
   ) {
-    guard !s.isEmpty, w > 0 else { return }
-    var l = line(s, font, color)
-    if w.isFinite, CTLineGetTypographicBounds(l, nil, nil, nil) > w + 0.5 {
-      l = CTLineCreateTruncatedLine(l, w, .end, line("…", font, color)) ?? l
-    }
-    let f = font.ct
-    ctx.textPosition = CGPoint(x: x, y: midY + (CTFontGetAscent(f) - CTFontGetDescent(f)) / 2)
-    CTLineDraw(l, ctx)
+    CodeDraw.text(s, in: ctx, font: font, color: color, x: x, midY: midY, width: w)
   }
 
-  static func width(_ s: String, _ font: Font) -> CGFloat {
-    CTLineGetTypographicBounds(line(s, font), nil, nil, nil)
-  }
+  static func width(_ s: String, _ font: Font) -> CGFloat { CodeDraw.width(s, font) }
 
   /// A rounded rectangle with the board's squircle corners (CSS corner-shape: squircle, a superellipse of exponent 4)
   static func squircle(_ r: CGRect, _ radius: CGFloat) -> CGPath {
@@ -672,9 +659,17 @@ enum Raster {
     ctx.restoreGState()
   }
 
-  /// A bitmap of `size` board units and `bleed` more on each side at `scale` device pixels per unit, drawn y-down with the
+  /// `bleed` board units as a bitmap at `scale` device pixels per unit has them: whole pixels, so the item's own edge
+  /// is on a pixel of it (half a pixel of bleed at 1x put the edge between two, and the bitmap's corner on a pixel moved
+  /// the card by half a point)
+  static func bleed(_ bleed: CGFloat, at scale: CGFloat) -> CGFloat {
+    scale > 0 ? (bleed * scale - 1e-6).rounded(.up) / scale : bleed
+  }
+
+  /// A bitmap of `size` board units and `bleed` (rounded up to whole pixels) more on each side at `scale` device pixels per unit, drawn y-down with the
   /// origin at the size's top left, as an IOSurface Core Animation shows without a copy
   static func surface(size: CGSize, scale: CGFloat, bleed: CGFloat = 0, _ draw: (CGContext) -> Void) -> IOSurface? {
+    let bleed = Self.bleed(bleed, at: scale)
     let w = max(1, Int(((size.width + 2 * bleed) * scale).rounded(.up)))
     let h = max(1, Int(((size.height + 2 * bleed) * scale).rounded(.up)))
     guard

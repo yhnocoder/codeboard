@@ -1,5 +1,7 @@
 import AppKit
 import CodeBoardModel
+import MarkdownCore
+import MarkdownUI
 import Testing
 
 @testable import CodeBoardCanvas
@@ -40,6 +42,20 @@ private func copyBoard() -> Board {
 }
 
 @MainActor @Suite(.serialized) struct CanvasCopyTests {
+  /// A Note's source goes under CodeBoard's own type, which earlier versions copied it as
+  @Test func aNotesSourceIsCopiedUnderCodeBoardsOwnType() async throws {
+    let r = try await Rig(zoom: 1)
+    defer { r.close() }
+    #expect(MarkdownEditorView.sourceType.rawValue == "com.yhnocoder.codeboard.markdown")
+  }
+
+  /// A Note's / menu offers its [[reference]] as a link to a card
+  @Test func aNotesReferenceRowIsALinkToACard() async throws {
+    let r = try await Rig(zoom: 1)
+    defer { r.close() }
+    #expect(MarkdownEditing.slashMenu("link").map(\.title) == ["Link to Card"])
+  }
+
   /// ⌘C on an image card puts its picture on the pasteboard too, as PNG (actions/shared.ts copyCards, imagedata.ts
   /// copyPicture): another app pastes the picture; the board still pastes the card
   @Test func copyingAnImageCardPutsItsPictureOnThePasteboard() async throws {

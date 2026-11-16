@@ -52,7 +52,7 @@ Note 里的字按字找，像人看着屏幕找字一样：`@<id>"几个字"` �
 | `key cmd+shift+z` / `key esc` / `key space:down` … `key space:up` | 按键（带修饰键或特殊键）；`:down`、`:up` 只按下或只松开（按住空格拖动）；`key shift+/` 按键盘布局出 `?`（美式布局） |
 | `keys <字符>` | 一个一个键按出来（`?` 这类要 ⇧ 的字符按着 ⇧ 按），和 `type` 不同，走的是按键不是输入法 |
 | `type <文字>` / `ime ni\|nih\|你好` | 打字（经输入法提交，不经系统输入法；`\n` 是回车，`\s` 是空格，行尾的空格会被去掉）；`ime` 像拼音输入法：每一步组字随一个字母键，最后一段随选字的空格键上屏，输入法的调用都在那个键的处理里，和真输入法一样（网页这边没有按键，Chrome 不需要） |
-| `panel <文件夹>` / `panel vault` / `panel cancel` | 只在 Mac 上：app 下一次打开的“打开”面板不弹出来，直接答这个文件夹（相对路径在这次运行的文件夹下，没有就建；`vault`：这次运行开始时的库）或取消。换库这样验：`panel other` 再 `key cmd+o`，`panel vault` 再 `key cmd+o` 回来 |
+| `panel <文件夹>` / `panel storage/<文件>` / `panel vault` / `panel cancel` | 只在 Mac 上：app 下一次打开的“打开”面板不弹出来，直接答这个文件夹（相对路径在这次运行的文件夹下，没有就建）、storage 里的这个文件（`/ Image` 选图：`panel storage/assets/<图>`）、这次运行开始时的库（`vault`）或取消。换库这样验：`panel other` 再 `key cmd+o`，`panel vault` 再 `key cmd+o` 回来。没设答案的打开面板和保存面板一律当取消、不弹出来，日志里写一行 refused：面板是别的进程的窗口，压不到桌面底下，弹出来就在使用者的屏幕上 |
 | `menu` / `pick 一级/二级` | 在指针处右键，读出菜单，每项一行，两边同一种写法：名字，`(disabled)`、`✓`，`[⇧⌘L]` 这样的快捷键，`----` 分隔线（Mac 连子菜单一起列，缩进；网页只列开着的子菜单。Mac 上 app 里的网页，如 Sidenote 弹框，读的是它弹出的菜单）；选其中一项（像人一样移到那一项上再点，二级菜单在路上打开）。读完菜单还开着（两边一样），直到 `pick`、`key esc` 或一次按下把它关掉；关掉它的 Esc 和按下不传给白板，和人在真菜单上一样。`pick` 不等那一项做完：它弹出确认框时下一行照常来 |
 | `dialog` / `button <标题>` | 读出现在弹着的框（Mac：app 级的模态框或窗口上的 sheet；网页：`[role=dialog]`）的字和按钮，按钮后面标着它接的键（`⏎` 默认按钮、`⎋` 取消）；点其中一个按钮。框弹着时 `key` 发给框，像 app 拿到的那样：先给按钮的键（Esc 给 Cancel），回车给默认按钮（有的话），再给窗口 |
 | `clip text <文字>` / `clip image <文件>` | 往这次运行自己的剪贴板放一段字或一张图（PNG；Mac 上同时放 PNG 和 TIFF，像截图那样），文件按 `tools/accept` 算或写绝对路径（`storage/assets/…`）；读出来用 `clip` 对象 |
@@ -70,6 +70,7 @@ Note 里的字按字找，像人看着屏幕找字一样：`@<id>"几个字"` �
 | `center <目标>` | 无惯性地平移，直到这个目标在窗口中间 |
 | `rec <名字>` / `stop` | 开始、停止录像 |
 | `shot <名字> [<目标> [W H]]` | 截图；带目标时另从目标起剪下 W × H 个白板单位，两边剪的是白板上同一块，并排图逐部件对齐（整窗口图存为 `<名字>-window.png`）；只写 `@id`（卡、Section、标签、Sidenote 标记、Sticker）就剪它自己外加 16 个白板单位，只写 `@ui.<部件>` 就剪那个部件外加 8 点，两边同一个写法 |
+| `mac: uisel <部件>` | Mac：辅助功能元素 `ui-<部件>` 里选中的字（PDF 标签页的页面：`uisel pdfview`），没选中是空；选中后的小条按钮是 `ui.selectionadd`、`ui.selectionhighlight`、`ui.selectioncopy`，整条是 `ui.selectionbar` |
 | `hit` / `info` / `cam` / `canvas` | 指针下是什么 / 焦点、窗口、光标、弹着的框 / 相机 / 白板在窗口里的范围 |
 | `mac: trace` | app 自己报的画布状态（CanvasTrace：各卡和 Section 画在哪、悬停、正在写、选中、first responder、层级），JSON |
 | `locate [id…]` | 打出卡和 Section 现在在两边白板上和窗口里的位置（不写 id 就是全部） |
@@ -82,13 +83,13 @@ Note 里的字按字找，像人看着屏幕找字一样：`@<id>"几个字"` �
 
 `expect <对象> <比较> <值>`，每一边按自己当时的状态判：
 
-- 对象还有 `dialog`（弹着的框的字和按钮，没有是 `none`；配 `has`、`lacks`）、`row:<标题>`（Mac 侧栏里有没有这一行：`shown`、`none`；标题不能带空格）、`sel`（现在接键的地方选中的字和范围：`"选中的字" 起-止`，只有光标时起止相同，没有是 `none`；`sel.text` 只要字，`sel.range` 只要范围。Note 的编辑器两边是同一个 ProseMirror，范围是它的位置，两边能直接对照；输入框是字符偏移；别的网页内容是焦点所在可编辑元素里的文字偏移；Mac 原生的文字视图是它自己的 UTF-16 偏移）、`clip`（这次运行自己的剪贴板上有什么，每种一行：`text/plain: 字`、`image/png 240x150`，空是 `none`）、`opened`（app 到现在要打开的外部地址、文件和程序，按顺序每项一行，没有是 `none`；两边都只记下、不真的打开）。
+- 对象还有 `dialog`（弹着的框的字和按钮，没有是 `none`；配 `has`、`lacks`）、`row:<标题>`（Mac 侧栏里有没有这一行：`shown`、`none`；标题不能带空格）、`sel`（现在接键的地方选中的字和范围：`"选中的字" 起-止`，只有光标时起止相同，没有是 `none`；`sel.text` 只要字，`sel.range` 只要范围，`sel.around` 是选中的字放在 `[ ]` 里、带前后各最多 8 个字（不跨行），写成 JSON 字符串。范围在网页的 Note 里是 ProseMirror 的位置，Mac 原生编辑器里是 Markdown 里的 UTF-16 偏移，两边一般不一样，Note 里对照用 `sel.around`；输入框是字符偏移；别的网页内容是焦点所在可编辑元素里的文字偏移）、`clip`（这次运行自己的剪贴板上有什么，每种一行：`text/plain: 字`、`image/png 240x150`，空是 `none`）、`opened`（app 到现在要打开的外部地址、文件和程序，按顺序每项一行，没有是 `none`；两边都只记下、不真的打开）。
 - 对象：`<id>.x|y|w|h|right|bottom`（卡或 Section 的位置大小，白板单位）、`ui.<部件>.x|y|w|h|right|bottom`（工具栏和右下角那组的部件，从白板左上角起的屏幕点：`bar`、`more`、`barink`（Ink Wash 那一笔的实心部分；别的主题是整条）、`barblur`（底下模糊的范围，没有时宽 0）、`brush`、`dock`、`dockink`、`dockblur`、`shelf`、`zoomout`、`zoom`、`zoomin`、`fit`、`questions`；Mac 由 app 的辅助功能元素 `ui-<部件>` 给出）、`<箭头 id>.x|y|w|h|right|bottom`（箭头的标签，白板单位）、`<箭头 id>.x1|y1|x2|y2`（箭头现在画出来的起点和终点，白板单位，卡移动时跟着重新走线；Mac 读 app 的 CanvasTrace，网页读线的路径）、`tip`（现在显示的按钮提示：字，后面是快捷键，没有是 `none`；Mac 读 AppKit 的提示窗口）、`<id>.section`（所在的 Section，没有是 `none`）、`<id>.text`（卡现在显示的字：Mac 是画布画这张卡用的内容，网页是卡的 innerText；配 `has`、`lacks`）、`cam.x|y|zoom`、`pointer.x|y`（指针在白板上的位置）、`press`（最后一次按下落在的视图链或元素链）、`hover`（连接点出在哪张卡上，没有是 `none`：Mac 读 app 的 CanvasTrace 里的悬停卡，网页读哪张卡的连接点带着尺寸）、`focus`（键盘现在进哪儿：Mac 的 first responder 和它所在的视图，比如正在写标签时是 `NSTextView < _NSKeyboardFocusClipView < OnBoardField`；网页的焦点元素和它的祖先，比如 `span.vlabel`）、`answer`（上一个点击、按键、拖动、滚动的输入到达 app 后多少毫秒画面开始变，算法同 report 的 answered，要在 `rec` 中）。
 - 比较：`=` `!=` `<` `<=` `>` `>=` `~`（差不超过 2）`has` `lacks`（文字包含）。
 - 值：数字、文字、另一个对象（`expect sboxes.bottom >= cyellow.bottom`）、`was`、`was+N`、`was-N`（`mark` 时这个对象的值）。
 
 判不了的记为 `n/a`，不算失败但会列出来：网页没有 `section`；Mac 的 `section` 从 app 存下的白板文件读，按住按钮时还没存。Mac 的卡和 Section 的位置大小读 app 的辅助功能元素（identifier 是 id，frame 是现在画在哪；驱动的 `ax <id>`），拖动过程中也判得了；读不到时退回白板文件。
-场景自己写明要什么，不用记参数：`# storage: storage-two`（这个文件夹下的 storage 文件夹，默认 `storage/`）、`# theme: ink-wash`（默认 Warm Ink）、`# only: mac`（只有 Mac app 有的东西：侧栏、几块白板）；命令行的 `--storage`、`--theme` 优先，一起跑的场景要的必须一样。`scenarios/two/` 里的场景要两块白板（自己写着 `# storage: storage-two`），只跑 Mac：`--only mac`（`storage-two/`：First 和 Second 两块白板摆着同一张共享卡 `cshared`，带一张图和一条跟着卡走的 Sidenote；First 上还有一张子白板卡 `csub`，显示第三块白板 Third，导入后 First 成了文件夹白板、Third 在它的文件夹里）：`shared-edit`（共享卡在一块白板上改了，另一块上也变）、`shared-paste`（别的白板上复制的卡贴过来就是同一张卡）、`camera-reopen`（换到别的白板再回来，镜头还在原处）。`twin-follows`（⌘D 的副本在小条上选 Reference，改副本原卡跟着变）两边都跑。
+场景自己写明要什么，不用记参数：`# storage: storage-two`（这个文件夹下的 storage 文件夹，默认 `storage/`）、`# theme: ink-wash`（默认 Warm Ink）、`# only: mac`（只有 Mac app 有的东西：侧栏、几块白板）、`# mac: demo`（写给 Markdown demo 的场景：有的行只瞄 demo 才有的东西，按字找的位置在 app 里可能在视口外，Mac 那边总是 demo）；命令行的 `--storage`、`--theme` 优先，一起跑的场景要的必须一样。`scenarios/two/` 里的场景要两块白板（自己写着 `# storage: storage-two`），只跑 Mac：`--only mac`（`storage-two/`：First 和 Second 两块白板摆着同一张共享卡 `cshared`，带一张图和一条跟着卡走的 Sidenote；First 上还有一张子白板卡 `csub`，显示第三块白板 Third，导入后 First 成了文件夹白板、Third 在它的文件夹里）：`shared-edit`（共享卡在一块白板上改了，另一块上也变）、`shared-paste`（别的白板上复制的卡贴过来就是同一张卡）、`camera-reopen`（换到别的白板再回来，镜头还在原处）。`twin-follows`（⌘D 的副本在小条上选 Reference，改副本原卡跟着变）两边都跑。
 
 Mac 这边复制粘贴用的是这个进程自己的私有剪贴板，碰不到用 Mac 的人的剪贴板。网页那边不转发按键：VS Code 先拦下 ⌘D 这些键再转回给白板，这里白板自己接。
 
@@ -132,7 +133,7 @@ Mac 这边是 `Accept` target（`apps/macos/Sources/Accept/main.swift`）：它�
 - `@id` 指得到卡、Section、箭头标签、Sidenote 标记和 Sticker；Mac 上都读 app 的辅助功能元素，读不到算没有。
 - 响应时间的比较是粗的（缩成 160 × 104 再比），闪烁的光标不算变化；只出现一个光标的变化（比如网页上点进摘要正文）量不出来，用 `focus` 判。
 - 机器负载高时慢：一条场景两边约 5 分钟。看外观时用带目标的 `shot` 只剪需要的一块，别读整张并排图（费 token）。
-- 一行命令最多等 30 秒加它自己要的时长（`wait`、`move`…），超了这一行失败并写明。app 崩溃时（例如抛了 NSException）这一边立即失败，写出原因（stdout 里的那一行），后面的行不再跑。
+- 一行命令最多等 30 秒加它自己要的时长（`wait`、`move`…），超了这一行失败并写明。app 崩溃时（例如抛了 NSException）这一边立即失败，写出原因（stdout 里的那一行），后面的行不再跑。驱动自己退出了（崩在场景里或退出时），它的 stdout 和系统的崩溃报告存成场景文件夹里的 `stdout-<边>.txt`、`crash-<边>.txt`（CI 的产物里有）。
 - 回车按默认按钮是驱动代做的：AppKit 只在窗口服务器给了 key 的窗口里让回车按默认按钮，驱动的窗口从来不是，不代做的话一个回车就删的框看起来也不删。Esc、按钮自己的键照常经 app。
 - app 要在外面打开的东西（Web 卡的网页、链接、在 Finder 里显示、程序）都不打开：Mac 上 NSWorkspace 的各个 open 换成只记下（启动时先查过 app 拿到的 workspace 用的是换过的，查不过驱动就退出，什么都没打开），网页这边宿主的 `openUrl` / `openFolder` / `revealInOS` 只记下，页面自己开的新页马上关掉；`opened` 读出来，日志里是 `opened (not really): …`。
 - 剪贴板是这次运行自己的：Mac 上 app 拿到的 general 剪贴板换成一个按进程起名的命名剪贴板；网页这边页面里的 `navigator.clipboard` 换成页面里的一份（`clip.js`），`key cmd+c`、`cmd+x`、`cmd+v`、`shift+cmd+v` 不交给浏览器（它的剪贴板可能就是 Mac 的），由驱动先发 keydown，没人接时再发 copy、cut、paste 事件，带着这份剪贴板，没人接时照浏览器的默认做（复制、剪下选中的字，粘进输入的地方）。

@@ -32,10 +32,14 @@ cat > "$app/Contents/Info.plist" <<PLIST
   <key>NSHighResolutionCapable</key><true/>
 </dict></plist>
 PLIST
-# Notes are drawn by the web page in web/ (the Markdown package's editor): built here and carried in the bundle
-(cd ../.. && npm run build -w @yhnocoder/markdown && node apps/macos/web/build.mjs)
+# Notes are edited in the web page in web/ (the Markdown package's editor) and drawn at rest by the native component
+# with the board's fonts (tools/markdown/assets.mjs) and the package's formula engines (its resource bundle): all
+# built here and carried in the bundle
+(cd ../.. && npm run build -w @yhnocoder/markdown && node apps/macos/web/build.mjs && node apps/macos/tools/markdown/assets.mjs)
 mkdir -p "$app/Contents/Resources"
 cp -R web/dist "$app/Contents/Resources/NotePage"
+cp -R .build-markdown "$app/Contents/Resources/Assets"
+cp -R "$bin/better-swift-markdown_MarkdownUI.bundle" "$app/Contents/Resources/"
 plutil -lint -s "$app/Contents/Info.plist"
 codesign --force --sign - "$app"
 echo "built $(pwd)/$app"

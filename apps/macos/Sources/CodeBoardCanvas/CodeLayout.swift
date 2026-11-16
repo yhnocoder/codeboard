@@ -1,6 +1,7 @@
 import CodeBoardModel
-import CodeBoardSyntax
+import CodeUI
 import CoreGraphics
+import TreeSitterHighlight
 
 /// Sizes of a code card's body, the same in every theme (the board's: 11 px code on 20 px rows): a card holds the same
 /// code whatever the look.
@@ -23,13 +24,23 @@ struct CodeMetrics: Equatable, Sendable {
   var maxAutoHeight: CGFloat = 460
   /// Advance of one character of the code font
   var charWidth: CGFloat
+  /// The code font, measuring what is not ASCII when code wraps
+  var font: CodeFont?
+
+  /// What the code component lays the lines out with
+  var lines: CodeLineMetrics {
+    CodeLineMetrics(
+      row: row, fold: gap, padLeft: padLeft, numberGap: numberGap, padRight: padRight, charWidth: charWidth,
+      font: font)
+  }
 }
 
 /// A code card's rows and where they sit in its body (y from the body's top).
 struct CodeLayout: Equatable, Sendable {
   enum Row: Equatable, Sendable {
-    /// A line, or (`number` nil) the continuation of a wrapped one; tokens in UTF-16 columns of `text`
-    case line(segment: Int, number: Int?, text: String, tokens: [Token] = [])
+    /// A line, or (`number` nil) the continuation of a wrapped one; tokens in UTF-16 columns of `text`, their styles the
+    /// highlighter's token classes
+    case line(segment: Int, number: Int?, text: String, tokens: [CodeRun] = [])
     /// Lines not shown (hidden, or between two segments), of the segment they belong to (the next one, between two)
     case gap(segment: Int, from: Int, to: Int)
     case file(String)
@@ -65,6 +76,8 @@ struct CodeLayout: Equatable, Sendable {
   }
 
   var rows: [Placed] = []
+  /// Each segment's lines as the code component laid them out, which `rows` are made of: where a line is drawn
+  var segmentLines: [CodeLines] = []
   /// Left edge of the code
   var gutter: CGFloat
   /// Spaces of indentation every shown line has, hidden: the code moves left by them, less a small pad (the board's
@@ -85,46 +98,23 @@ struct CodeLayout: Equatable, Sendable {
   init(
     _ code: CodeCard, tokens: [[[Token]]] = [], width: CGFloat, metrics m: CodeMetrics, always: [[Always]] = []
   ) {
+    let lm = m.lines
     var last = 1
     for s in code.segments { last = max(last, s.lastLine) }
-    gutter = m.padLeft + CGFloat(String(last).count) * m.charWidth + m.numberGap
-    let cols = max(1, Int((width - gutter - m.padRight) / m.charWidth))
+    gutter = CodeLines.gutter(lastNumber: last, metrics: lm)
+    let wrapWidth = CodeLines.wrapWidth(width: width, gutter: gutter, metrics: lm)
     var y = m.padTop
     var rows: [Placed] = []
     var bands: [ClosedRange<CGFloat>] = []
     var inline: [Inline] = []
+    var segs: [CodeLines] = []
     // the least indent of each Inline's shown lines, in columns
     var leads: [Int] = []
     func put(_ r: Row, _ h: CGFloat) {
       rows.append(Placed(row: r, y: y, height: h))
       y += h
     }
-    // the segment's Highlights with Always Show sidenotes that rows have reached and that were not put under them yet
-    var open: [(k: Int, lead: Int)] = []
-    var done = Set<Int>()
-    func close(_ si: Int, below line: Int?) {
-      let groups = si < always.count ? always[si] : []
-      for (k, lead) in open where line.map({ groups[k].lines.upperBound < $0 }) ?? true {
-        inline.append(Inline(segment: si, always: groups[k], x: 0, y: y))
-        leads.append(lead)
-        put(.notes(segment: si), groups[k].notes.reduce(0) { $0 + $1.height })
-        done.insert(k)
-      }
-      open.removeAll { done.contains($0.k) }
-    }
-    func reach(_ si: Int, _ from: Int, _ to: Int, lead: Int?) {
-      close(si, below: from)
-      let groups = si < always.count ? always[si] : []
-      for (k, g) in groups.enumerated() where !done.contains(k) && g.lines.overlaps(from...to) {
-        if let i = open.firstIndex(where: { $0.k == k }) {
-          open[i].lead = min(open[i].lead, lead ?? .max)
-        } else {
-          open.append((k, lead ?? .max))
-        }
-      }
-    }
     for (si, s) in code.segments.enumerated() {
-      done = []
       if si > 0 {
         let prev = code.segments[si - 1]
         if CodeLayout.path(prev) != CodeLayout.path(s) {
@@ -135,64 +125,65 @@ struct CodeLayout: Equatable, Sendable {
           put(.gap(segment: si, from: prev.lastLine + 1, to: s.firstLine - 1), m.gap)
         }
       }
-      var top: [Int: CGFloat] = [:]
-      var bottom: [Int: CGFloat] = [:]
-      var l = s.firstLine
-      while l <= s.lastLine {
-        if let r = s.hidden.first(where: { $0.contains(l) }) {
-          let to = min(r.upperBound, s.lastLine)
-          reach(si, l, to, lead: nil)
-          put(.gap(segment: si, from: l, to: to), m.gap)
-          l = to + 1
-          continue
+      let runs =
+        si < tokens.count ? tokens[si].map { $0.map { CodeRun(columns: $0.columns, style: $0.kind.rawValue) } } : []
+      var lines = CodeLines(
+        lines: s.lines, firstNumber: s.firstLine, runs: runs, folds: s.hidden, hideBlankLines: code.hide.blankLines,
+        wrapWidth: code.wrap ? wrapWidth : nil, top: y, metrics: lm)
+      // a Highlight's Always Show sidenotes go under its last row (its lines' or a hidden run's), in the order their
+      // rows come, and none where it has no row
+      let groups = si < always.count ? always[si] : []
+      var under: [(k: Int, row: Int, lead: Int)] = []
+      for (k, g) in groups.enumerated() {
+        var first: Int?
+        var lead = Int.max
+        for (j, r) in lines.rows.enumerated() {
+          switch r.kind {
+          case .line(let n, false, _, _) where g.lines.contains(n):
+            first = first ?? j
+            let text = s.lines[n - s.firstLine]
+            if !text.allSatisfy(\.isWhitespace) { lead = min(lead, CodeLines.indent(text, tabWidth: lm.tabWidth)) }
+          case .fold(let f) where f.overlaps(g.lines):
+            first = first ?? j
+          default: break
+          }
         }
-        let i = l - s.firstLine
-        if code.hide.blankLines && s.lines[i].allSatisfy(\.isWhitespace) {
-          l += 1
-          continue
-        }
-        let lineTokens = si < tokens.count && i < tokens[si].count ? tokens[si][i] : []
-        var rest = CodeLayout.expand(s.lines[i], lineTokens)[...]
-        let blank = rest.allSatisfy { $0.char.isWhitespace }
-        reach(si, l, l, lead: blank ? nil : rest.prefix { $0.char == " " }.count)
-        top[l] = y
-        var number: Int? = l
-        repeat {
-          let piece = rest.prefix(code.wrap ? cols : rest.count)
-          put(
-            .line(segment: si, number: number, text: String(piece.map(\.char)), tokens: CodeLayout.runs(piece)), m.row)
-          rest = rest.dropFirst(piece.count)
-          number = nil
-        } while !rest.isEmpty
-        bottom[l] = y
-        l += 1
+        if let first { under.append((k, first, lead)) }
       }
-      close(si, below: nil)
+      under.sort { ($0.row, $0.k) < ($1.row, $1.k) }
+      lines.insert(
+        under.map { u in
+          CodeLines.Insertion(
+            afterLine: groups[u.k].lines.upperBound, height: groups[u.k].notes.reduce(0) { $0 + $1.height })
+        })
+      for r in lines.rows {
+        switch r.kind {
+        case .line(let n, let wrapped, let text, let runs):
+          rows.append(
+            Placed(
+              row: .line(segment: si, number: wrapped ? nil : n, text: text, tokens: runs), y: r.y, height: r.height))
+        case .fold(let f):
+          rows.append(Placed(row: .gap(segment: si, from: f.lowerBound, to: f.upperBound), y: r.y, height: r.height))
+        case .inserted(let i):
+          inline.append(Inline(segment: si, always: groups[under[i].k], x: 0, y: r.y))
+          leads.append(under[i].lead)
+          rows.append(Placed(row: .notes(segment: si), y: r.y, height: r.height))
+        }
+      }
+      y = lines.bottom
+      segs.append(lines)
       for h in s.highlights {
-        let shown = h.filter { top[$0] != nil }
         // down to the end of the sidenotes shown under it (CodeBody bandStyle: ends, the .hx-end's bottom)
-        let under = inline.last { $0.segment == si && $0.always.lines == h }.map { i in
-          i.y + i.always.notes.reduce(0) { $0 + $1.height }
-        }
-        if let a = shown.first, let b = shown.last, let t = top[a], let e = bottom[b] {
-          bands.append(t...max(e, under ?? e))
-        }
+        if let span = lines.span(h, through: under.lastIndex { groups[$0.k].lines == h }) { bands.append(span) }
       }
     }
     self.rows = rows
+    segmentLines = segs
     self.bands = bands
     height = y + m.padBottom
     // core lines.ts commonIndent, over the rows shown
-    var common = Int.max
-    for p in rows {
-      guard case .line(_, _, let text, _) = p.row, !text.allSatisfy(\.isWhitespace) else { continue }
-      common = min(common, text.prefix { $0 == " " || $0 == "\t" }.count)
-      if common < 2 { break }
-    }
-    if common != Int.max && common >= 2 {
-      dedent = common
-      shift = 16 - CGFloat(common) * m.charWidth
-    }
+    (dedent, shift) = CodeLines.dedent(
+      rows.lazy.compactMap { if case .line(_, _, let text, _) = $0.row { text } else { nil } }, metrics: lm)
     // where the Highlight's code starts: its least indented line's, after the hidden indent (CodeBody codeStart)
     for k in inline.indices {
       inline[k].x = leads[k] == .max ? 0 : max(0, CGFloat(leads[k]) * m.charWidth + shift)
@@ -220,50 +211,12 @@ struct CodeLayout: Equatable, Sendable {
       }
   }
 
-  /// The middle of the row of a segment's line, when it is shown
+  /// The middle of a segment's line, all its rows when it wraps (the web board's lineY: the line element's middle), when
+  /// it is shown: nil when it is folded away
   func lineY(segment: Int, line: Int) -> CGFloat? {
-    for p in rows {
-      if case .line(let s, let n?, _, _) = p.row, s == segment, n == line { return p.y + p.height / 2 }
-    }
-    return nil
-  }
-
-  /// The line's characters with tabs as four spaces, each with the class of its first UTF-16 unit
-  static func expand(_ line: String, _ tokens: [Token]) -> [(char: Character, kind: TokenClass?)] {
-    var kinds = [TokenClass?](repeating: nil, count: line.utf16.count)
-    for t in tokens {
-      for c in t.columns.clamped(to: 0..<kinds.count) { kinds[c] = t.kind }
-    }
-    var out: [(char: Character, kind: TokenClass?)] = []
-    var col = 0
-    for ch in line {
-      let k = col < kinds.count ? kinds[col] : nil
-      if ch == "\t" {
-        out += Array(repeating: (" ", k), count: 4)
-      } else {
-        out.append((ch, k))
-      }
-      col += ch.utf16.count
-    }
-    return out
-  }
-
-  /// Tokens in UTF-16 columns of the piece's text
-  static func runs(_ piece: ArraySlice<(char: Character, kind: TokenClass?)>) -> [Token] {
-    var out: [Token] = []
-    var col = 0
-    for (ch, k) in piece {
-      let end = col + ch.utf16.count
-      if let k {
-        if let last = out.last, last.kind == k, last.columns.upperBound == col {
-          out[out.count - 1].columns = last.columns.lowerBound..<end
-        } else {
-          out.append(Token(columns: col..<end, kind: k))
-        }
-      }
-      col = end
-    }
-    return out
+    guard segment < segmentLines.count, let f = segmentLines[segment].frame(of: line...line, width: 0), !f.folded
+    else { return nil }
+    return f.rect.midY
   }
 
   static func path(_ s: Segment) -> String? {

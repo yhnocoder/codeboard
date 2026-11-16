@@ -1,5 +1,6 @@
 import AppKit
 import CodeBoardModel
+import TestGuard
 import Testing
 
 @testable import CodeBoardCanvas
@@ -14,6 +15,11 @@ import Testing
     Set(
       NSApp.windows.filter { $0.isVisible && $0.level.rawValue > NSWindow.Level.underDesktop.rawValue }.map(
         ObjectIdentifier.init))
+  }
+
+  /// The guard tells a test process by itself, as the model does (Vault.underTest), with nothing of the app
+  @Test func theGuardKnowsATestProcessByItself() {
+    #expect(TestGuard.underTest && TestGuard.underTest == Vault.underTest)
   }
 
   @Test func aRealRightPressOnAViewWithAMenuReturnsAtOnceAndShowsNothing() async throws {
@@ -85,6 +91,37 @@ import Testing
     TestGuard.shown = []
     r.canvas.openURL(web)
     #expect(TestGuard.shown == ["open: \(web)"])
+  }
+
+  /// The general pasteboard is the test process's own: what a test copies never reaches the owner's clipboard
+  @Test func theGeneralPasteboardIsTheProcesssOwn() async throws {
+    let r = try await Rig(zoom: 1)
+    defer { r.close() }
+    try #require(TestGuard.guardsPasteboard, "the pasteboard guard is not in")
+    let pb = NSPasteboard.general
+    #expect(pb.name != NSPasteboard.Name.general && pb === NSPasteboard.general)
+    pb.clearContents()
+    pb.setString("only here", forType: .string)
+    #expect(NSPasteboard.general.string(forType: .string) == "only here")
+  }
+
+  /// The cursor is the test process's own: setting, pushing and hiding it never reaches the person's screen
+  @Test func theCursorIsTheProcesssOwn() async throws {
+    let r = try await Rig(zoom: 1)
+    defer { r.close() }
+    try #require(TestGuard.guardsCursor, "the cursor guard is not in")
+    NSCursor.arrow.set()
+    NSCursor.pointingHand.set()
+    #expect(NSCursor.current == .pointingHand)
+    NSCursor.iBeam.push()
+    #expect(NSCursor.current == .iBeam)
+    NSCursor.pop()
+    #expect(NSCursor.current == .pointingHand)
+    NSCursor.hide()
+    NSCursor.unhide()
+    NSCursor.setHiddenUntilMouseMoves(true)
+    NSCursor.arrow.set()
+    #expect(NSCursor.current == .arrow)
   }
 
   @Test func theWatchdogSaysWhichTestRanOverItsLimit() {

@@ -160,9 +160,7 @@ extension CanvasView {
       if case .own(let k) = c.content, let t = k.title { return t }
       return c.writing?.split(separator: "\n").first.map(String.init)
     case .item(.sticker(let id)):
-      return b.stickers.first { $0.id == id }.map { k in
-        if case .emoji(let e) = k.glyph { e } else { "sticker" }
-      }
+      return b.stickers.first { $0.id == id }.map { Sticker.label($0.glyph) }
     case .sidenote(let id):
       guard case .text(let t)? = b.sidenotes.first(where: { $0.id == id })?.body else { return "sidenote" }
       return t.text.split(separator: "\n").first.map(String.init)

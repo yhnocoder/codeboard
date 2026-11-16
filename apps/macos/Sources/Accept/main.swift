@@ -322,6 +322,9 @@ final class FileDrag: NSObject, NSDraggingInfo {
   var draggingSequenceNumber: Int { 1 }
   func slideDraggedImage(to screenPoint: NSPoint) {}
   var draggingFormation: NSDraggingFormation = .default
+  /// What the destination last said it would do: NSView's own draggingUpdated (a view that does not override it) asks
+  /// AppKit's dragging info for it, so without it the drop threw (an unrecognized selector)
+  @objc(_lastDragDestinationOperation) var lastDestinationOperation: NSDragOperation = []
   var animatesToDestination = false
   var numberOfValidItemsForDrop = 1
   func enumerateDraggingItems(
@@ -411,38 +414,51 @@ for (o, r) in [
   }
 }
 
-/// An open panel answered without being shown (the panel command): what the next one the app opens returns, a folder
-/// (OK) or nil (Cancel). Unarmed, a panel opens as usual
+/// An open panel answered without being shown (the panel command): what the next one the app opens returns, a file or
+/// folder (OK) or nil (Cancel). Any other open or save panel is refused (Cancel) and written down, never shown: a panel
+/// is another process's window, which the desk level does not keep off the person's screen
 let panelAnswer = Mutex<URL??>(nil)
 nonisolated(unsafe) var panelChosen: URL?
-func takePanelAnswer() -> URL?? {
-  panelAnswer.withLock { v in
-    defer { v = nil }
-    return v
+func panelAnswered(_ p: NSSavePanel) -> NSApplication.ModalResponse {
+  let armed: URL?? =
+    p is NSOpenPanel
+    ? panelAnswer.withLock { v in
+      defer { v = nil }
+      return v
+    } : nil
+  guard let a = armed else {
+    panelChosen = nil
+    log("\(type(of: p)) refused, not shown (no panel answer set)")
+    return .cancel
   }
+  panelChosen = a
+  log("open panel answered (not shown): \(a?.path ?? "Cancel")")
+  return a == nil ? .cancel : .OK
+}
+for c: AnyClass in [NSSavePanel.self, NSOpenPanel.self] {
+  func put(_ s: Selector, _ block: Any) {
+    let m = class_getInstanceMethod(c, s)!
+    let imp = imp_implementationWithBlock(block)
+    if !class_addMethod(c, s, imp, method_getTypeEncoding(m)) { method_setImplementation(m, imp) }
+  }
+  let run: @convention(block) (NSSavePanel) -> NSApplication.ModalResponse = { panelAnswered($0) }
+  put(#selector(NSSavePanel.runModal), run)
+  let begin: @convention(block) (NSSavePanel, ((NSApplication.ModalResponse) -> Void)?) -> Void = { p, done in
+    let r = panelAnswered(p)
+    DispatchQueue.main.async { done?(r) }
+  }
+  put(#selector(NSSavePanel.begin(completionHandler:)), begin)
+  let sheet: @convention(block) (NSSavePanel, NSWindow, ((NSApplication.ModalResponse) -> Void)?) -> Void = {
+    p, _, done in
+    let r = panelAnswered(p)
+    DispatchQueue.main.async { done?(r) }
+  }
+  put(#selector(NSSavePanel.beginSheetModal(for:completionHandler:)), sheet)
 }
 extension NSOpenPanel {
-  @objc func accBeginSheetModal(for w: NSWindow, completionHandler h: @escaping (NSApplication.ModalResponse) -> Void) {
-    guard let a = takePanelAnswer() else {
-      return accBeginSheetModal(for: w, completionHandler: h)
-    }
-    panelChosen = a
-    log("open panel answered (not shown): \(a?.path ?? "Cancel")")
-    DispatchQueue.main.async { h(a == nil ? .cancel : .OK) }
-  }
-  @objc func accRunModal() -> NSApplication.ModalResponse {
-    guard let a = takePanelAnswer() else { return accRunModal() }
-    panelChosen = a
-    log("open panel answered (not shown): \(a?.path ?? "Cancel")")
-    return a == nil ? .cancel : .OK
-  }
   @objc func accURL() -> URL? { panelChosen ?? accURL() }
   @objc func accURLs() -> [URL] { panelChosen.map { [$0] } ?? accURLs() }
 }
-swizzle(
-  NSOpenPanel.self, #selector(NSSavePanel.beginSheetModal(for:completionHandler:)),
-  #selector(NSOpenPanel.accBeginSheetModal(for:completionHandler:)))
-swizzle(NSOpenPanel.self, #selector(NSSavePanel.runModal), #selector(NSOpenPanel.accRunModal))
 swizzle(NSOpenPanel.self, #selector(getter: NSSavePanel.url), #selector(NSOpenPanel.accURL))
 swizzle(NSOpenPanel.self, #selector(getter: NSOpenPanel.urls), #selector(NSOpenPanel.accURLs))
 /// The window server's word to a window's views that it is key (web views learn it so)
@@ -494,7 +510,10 @@ if let wk = NSClassFromString("WKWebView") {
   swizzle(wk, #selector(getter: NSView.inputContext), #selector(NSResponder.accInputContext))
 }
 /// A trace: which of these views each scroll event reached
-for name in ["CodeBoardCanvas.CanvasView", "CodeBoardNotes.EditorWebView", "WKWebView"]
+for name in [
+  "CodeBoardCanvas.CanvasView", "CodeBoardNotes.EditorWebView", "MarkdownUI.MarkdownEditorView",
+  "CodeUI.CodeEditorView", "WKWebView",
+]
 where env["ACCEPT_TRACE_SCROLL"] != nil {
   guard let cls = NSClassFromString(name), let m = class_getInstanceMethod(cls, #selector(NSView.scrollWheel(with:)))
   else { continue }
@@ -534,14 +553,18 @@ if let m = class_getInstanceMethod(NSTextInputContext.self, #selector(NSTextInpu
 /// bindings (StandardKeyBinding.dict) as a US layout gives them, else the key's characters inserted; never the system's
 /// input methods
 final class ScriptedContext: NSTextInputContext {
-  nonisolated(unsafe) static var made: [ObjectIdentifier: ScriptedContext] = [:]
+  /// One per view, held by the view (an associated object) and so gone with it, as a view's own context is: its client
+  /// is unowned(unsafe), so a context that outlived its view (kept in a table until purged, or found again by a view
+  /// made where the gone one was: the native editors are made anew for each edit) had a client pointing at freed memory
+  /// and crashed the next key or ending of an edit (Esc)
+  nonisolated(unsafe) static let key = UnsafeMutableRawPointer.allocate(byteCount: 1, alignment: 1)
   nonisolated(unsafe) static let bindings: [String: Any] =
     NSDictionary(contentsOfFile: "/System/Library/Frameworks/AppKit.framework/Resources/StandardKeyBinding.dict")
     as? [String: Any] ?? [:]
   static func of(_ v: NSView, _ c: NSTextInputClient) -> ScriptedContext {
-    if let x = made[ObjectIdentifier(v)] { return x }
+    if let x = objc_getAssociatedObject(v, key) as? ScriptedContext { return x }
     let x = ScriptedContext(client: c)
-    made[ObjectIdentifier(v)] = x
+    objc_setAssociatedObject(v, key, x, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
     return x
   }
   override func handleEvent(_ e: NSEvent) -> Bool {
@@ -669,11 +692,13 @@ func strings(_ x: Any) -> [String] {
   var rec: Recorder?
 
   var win: NSWindow? { gMain }
+  /// The board in front: the canvas of the tab shown (each open tab has one; the others are hidden)
   var canvas: NSView? {
-    func find(_ v: NSView) -> NSView? {
-      String(describing: Swift.type(of: v)) == "CanvasView" ? v : v.subviews.lazy.compactMap(find).first
+    func all(_ v: NSView) -> [NSView] {
+      String(describing: Swift.type(of: v)) == "CanvasView" ? [v] : v.subviews.flatMap(all)
     }
-    return win?.contentView.flatMap(find)
+    let found = win?.contentView.map(all) ?? []
+    return found.first { !$0.isHiddenOrHasHiddenAncestor } ?? found.first
   }
   /// The canvas's camera, read from its stored property `camera` (a board point at the view's top-left and a zoom:
   /// three doubles), so the driver needs nothing public from the app and works on any version of it
@@ -1103,15 +1128,19 @@ func strings(_ x: Any) -> [String] {
         w.sendEvent(e)
       } else if down {
         // key equivalents as NSApp tries them, then the window: NSApp has no key window of its own and drops what is
-        // left (⌘→ never reached a text view)
-        // a menu item matches on the characters ignoring modifiers: "Z" for one written "Z" (⇧ implied), "l" for one
-        // written "l" with ⇧ in its mask (Lock, ⇧⌘L); a keyboard's ⇧ keys reach both kinds, so with ⇧ both are tried, the
-        // shifted character first ("L", "{"), the unshifted only when nothing took that
-        let tries = [e] + (f.contains(.shift) && shown != chars ? [event(ignoring: chars)] : [])
-        if let t = tries.first(where: { w.performKeyEquivalent(with: $0) }) {
-          log("key equivalent: the window took it (\(t.charactersIgnoringModifiers ?? ""))")
-        } else if let t = tries.first(where: { NSApp.mainMenu?.performKeyEquivalent(with: $0) == true }) {
-          log("key equivalent: the main menu took it (\(t.charactersIgnoringModifiers ?? ""))")
+        // left (⌘→ never reached a text view). The event exactly as the keyboard makes it (its characters from the
+        // layout, not set): menus match on its key as AppKit does, so ⇧⌘L reaches an item written "l" with ⇧ in its
+        // mask (Lock) and one written "L", and ⇧⌘K no item written "k" without ⇧ (⌘K). An event with its characters
+        // set matched no item at all, and one made with keyEvent(with:…) took ⇧⌘K for ⌘K
+        let k = CGEvent(keyboardEventSource: nil, virtualKey: code, keyDown: down)!
+        k.timestamp = now()
+        k.flags = cg.flags
+        k.setIntegerValueField(.mouseEventWindowUnderMousePointer, value: Int64(w.windowNumber))
+        let key = NSEvent(cgEvent: k) ?? e
+        if w.performKeyEquivalent(with: key) {
+          log("key equivalent: the window took it (\(key.charactersIgnoringModifiers ?? ""))")
+        } else if NSApp.mainMenu?.performKeyEquivalent(with: key) == true {
+          log("key equivalent: the main menu took it (\(key.charactersIgnoringModifiers ?? ""))")
         } else {
           log("key equivalent: none took it, to the window")
           w.sendEvent(e)
@@ -1359,9 +1388,10 @@ func strings(_ x: Any) -> [String] {
         v.draggingExited(info)
         continue
       }
-      _ = v.draggingUpdated(info)
+      info.lastDestinationOperation = op
+      info.lastDestinationOperation = v.draggingUpdated(info)
       try? await Task.sleep(for: .milliseconds(50))
-      _ = v.draggingUpdated(info)
+      info.lastDestinationOperation = v.draggingUpdated(info)
       let took = v.prepareForDragOperation(info) && v.performDragOperation(info)
       v.concludeDragOperation(info)
       log("drop \(file) on \(Swift.type(of: v)): \(took ? "taken" : "refused")")
@@ -1527,13 +1557,16 @@ func strings(_ x: Any) -> [String] {
       let file = a.dropLast(2).dropFirst().joined(separator: " ")
       return await drop(file, at: screen(d(a.count - 2), d(a.count - 1)))
     case "opened": return opened.withLock { $0.isEmpty ? "none" : $0.joined(separator: "\n") }
-    // panel <folder>|vault|cancel: the next open panel answers so, unshown (a relative folder is under this run's
-    // folder; vault: the vault the run started on)
+    // panel <folder>|storage/<file>|vault|cancel: the next open panel answers so, unshown (a relative folder is under
+    // this run's folder, made if missing; storage/: a file of the storage the run imported; vault: the vault the run
+    // started on)
     case "panel":
       let arg = String(line.dropFirst(6))
-      let path = arg == "vault" ? env["ACCEPT_VAULT"] ?? "" : arg
+      let stored = arg.hasPrefix("storage/")
+      let path =
+        arg == "vault" ? env["ACCEPT_VAULT"] ?? "" : stored ? (env["ACCEPT_IMPORT_FROM"] ?? "") + arg.dropFirst(7) : arg
       let url = arg == "cancel" ? nil : URL(fileURLWithPath: path, relativeTo: outDir).standardizedFileURL
-      if let url { try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true) }
+      if let url, !stored { try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true) }
       panelChosen = nil
       panelAnswer.withLock { $0 = .some(url) }
     case "pick":
@@ -1664,6 +1697,15 @@ func strings(_ x: Any) -> [String] {
       guard let el = walk(root) else { return "none" }
       let r = c.convert(w.convertFromScreen(el.accessibilityFrame()), from: nil)  // the canvas is y-down
       return String(format: "%.1f %.1f %.1f %.1f", r.minX, r.minY, r.width, r.height)
+    // uisel name: the text selected in the app's element "ui-<name>" (a PDF tab's pages: uisel pdfview), "" when none
+    case "uisel":
+      guard let root = win?.contentView else { return "none" }
+      func walk(_ v: NSView) -> NSView? {
+        if v.isHidden { return nil }
+        return v.accessibilityIdentifier() == "ui-\(a[1])" ? v : v.subviews.lazy.compactMap(walk).first
+      }
+      guard let v = walk(root) else { return "none" }
+      return v.accessibilitySelectedText() ?? ""
     case "origin":  // the content view's top-left in the window's picture (points): shots are of the whole window
       guard let w = win, let cv = w.contentView else { return "0 0" }
       return String(format: "%.1f %.1f", cv.frame.minX, w.frame.height - cv.frame.maxY)
@@ -1738,14 +1780,26 @@ func strings(_ x: Any) -> [String] {
     // own (UTF-16 offsets); in a web view (the Note editor's page), what the runner's script reads there
     case "sel":
       let fr = (gKey ?? win)?.firstResponder
-      if let t = fr as? NSTextView {
-        let r = t.selectedRange()
-        let d = try? JSONSerialization.data(
-          withJSONObject: [(t.string as NSString).substring(with: r), "\(r.location)-\(r.location + r.length)"])
-        return d.map { String(decoding: $0, as: UTF8.self) } ?? "none"
+      if let wv = fr as? WKWebView {
+        return (try? await wv.evaluateJavaScript(String(line.dropFirst(4)))) as? String ?? "none"
       }
-      guard let wv = fr as? WKWebView else { return "none" }
-      return (try? await wv.evaluateJavaScript(String(line.dropFirst(4)))) as? String ?? "none"
+      // a native text view (NSTextView, the native Note and code editors): what its input client says, in its own
+      // offsets (a Note's over its Markdown), and around it up to 8 characters each side within the line
+      guard let c = fr as? NSTextInputClient else { return "none" }
+      let r = c.selectedRange()
+      guard r.location != NSNotFound else { return "none" }
+      func text(_ a: Int, _ b: Int) -> String {
+        let a = max(0, a)
+        guard b > a else { return "" }
+        let s = c.attributedSubstring(forProposedRange: NSRange(location: a, length: b - a), actualRange: nil)
+        return s?.string ?? ""
+      }
+      let picked = text(r.location, NSMaxRange(r))
+      let before = text(r.location - 8, r.location).split(separator: "\n", omittingEmptySubsequences: false).last ?? ""
+      let after = text(NSMaxRange(r), NSMaxRange(r) + 8).split(separator: "\n", omittingEmptySubsequences: false)[0]
+      let d = try? JSONSerialization.data(
+        withJSONObject: [picked, "\(r.location)-\(NSMaxRange(r))", "\(before)[\(picked)]\(after)"])
+      return d.map { String(decoding: $0, as: UTF8.self) } ?? "none"
     case "js":  // a diagnostic: script in the web view that is first responder
       guard let wv = (gKey ?? win)?.firstResponder as? WKWebView else { return "first responder is no web view" }
       do {
@@ -1908,7 +1962,9 @@ typealias Shot = (
     // and where the drawn pointer is in it (points from its top left), so that comparing frames can leave it out
     let at = String(format: "%.3f %.0f %.0f", t, vPointer.x - windows.main.minX, windows.main.maxY - vPointer.y)
     capture.async {
-      let img = Recorder.compose(windows)
+      var clean: CGImage?
+      let img = Recorder.compose(windows) { clean = Recorder.small($0) }
+      let small = clean
       let lag = ProcessInfo.processInfo.systemUptime - t
       DispatchQueue.main.async {
         MainActor.assumeIsolated {
@@ -1916,9 +1972,13 @@ typealias Shot = (
           self.lags.append(lag)
           guard let img, !self.done else { return }
           let url = self.dir.appending(path: String(format: "f%05d.png", self.frame))
+          let bare = self.dir.appending(path: String(format: "c%05d.png", self.frame))
           self.times += at + "\n"
           self.frame += 1
-          self.io.async { Recorder.write(img, to: url) }
+          self.io.async {
+            Recorder.write(img, to: url)
+            if let small { Recorder.write(small, to: bare) }
+          }
         }
       }
     }
@@ -1988,7 +2048,22 @@ typealias Shot = (
     )
   }
 
-  nonisolated static func compose(_ windows: Shot) -> CGImage? {
+  /// A quarter-size copy: the frame without the pointer (c00000.png beside f00000.png), which the runner compares to
+  /// time answers. With the drawn pointer left out by a box around it instead, a change under the pointer went unseen
+  /// (a new empty Text at the double-click is about that size)
+  nonisolated static func small(_ img: CGImage) -> CGImage? {
+    let (w, h) = (img.width / 4, img.height / 4)
+    guard
+      let ctx = CGContext(
+        data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0,
+        space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue)
+    else { return nil }
+    ctx.interpolationQuality = .medium
+    ctx.draw(img, in: CGRect(x: 0, y: 0, width: w, height: h))
+    return ctx.makeImage()
+  }
+
+  nonisolated static func compose(_ windows: Shot, bare: ((CGImage) -> Void)? = nil) -> CGImage? {
     let f = windows.main
     let scale = shotScale
     let pw = Int(f.width * scale)
@@ -2012,6 +2087,7 @@ typealias Shot = (
         height: w.frame.height * scale)
       ctx.draw(img, in: r)
     }
+    if let bare, let img = ctx.makeImage() { bare(img) }
     // the pointer: an arrow, a ring while a button is down
     let p = CGPoint(x: (windows.pointer.x - f.minX) * scale, y: (windows.pointer.y - f.minY) * scale)
     if windows.buttons != 0 {

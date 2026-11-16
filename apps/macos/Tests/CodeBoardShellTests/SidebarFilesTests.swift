@@ -1,6 +1,7 @@
 import AppKit
 import CodeBoardModel
 import Foundation
+import TestGuard
 import Testing
 
 @testable import CodeBoardCanvas
@@ -235,5 +236,145 @@ import Testing
     #expect(targets.map(\.title) == ["Top Level", "A › B"])
     targets[1].run()
     #expect(shell.tree?.folders.first { $0.name == "A" }?.folders.first?.boards.map(\.title) == ["Plan copy"])
+  }
+
+  /// A resource package as the format writes it, with a folder entry and a file alone in it
+  func resource(_ vault: Vault, _ path: String, id: String) throws {
+    let pkg = vault.url(of: path)
+    try fm.createDirectory(at: pkg.appending(path: "Attention Is All You Need"), withIntermediateDirectories: true)
+    try Data(#"{"fields": [], "id": "\#(id)", "preset": "papers", "version": 1}"#.utf8)
+      .write(to: pkg.appending(path: Vault.resourceFileName))
+    try Data("{}".utf8).write(to: pkg.appending(path: "Attention Is All You Need/\(Vault.entryFileName)"))
+    try Data("%PDF".utf8).write(to: pkg.appending(path: "notes.pdf"))
+  }
+
+  /// Resources are listed after a folder's boards with how many entries each has, and one that cannot be read apart;
+  /// their menu renames, moves, reveals, copies the path of and deletes them as a board's does
+  @Test func resourcesAreListedWithTheirEntriesAndRenamedMovedAndDeletedAsBoardsAre() async throws {
+    let (vault, shell, _) = try vault()
+    defer { try? fm.removeItem(at: vault.root) }
+    try vault.newBoard(in: "", title: "Engine")
+    try vault.newFolder(in: "", name: "Reading")
+    try resource(vault, "Papers.resource", id: "r1")
+    let broken = vault.root.appending(path: "Broken.resource")
+    try fm.createDirectory(at: broken, withIntermediateDirectories: true)
+    try Data("{".utf8).write(to: broken.appending(path: Vault.resourceFileName))
+    let pb = NSPasteboard(name: NSPasteboard.Name("sidebar-\(UUID().uuidString)"))
+    shell.pasteboard = pb
+    let trash = vault.root.deletingLastPathComponent().appending(path: "trash-\(UUID().uuidString)")
+    try fm.createDirectory(at: trash, withIntermediateDirectories: true)
+    defer { try? fm.removeItem(at: trash) }
+    shell.trasher = { url in
+      let to = trash.appending(path: url.lastPathComponent)
+      try FileManager.default.moveItem(at: url, to: to)
+      return to
+    }
+    shell.apply(Result { try vault.tree() })
+    #expect(shell.tree?.boards.map(\.title) == ["Engine"])
+    #expect(shell.tree?.resources.map { "\($0.title): \($0.entryCount)" } == ["Papers: 2"])
+    #expect(shell.tree?.unreadableResources.map(\.title) == ["Broken"])
+    #expect(shell.tree?.folders.map(\.name) == ["Reading"])
+
+    let r = try #require(shell.tree?.resources.first)
+    let menu = shell.menu(resource: r)
+    #expect(
+      menu.map { $0?.title ?? "-" } == [
+        "Add PDF…", "-", "Rename", "Move to", "-", "Reveal in Finder", "Copy Path", "-", "Delete",
+      ])
+    menu[6]?.run()
+    #expect(
+      pb.string(forType: .string)
+        == vault.url(of: r.path).appending(path: Vault.resourceFileName).path(percentEncoded: false))
+    let bad = try #require(shell.tree?.unreadableResources.first)
+    shell.menu(unreadable: bad)[1]?.run()
+    #expect(pb.string(forType: .string) == broken.appending(path: Vault.resourceFileName).path(percentEncoded: false))
+
+    // renamed in place
+    menu[2]?.run()
+    #expect(shell.renaming == .resource(r.id))
+    shell.renaming = nil
+    shell.rename(resource: r, to: "Papers 2017")
+    let renamed = try #require(shell.tree?.resources.first { $0.id == r.id })
+    #expect(renamed.path == "Papers 2017.resource" && renamed.entryCount == 2)
+    // Move to: every folder but where it is
+    let targets = shell.moveTargets(resource: renamed)
+    #expect(targets.map(\.title) == ["Reading"])
+    targets[0].run()
+    #expect(shell.tree?.folder(at: "Reading")?.resources.map(\.id) == [r.id])
+
+    // deleted: asked first, saying how many entries go with it, then to the trash whole
+    var asked: [String] = []
+    shell.confirm = { a in
+      asked.append("\(a.messageText) \(a.informativeText)")
+      return true
+    }
+    let moved = try #require(shell.tree?.folder(at: "Reading")?.resources.first)
+    shell.menu(resource: moved).compactMap { $0 }.first { $0.title == "Delete" }?.run()
+    while shell.tree?.folder(at: "Reading")?.resources.isEmpty == false { try await Task.sleep(for: .milliseconds(5)) }
+    #expect(asked == ["Delete resource “Papers 2017”? Its 2 entries go to the Trash with it."])
+    #expect(fm.fileExists(atPath: trash.appending(path: "Papers 2017.resource/notes.pdf").path(percentEncoded: false)))
+    #expect(shell.tree?.boards.map(\.title) == ["Engine"])
+  }
+
+  /// A click on a resource's row opens its tab in the reading pane, a second goes to the same tab; renamed, the tab
+  /// takes the new name; gone from the vault, it closes
+  @Test func aResourcesRowOpensItsTabOnceAndTheTabFollowsTheResource() throws {
+    let (vault, shell, _) = try vault()
+    defer { try? fm.removeItem(at: vault.root) }
+    try resource(vault, "Papers.resource", id: "r1")
+    try resource(vault, "Notes.resource", id: "r2")
+    shell.apply(Result { try vault.tree() })
+    let papers = try #require(shell.tree?.resources.first { $0.title == "Papers" })
+    let notes = try #require(shell.tree?.resources.first { $0.title == "Notes" })
+    #expect(!shell.reading.shown)
+    shell.openResource(papers)
+    #expect(shell.reading.shown && shell.reading.tabs.map(\.title) == ["Papers"])
+    shell.openResource(notes)
+    shell.openResource(papers)
+    #expect(shell.reading.tabs.map(\.title) == ["Papers", "Notes"])
+    #expect(shell.reading.selected == shell.reading.tabs[0].id, "the same tab")
+    shell.rename(resource: papers, to: "Papers 2017")
+    #expect(shell.reading.tabs.map(\.title) == ["Papers 2017", "Notes"])
+    try fm.removeItem(at: vault.url(of: notes.path))
+    shell.apply(Result { try vault.tree() })
+    #expect(shell.reading.tabs.map(\.title) == ["Papers 2017"] && shell.reading.shown)
+  }
+
+  /// New Resource, beside New Board and New Folder: a package with its resource file and no entries, its row with 0,
+  /// its tab open and its name written in place; Delete Folder says the resources that go with the folder
+  @Test func newResourceMakesAnEmptyPackageWhoseNameIsWrittenAtOnce() async throws {
+    let (vault, shell, _) = try vault()
+    defer { try? fm.removeItem(at: vault.root) }
+    try vault.newFolder(in: "", name: "Reading")
+    shell.apply(Result { try vault.tree() })
+    let folder = try #require(shell.tree?.folder(at: "Reading"))
+    let menu = shell.menu(folder: folder)
+    #expect(menu.prefix(4).map { $0?.title ?? "-" } == ["New Board", "New Folder", "New Resource", "-"])
+    menu[2]?.run()
+    let made = try #require(shell.tree?.folder(at: "Reading")?.resources.first)
+    #expect(made.title == "New Resource" && made.path == "Reading/New Resource.resource" && made.entryCount == 0)
+    #expect(made.preset == .files)
+    #expect(fm.fileExists(atPath: vault.url(of: made.path).appending(path: Vault.resourceFileName).path))
+    #expect(shell.renaming == .resource(made.id) && shell.expanded.contains("Reading"))
+    #expect(shell.reading.tabs.map(\.title) == ["New Resource"])
+    shell.newResource(in: "")
+    #expect(shell.tree?.resources.map(\.title) == ["New Resource"], "at the top, a name of its own")
+    shell.newResource(in: "Reading")
+    #expect(shell.tree?.folder(at: "Reading")?.resources.map(\.title).sorted() == ["New Resource", "New Resource 2"])
+
+    try vault.newBoard(in: "Reading", title: "Plan")
+    shell.apply(Result { try vault.tree() })
+    var asked: [String] = []
+    shell.confirm = { a in
+      asked.append(a.informativeText)
+      return false
+    }
+    shell.menu(folder: try #require(shell.tree?.folder(at: "Reading"))).compactMap { $0 }
+      .first { $0.title == "Delete Folder" }?.run()
+    while asked.isEmpty { try await Task.sleep(for: .milliseconds(5)) }
+    #expect(asked == ["Its 1 board and 2 resources go to the Trash with it."])
+    #expect(
+      BoardPanes.deleteFolderQuestion("F", boards: 0, resources: 1).informativeText
+        == "Its 1 resource goes to the Trash with it.")
   }
 }

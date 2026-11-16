@@ -82,30 +82,46 @@ extension CanvasView {
       fetchedAt: (Date().timeIntervalSince1970 * 1000).rounded(), failed: p.failed)
   }
 
-  /// The pictures of image cards at web addresses not read yet, each read once (ImageBody.tsx: the browser reads an
+  /// The pictures at web addresses not read yet (image cards', and those Notes, Texts and Boxes show), each read once (ImageBody.tsx: the browser reads an
   /// <img> once and keeps it) and kept in the picture cache by its address's hash, so a later launch reads it there.
   /// Asked from a redraw, which waits for a gesture's end, as does the redraw that puts the picture in
   func fetchPictures(_ board: Board) {
     for c in board.cards {
-      guard case .own(let k) = c.content, case .image(let img) = k.body, case .url(let s) = img.source,
-        remotePictures[s] == nil, remoteAsked.insert(s).inserted, let u = URL(string: s)
-      else { continue }
-      let hash = SHA256.hash(data: Data(s.utf8)).map { String(format: "%02x", $0) }.joined()
-      let file = pictureCache.appending(path: hash)
-      if FileManager.default.fileExists(atPath: file.path(percentEncoded: false)) {
-        remotePictures[s] = file
-        continue
-      }
-      let (fetch, folder) = (fetchPicture, pictureCache)
-      Task { [weak self] in
-        guard let data = await fetch(u),
-          (try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)) != nil,
-          (try? data.write(to: file, options: .atomic)) != nil, let self
-        else { return }
-        remotePictures[s] = file
-        refresh()
-      }
+      guard case .own(let k) = c.content else { continue }
+      for s in Scene.remoteAddresses(k) { readPicture(s) }
     }
+  }
+
+  /// Reads the picture at a web address once and keeps it (a Note's too: the web board shows it as the browser reads it)
+  private func readPicture(_ s: String) {
+    guard remotePictures[s] == nil, remoteAsked.insert(s).inserted, let u = URL(string: s) else { return }
+    let file = CanvasView.remoteFile(s, in: pictureCache)
+    if FileManager.default.fileExists(atPath: file.path(percentEncoded: false)) {
+      remotePictures[s] = file
+      return
+    }
+    let (fetch, folder) = (fetchPicture, pictureCache)
+    Task { [weak self] in
+      let data = await fetch(u)
+      let kept =
+        data != nil && (try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)) != nil
+        && (try? data!.write(to: file, options: .atomic)) != nil
+      guard let self else { return }
+      if kept {
+        remotePictures[s] = file
+      } else {
+        // shown as nothing while it was read, as a broken image from now on
+        display.pictureFailed(s)
+      }
+      // the Notes showing it are measured again: they grow by the picture
+      measured = measured.filter { !Scene.remoteImages($0.value.note.markdown).contains(s) }
+      refresh()
+    }
+  }
+
+  /// Where the picture read from a web address is kept: one file per address, in the folder the canvas keeps them in
+  nonisolated static func remoteFile(_ address: String, in folder: URL) -> URL {
+    folder.appending(path: SHA256.hash(data: Data(address.utf8)).map { String(format: "%02x", $0) }.joined())
   }
 
   // MARK: What is where

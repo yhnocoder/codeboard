@@ -41,10 +41,10 @@ const lookEnv = {
   ...(argv.includes("--dark") ? { ACCEPT_DARK: "1" } : {}),
   ACCEPT_SCALE: opt("--scale") ?? "1",
 };
-// --mac demo: the Mac side is the native Markdown editor alone (MarkdownDemo, run in the driver: ACCEPT_APP=demo) on
-// the one Note card the scenario aims at, instead of the app; targets are placed from the demo's report and source reads
-// its saved file
-const demo = opt("--mac") === "demo";
+// --mac demo (or "# mac: demo" in the scenario: one written for the demo, whose lines aim at what only the demo shows): the
+// Mac side is the native Markdown editor alone (MarkdownDemo, run in the driver: ACCEPT_APP=demo) on the one Note card
+// the scenario aims at, instead of the app; targets are placed from the demo's report and source reads its saved file
+const demo = declared("mac", "--mac", undefined) === "demo";
 // --web <checkout>: the web side draws that checkout's board (a worktree of the latest main: the VS Code version to beat)
 const webRepo = path.resolve(opt("--web") ?? repo);
 const sides = only ? [only] : ["mac", "web"];
@@ -83,16 +83,23 @@ if (!attach && !skip && sides.includes("web")) {
   run("npm", ["run", "build", "-w", "@codeboard/board"], webRepo);
 }
 if (!attach && sides.includes("mac")) {
-  // the Note page of this checkout (cached: a fraction of a second), or the demo's assets
-  run("node", [demo ? "apps/macos/tools/markdown/assets.mjs" : "apps/macos/web/build.mjs"]);
+  // what make-app.sh carries in the bundle: the Note page of this checkout and the native Markdown component's fonts
+  // and formula engines (both cached: a fraction of a second)
+  run("node", ["apps/macos/web/build.mjs"]);
+  run("node", ["apps/macos/tools/markdown/assets.mjs"]);
   run("swift", ["build", "-c", config, "--product", "Accept"], mac);
   const bin = execFileSync("swift", ["build", "-c", config, "--show-bin-path"], { cwd: mac }).toString().trim();
   fs.rmSync(app, { recursive: true, force: true });
   fs.mkdirSync(path.join(app, "Contents/MacOS"), { recursive: true });
   fs.copyFileSync(path.join(bin, "Accept"), path.join(app, "Contents/MacOS/Accept"));
-  // the demo's fonts and formula engines (tools/markdown/make-demo.sh); the app's Note page
-  if (demo) fs.cpSync(path.join(mac, ".build-markdown"), path.join(app, "Contents/Resources/Assets"), { recursive: true });
-  else fs.cpSync(path.join(mac, "web/dist"), path.join(app, "Contents/Resources/NotePage"), { recursive: true });
+  // the Markdown package's resources (its formula and diagram engines), when the build has them: SwiftPM puts a
+  // package's resources in a bundle beside the executable, and an app finds it in Contents/Resources
+  const mdBundle = "better-swift-markdown_MarkdownUI.bundle";
+  if (fs.existsSync(path.join(bin, mdBundle)))
+    fs.cpSync(path.join(bin, mdBundle), path.join(app, "Contents/Resources", mdBundle), { recursive: true });
+  // where make-app.sh puts them (and make-demo.sh the demo's): the app finds them in its own bundle, as a person's does
+  fs.cpSync(path.join(mac, ".build-markdown"), path.join(app, "Contents/Resources/Assets"), { recursive: true });
+  if (!demo) fs.cpSync(path.join(mac, "web/dist"), path.join(app, "Contents/Resources/NotePage"), { recursive: true });
 }
 if (!attach && sides.includes("web")) {
   await build({
@@ -196,7 +203,12 @@ class Driver {
     // (this process's: one before it that was told to go and exits late must not mark the new one gone)
     this.exited = false;
     const proc = this.proc;
-    proc.on("exit", () => { if (this.proc === proc) this.exited = true; });
+    this.started = Date.now();
+    proc.on("exit", (code, signal) => {
+      if (this.proc !== proc) return;
+      this.exited = true;
+      this.how = signal ?? code;
+    });
     this.proc.unref();
     await this.until(/driver ready|web ready/, 60000);
     // the Mac app starts on its sidebar (or on the board it had open): open the first board, as a person would
@@ -275,6 +287,27 @@ class Driver {
     const m = /Terminating app due to uncaught exception[^\n]*|Fatal error:[^\n]*/.exec(out);
     return m ? ` (${m[0].slice(0, 300)})` : "";
   }
+  /** A driver that went away by itself (crashed, during the scenario or its quit): its output and the system's crash
+   * report kept beside the scenario's results (stdout-<side>.txt, crash-<side>.txt), where CI's artifact takes them */
+  async keepCrash() {
+    const out = path.dirname(this.dir);
+    fs.copyFileSync(path.join(this.dir, "stdout.txt"), path.join(out, `stdout-${this.side}.txt`));
+    let kept = `stdout-${this.side}.txt`;
+    // ReportCrash writes the report some seconds after the crash; it names the process by its pid
+    const reports = path.join(os.homedir(), "Library/Logs/DiagnosticReports");
+    for (let t = 0; this.side === "mac" && t < 20000; t += 500) {
+      const ips = fs.existsSync(reports) ? fs.readdirSync(reports).filter((f) => /^Accept.*\.ips$/.test(f)) : [];
+      const f = ips.map((f) => path.join(reports, f)).find((f) => fs.statSync(f).mtimeMs >= this.started
+        && new RegExp(`"pid" *: *${this.pid}\\b`).test(fs.readFileSync(f, "utf8")));
+      if (f) {
+        fs.copyFileSync(f, path.join(out, `crash-${this.side}.txt`));
+        kept += `, crash-${this.side}.txt`;
+        break;
+      }
+      await sleep(500);
+    }
+    console.warn(`${path.basename(out)}: the ${this.side} driver went away (${this.how}); kept ${kept} in ${out}`);
+  }
   lines() {
     return fs.existsSync(this.log) ? fs.readFileSync(this.log, "utf8").split("\n") : [];
   }
@@ -326,6 +359,7 @@ class Driver {
     // no driver started (start threw): writing to its FIFO would block with no reader
     if (!this.proc) return;
     await Promise.race([this.send("quit").catch(() => {}), sleep(1500)]);
+    if (this.exited && this.how !== 0) await this.keepCrash();
     if (this.alive()) process.kill(this.pid, "SIGTERM");
     await sleep(300);
     if (this.alive()) process.kill(this.pid, "SIGKILL");
@@ -601,15 +635,24 @@ async function geom(d, id, needSection = false, aim = false) {
 // what sel reads in a page (one line: it goes through the drivers' FIFOs)
 const SEL = `(() => {
   const a = document.activeElement, pm = a && a.closest && a.closest(".ProseMirror"), ed = pm && pm.editor;
-  if (ed) { const { from, to } = ed.state.selection; return JSON.stringify([ed.state.doc.textBetween(from, to, "\\n"), from + "-" + to]); }
-  if (a && typeof a.selectionStart === "number") return JSON.stringify([a.value.slice(a.selectionStart, a.selectionEnd), a.selectionStart + "-" + a.selectionEnd]);
+  const around = (pre, t, post) => pre.slice(-8).split("\\n").pop() + "[" + t + "]" + post.slice(0, 8).split("\\n")[0];
+  if (ed) {
+    const { from, to, $from, $to } = ed.state.selection, t = ed.state.doc.textBetween(from, to, "\\n");
+    const pre = $from.parent.textContent.slice(0, $from.parentOffset), post = $to.parent.textContent.slice($to.parentOffset);
+    return JSON.stringify([t, from + "-" + to, around(pre, t, post)]);
+  }
+  if (a && typeof a.selectionStart === "number") {
+    const [f, e, v] = [a.selectionStart, a.selectionEnd, a.value];
+    return JSON.stringify([v.slice(f, e), f + "-" + e, around(v.slice(0, f), v.slice(f, e), v.slice(e))]);
+  }
   const s = getSelection();
   const editable = a && a.isContentEditable;
   if (!s || !s.rangeCount || (s.isCollapsed && !editable)) return "none";
   const r = s.getRangeAt(0), pre = document.createRange(), root = editable ? a : document.body;
   pre.setStart(root, 0); pre.setEnd(r.startContainer, r.startOffset);
   const from = pre.toString().length;
-  return JSON.stringify([s.toString(), from + "-" + (from + r.toString().length)]);
+  const all = root.textContent ?? "", to = from + r.toString().length;
+  return JSON.stringify([s.toString(), from + "-" + to, around(all.slice(0, from), s.toString(), all.slice(to))]);
 })()`.replaceAll("\n", " ");
 async function subject(d, subj) {
   const [id, field] = subj.split(".");
@@ -618,13 +661,16 @@ async function subject(d, subj) {
   if (subj === "dialog") return (await d.send("dialog")) || "none";
   // row:<title>: whether the sidebar shows that board's or folder's row (shown, none)
   if (subj.startsWith("row:")) return (await d.send(`row ${subj.slice(4)}`)) === "none" ? "none" : "shown";
-  // sel, sel.text, sel.range: the selected text where keys go and its range (from-to; a caret: n-n; none): in a
-  // ProseMirror editor (a Note, on both sides the same editor) its positions, in a field its offsets, elsewhere the
-  // page selection's text offsets in the focused editable; in the Mac app's native text views their own offsets
+  // sel, sel.text, sel.range, sel.around: the selected text where keys go and its range (from-to; a caret: n-n; none):
+  // in a ProseMirror editor (a web Note) its positions, in a field its offsets, elsewhere the page selection's text
+  // offsets in the focused editable; in the Mac app's native text views their own offsets (a native Note's over its
+  // Markdown). Ranges of a Note differ between the two editors; sel.around does not: the selection in [ ] with up to 8
+  // characters each side within its line (paragraph), as a JSON string
   if (id === "sel") {
     const r = d.side === "web" ? await d.send(`eval ${SEL}`) : await d.send(`sel ${SEL}`);
     if (!r.startsWith("[")) return "none";
-    const [text, range] = JSON.parse(r.replaceAll("\n", "\\n")); // JSON has no line breaks: send made them of its \\n
+    const [text, range, around] = JSON.parse(r.replaceAll("\n", "\\n")); // JSON has no line breaks: send made them of its \\n
+    if (field === "around") return JSON.stringify(around);
     return field === "text" ? text : field === "range" ? range : `${JSON.stringify(text)} ${range}`;
   }
   // opened: what the app asked to open outside itself so far, one per line (none); the drivers open nothing
@@ -693,8 +739,9 @@ function judge(got, op, want) {
     case "<=": return got <= n;
     case ">": return got > n;
     case ">=": return got >= n;
-    case "has": return String(got).includes(want);
-    case "lacks": return !String(got).includes(want);
+    // has A|B: any of them (a view's class on one build or another: EditorWebView|MarkdownEditorView); lacks A|B: none
+    case "has": return want.split("|").some((w) => String(got).includes(w));
+    case "lacks": return !want.split("|").some((w) => String(got).includes(w));
   }
   throw new Error(`no such op: ${op}`);
 }
@@ -760,14 +807,20 @@ const pixels = async (f) => {
   return small.get(f);
 };
 /** Whether two frames differ, leaving out the pointer the recorder draws in each (its arrow, the ring of a button held
- *  down, the cursor's name beside it) */
+ *  down, the cursor's name beside it): the Mac recorder's copies without it (c00000.png), else a box around it */
 async function differ(a, b) {
+  const [ca, cb] = [a, b].map((f) => f.file.replace(/f(\d+)\.png$/, "c$1.png"));
+  if (fs.existsSync(ca) && fs.existsSync(cb)) return changed(await pixels(ca), await pixels(cb), []);
   const [x, y] = await Promise.all([pixels(a.file), pixels(b.file)]);
-  const { kx, ky } = x, ch = x.data.length / (SW * SH);
+  const { kx, ky } = x;
   // (points from the pointer's tip: the ring and the arrow, then the cursor's name)
   const boxes = [[-12, -12, 13, 21], [14, 15, 100, 31]];
   const masks = [a, b].filter((f) => !Number.isNaN(f.x ?? NaN))
     .flatMap((f) => boxes.map(([l, t, r, btm]) => [(f.x + l) * kx, (f.y + t) * ky, (f.x + r) * kx, (f.y + btm) * ky]));
+  return changed(x, y, masks);
+}
+function changed(x, y, masks) {
+  const ch = x.data.length / (SW * SH);
   let n = 0;
   for (let i = 0; i < x.data.length; i++) {
     if (Math.abs(x.data[i] - y.data[i]) <= 24) continue;

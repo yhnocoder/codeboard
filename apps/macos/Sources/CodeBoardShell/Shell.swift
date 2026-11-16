@@ -1,7 +1,10 @@
 import AppKit
 import CodeBoardCanvas
 import CodeBoardModel
+import CodeBoardReading
+import CodeBoardResources
 import Observation
+import TestGuard
 
 /// A board tab: the board it shows and its own back / forward history, browser style, each board in it with where its
 /// view was. Boards are held by id, so a board renamed or moved on disk stays in its tab.
@@ -75,6 +78,8 @@ public struct ShellState: Codable, Equatable, Sendable {
   public var sidebarShown: Bool
   /// nil in what was saved before the sidebar could be resized
   public var sidebarWidth: Double?
+  /// nil in what was saved before the reading pane
+  public var reading: ReadingPane.State?
 }
 
 /// The app's state: the open vault and its tree, the tabs, the sidebar. Views derive from it; disk access happens outside
@@ -92,6 +97,19 @@ public struct ShellState: Codable, Equatable, Sendable {
   /// Dragged at its edge, kept with the state
   public var sidebarWidth: CGFloat = 244
   public static let sidebarWidths: ClosedRange<CGFloat> = 180...480
+  /// The pane beside the board: hidden until it is first used
+  public let reading = ReadingPane()
+  /// What the board asks about the sources its cards name (the reading pane's entries); the board panes hand it on
+  public let sources: ReadingSources
+  /// The last passage collected from the reading pane (`collect`)
+  public private(set) var collected: Collected?
+  /// Where a collected passage goes on: the board's side sets it
+  @ObservationIgnored public var onCollect: ((Collected) -> Void)?
+  /// This app's own data on this machine, never the vault's (Application Support/<its id>): the reading tabs' kinds
+  /// keep theirs in it; nil: none (tests)
+  @ObservationIgnored public var machineFolder: URL? {
+    didSet { reading.machineFolder = machineFolder }
+  }
   public var importing = false
   /// The look every board is drawn in; app-wide, kept by the app delegate
   public var theme: Theme.ID = .warmInk
@@ -113,12 +131,17 @@ public struct ShellState: Codable, Equatable, Sendable {
   /// A board or subfolder deleted or moved away from the sidebar, before the tree is read again: its folder's folder
   /// board lets its card go (the folder's path, the entry)
   public var entryLeft: ((String, FolderEntry) -> Void)?
-  /// What is being renamed in the sidebar: a board by id, a folder by path
+  /// What is being renamed in the sidebar: a board or resource by id, a folder by path
   public var renaming: Renaming?
   /// Where deleted boards and folders go: the system Trash; tests give a stand-in
   public var trasher: Vault.Trasher = Vault.systemTrash
-  /// Where Copy Path puts the path: the general pasteboard; tests give one of their own
-  @ObservationIgnored public var pasteboard = NSPasteboard.general
+  /// Where Copy Path, and Copy in the reading pane, put text: the general pasteboard; tests give one of their own
+  @ObservationIgnored public var pasteboard = NSPasteboard.general {
+    didSet { reading.pasteboard = pasteboard }
+  }
+  /// Asks which PDF files to add (Add PDF…): an open panel in a sheet on the main window (makeMainWindow); with no
+  /// window to ask in, none
+  @ObservationIgnored public var askPDFs: @MainActor () async -> [URL] = { [] }
   /// Asks a question before a delete, the first button the yes: a sheet on the main window (makeMainWindow); with no
   /// window to ask in, nothing is deleted
   @ObservationIgnored public var confirm: @MainActor (NSAlert) async -> Bool = { _ in false }
@@ -132,11 +155,15 @@ public struct ShellState: Codable, Equatable, Sendable {
   public enum Renaming: Equatable, Sendable {
     case board(BoardID)
     case folder(String)
+    case resource(ResourceID)
   }
 
   public init() {
     // in a test process: no menu, alert or panel ever comes up
     TestGuard.install()
+    ReadingKinds.registerBuiltIn()
+    sources = ReadingSources(pane: reading)
+    reading.onCollect = { [weak self] in self?.collect($0) }
   }
 
   public var current: Tab? { tabs.first { $0.id == selected } }
@@ -155,6 +182,8 @@ public struct ShellState: Codable, Equatable, Sendable {
   /// Opens a vault; the state is restored only when it was saved for this vault. Tabs wait for the tree to be pruned.
   public func open(_ vault: Vault, restoring state: ShellState?) {
     self.vault = vault
+    reading.vault = vault
+    reading.entries = EntryIndex()
     tree = nil
     treeError = nil
     byID = [:]
@@ -163,10 +192,12 @@ public struct ShellState: Codable, Equatable, Sendable {
       selected = state.selected.flatMap { id in tabs.contains { $0.id == id } ? id : nil } ?? tabs.first?.id
       expanded = state.expanded
       sidebarShown = state.sidebarShown
+      if let r = state.reading { reading.restore(r) }
     } else {
       tabs = []
       selected = nil
       expanded = []
+      reading.closeAll()
     }
   }
 
@@ -174,7 +205,7 @@ public struct ShellState: Codable, Equatable, Sendable {
     vault.map {
       ShellState(
         vault: $0.root.path, tabs: tabs, selected: selected, expanded: expanded, sidebarShown: sidebarShown,
-        sidebarWidth: Double(sidebarWidth))
+        sidebarWidth: Double(sidebarWidth), reading: reading.state)
     }
   }
 
@@ -188,6 +219,16 @@ public struct ShellState: Codable, Equatable, Sendable {
       treeError = nil
       byID = Dictionary(tree.allBoards.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
       for tab in tabs where byID[tab.board] == nil { close(tab.id) }
+      if let vault { reading.entries = EntryIndex(vault, tree) }
+      // a resource's tab takes its new name, and closes when it is gone, as does any tab whose kind says so
+      let resources = Dictionary(
+        tree.allFolders.flatMap(\.resources).map { (Self.readingKey($0.id), $0.title) }, uniquingKeysWith: { a, _ in a }
+      )
+      reading.follow { tab in
+        guard let key = tab.key, key.hasPrefix("resource:") else { return ReadingKinds.follow(tab, in: reading) }
+        return resources[key]
+      }
+      sources.onSourcesChanged?()
       // a crumb whose board is gone cuts the crumbs there: what is past it is no way back
       func kept(_ cs: [Tab.Crumb]) -> [Tab.Crumb] { Array(cs.prefix { byID[$0.board] != nil }) }
       for i in tabs.indices {
@@ -269,6 +310,35 @@ public struct ShellState: Codable, Equatable, Sendable {
   public func move(_ tab: Tab.ID, to index: Int) {
     guard let i = tabs.firstIndex(where: { $0.id == tab }) else { return }
     tabs.insert(tabs.remove(at: i), at: max(0, min(index, tabs.count)))
+  }
+
+  /// A tab in the reading pane titled `title` (a resource's name), the pane shown; the tab opened for the same `key`
+  /// is gone to instead of a second
+  public func openReadingTab(title: String, key: String) {
+    reading.open(title, key: key)
+  }
+
+  /// A resource's tab (its row clicked in the sidebar): opened, or gone to when it is open
+  public func openResource(_ r: VaultResource) {
+    openReadingTab(title: r.title, key: Self.readingKey(r.id))
+  }
+
+  static func readingKey(_ id: ResourceID) -> String { "resource:" + id.rawValue }
+
+  /// A PDF in the reading pane (an entry's version, or a file that is an entry alone): opened, or gone to when it is
+  /// open; nil when it is not in the vault
+  @discardableResult public func openPDF(_ t: PDFTarget) -> ReadingTab.ID? { reading.openPDF(t) }
+
+  /// A new web tab in the reading pane, on `url` or blank, shown with the keys (Web/ makes its view)
+  public func openWeb(_ url: URL?) {
+    reading.open(url?.host() ?? "New Tab", kind: "web", payload: url.map { ["url": $0.absoluteString] } ?? [:])
+  }
+
+  /// A passage collected from the reading pane (its selection bar's Add to Board, ⌥↵): kept, and handed to the board's
+  /// side, which takes it from here
+  public func collect(_ c: Collected) {
+    collected = c
+    onCollect?(c)
   }
 
   public var canGoBack: Bool { current?.back.isEmpty == false }

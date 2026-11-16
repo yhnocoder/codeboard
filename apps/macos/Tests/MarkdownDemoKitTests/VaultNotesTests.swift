@@ -1,7 +1,7 @@
 import AppKit
-import CodeBoardMarkdown
 import CodeBoardModel
 import Foundation
+import MarkdownCore
 import Testing
 
 @testable import MarkdownDemoKit

@@ -1,6 +1,6 @@
 /// The rest redraws: started a few at a time, their results swapped onto the screen within a budget per frame. A new
-/// gesture cancels everything; results of a cancelled generation are dropped when they come in. Notes have a lane of
-/// their own: they wait for the one web view, and would hold the drawing threads code cards need meanwhile.
+/// gesture cancels everything; results of a cancelled generation are dropped when they come in. Notes (and SVG
+/// pictures) have a lane of their own, so a board of long Notes never holds the threads code cards need.
 struct RedrawQueue<Payload> {
   struct Ready {
     var job: RestPlan.Job
@@ -9,10 +9,11 @@ struct RedrawQueue<Payload> {
   }
 
   static var concurrency: Int { 4 }
-  /// Notes in flight: one in the web view, the rest waiting for it in plan order or read from the disk cache at once
+  /// Notes in flight: laid out and drawn, or read from the disk cache
   static var noteConcurrency: Int { 4 }
   static var pixelsPerFrame: Int { 8_000_000 }
   static var itemsPerFrame: Int { 4 }
+  static var hiddenPerFrame: Int { 16 }
 
   private(set) var generation = 0
   private(set) var pending: [RestPlan.Job] = []
@@ -58,16 +59,33 @@ struct RedrawQueue<Payload> {
     return true
   }
 
-  /// What to swap in this frame: in the order they finished, up to the pixel and item budgets (the first always goes, so
-  /// a bitmap larger than the pixel budget still gets on screen)
-  mutating func takeSwaps() -> [Ready] {
+  /// What to swap in this frame, in the order they finished: those in view (`shown`) up to the pixel and item budgets
+  /// (the first always goes, so a bitmap larger than the pixel budget still gets on screen), and up to
+  /// `hiddenPerFrame` out of view besides, which cost the frame next to nothing: nothing composites them until the
+  /// camera reaches them (a board's Notes beyond the view otherwise came in one or two a frame, their pictures big)
+  mutating func takeSwaps(shown: (Ready) -> Bool = { _ in true }) -> [Ready] {
     var px = 0
-    var n = 0
-    while n < ready.count, n < Self.itemsPerFrame, n == 0 || px + ready[n].pixels <= Self.pixelsPerFrame {
-      px += ready[n].pixels
-      n += 1
+    var inView = 0
+    var hidden = 0
+    var take: [Ready] = []
+    var keep: [Ready] = []
+    for r in ready {
+      if shown(r) {
+        if inView < Self.itemsPerFrame, inView == 0 || px + r.pixels <= Self.pixelsPerFrame {
+          px += r.pixels
+          inView += 1
+          take.append(r)
+        } else {
+          keep.append(r)
+        }
+      } else if hidden < Self.hiddenPerFrame {
+        hidden += 1
+        take.append(r)
+      } else {
+        keep.append(r)
+      }
     }
-    defer { ready.removeFirst(n) }
-    return Array(ready.prefix(n))
+    ready = keep
+    return take
   }
 }

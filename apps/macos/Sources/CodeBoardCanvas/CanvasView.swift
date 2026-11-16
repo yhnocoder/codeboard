@@ -1,8 +1,11 @@
 import AppKit
 import CodeBoardModel
 import CodeBoardNotes
-import CodeBoardSyntax
+import MarkdownCore
+import MarkdownUI
 import QuartzCore
+import TestGuard
+import TreeSitterHighlight
 
 /// What to go to on a board once it is shown: a question (the question list), a card (a ref to it)
 public enum Arrival: Equatable, Sendable {
@@ -20,6 +23,13 @@ public enum Arrival: Equatable, Sendable {
 public final class CanvasView: NSView {
   /// The design allows one snapshot web view in the app, so every canvas shares one renderer
   static let sharedNotes = NoteRenderer()
+  /// What draws the app's Notes: the native component (warmed up off the main thread from the app's launch, `warmUp`)
+  static let sharedDisplay: NativeNotes = {
+    NativeNotes.warmUp()
+    return NativeNotes(web: sharedNotes, images: sharedImages, kept: NativeNotes.defaultKept)
+  }()
+  /// Starts what draws Notes as the app launches, so its fonts and engines are ready sooner for the first board
+  public static func warmUp() { _ = sharedDisplay }
   /// Pictures decoded for drawing, by file: one cache for every canvas, as tabs often show the same images
   static let sharedImages = DecodeCache(cap: 128 << 20)
   /// Every canvas alive, for the one budget they share
@@ -27,7 +37,10 @@ public final class CanvasView: NSView {
   static var clock = 0
   /// When it was last on screen and at rest (the clock's time)
   var shownAt = 0
+  /// The web page's other work: pastes, added pictures, Free code's language
   let notes: NoteRenderer
+  /// What draws and measures the Markdown shown at rest and SVG pictures, and lays out what is written in a Note
+  let display: NativeNotes
   var theme = Theme.warmInk
   /// The board shown, to show again in another theme
   var shown: (board: VaultBoard, vault: Vault)?
@@ -105,6 +118,8 @@ public final class CanvasView: NSView {
     set { levels.mode = newValue }
   }
   var camera = Camera(origin: .zero, zoom: 1)
+  /// The camera the world was last put on device pixels at, at rest (`settleOnPixels`)
+  var settledAt: Camera?
   /// Where the next board shown is shown from (back to a board: where it was), instead of all of it in view
   public var arriving: Camera?
   /// This canvas changed the vault's files (a board made or renamed): the shell reads the tree again
@@ -190,10 +205,15 @@ public final class CanvasView: NSView {
   package var lastInstall: (seconds: Double, drawn: Int) = (0, 0)
   /// The card being written in, and the layers it had before (shown again when nothing was written)
   var editing: Editing?
+  /// Text selected in a Note at rest (CanvasRestText), drawn in `restLayer`; its bar once it settles
+  var restText: RestText?
+  var restSettle: Timer?
+  let restLayer = CAShapeLayer()
+  let restBar = SelectionToolbar()
   var editingOriginal: ItemLayers?
-  /// The editor showing itself at rest at a new zoom
-  var editingRests: Task<Void, Never>?
   var editingEnds: Task<Void, Never>?
+  /// A card's description being written in place (CanvasDesc)
+  var descWriting: DescWriting?
   /// An editor is on its way (a double-click, a new card): the keys typed until it is there, for it
   var keysAhead: [NSEvent]?
   /// The floating bar's bitmap and what it shows
@@ -210,6 +230,8 @@ public final class CanvasView: NSView {
   /// Cards' header buttons (CanvasHeadActs): the one under the pointer, each card's strip and what it was drawn for, the
   /// hovered card's grip, and what puts a menu up when tests look at it instead
   var hoveredHead: (CardID, HeadAct)?
+  /// The sticker under the pointer, its label the tip (Picker.tsx .stk data-tip)
+  var hoveredSticker: StickerID?
   /// The buttons' tips (main's one TooltipLayer, shared with the toolbar and the dock); tests give a canvas its own
   var tips = Tips.shared
   var headShown: [CardID: (layer: CALayer, key: String, out: CFTimeInterval)] = [:]
@@ -308,7 +330,8 @@ public final class CanvasView: NSView {
   /// How an image card's picture at a web address is read (tests give their own: never the network), and the folder the
   /// pictures read are kept in, each once
   package var fetchPicture: @Sendable (URL) async -> Data? = { try? await URLSession.shared.data(from: $0).0 }
-  package var pictureCache = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+  package var pictureCache = CanvasView.pictures
+  nonisolated static let pictures = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
     .appending(path: "CodeBoard/Pictures")
   /// The pictures at web addresses read so far, by address: their files; and the addresses asked for
   var remotePictures: [String: URL] = [:]
@@ -326,6 +349,8 @@ public final class CanvasView: NSView {
   var hoveredMark: Int?
   /// The sidenote popups open, the newest last (state/pop.ts pops)
   var pops: [Popup] = []
+  /// The popup the next one opened takes, made before (tests hold it before it opens)
+  var nextPop: SidenotePop?
   /// A sidenote popup opened or closed: the newest one open now (tests)
   package var onPop: ((PopAt?) -> Void)?
   /// The popups' showing, updating and closing, one after another
@@ -440,20 +465,31 @@ public final class CanvasView: NSView {
   package private(set) var ruleBreaks = (redraws: 0, decodes: 0, swaps: 0, noteRequests: 0, noteSwaps: 0)
 
   public convenience override init(frame: NSRect) {
-    self.init(frame: frame, notes: CanvasView.sharedNotes)
+    self.init(frame: frame, notes: CanvasView.sharedNotes, display: CanvasView.sharedDisplay)
   }
 
-  /// With a Note renderer of its own, its snapshots cached in `noteCache` (CanvasBench and tests: not the app's cache)
+  /// With a Note renderer of its own, its snapshots, measured sizes, formulas and diagrams kept in `noteCache`
+  /// (CanvasBench and tests: not the app's cache), as the app keeps them
   package convenience init(frame: NSRect, noteCache: URL) {
-    self.init(frame: frame, notes: NoteRenderer(cache: noteCache))
+    let web = NoteRenderer(cache: noteCache)
+    self.init(frame: frame, notes: web, display: NativeNotes(web: web, kept: noteCache.appending(path: "native")))
   }
 
-  /// With that Note renderer (CanvasBench: one for several canvases, as the app's)
-  package init(frame: NSRect, notes: NoteRenderer) {
+  /// With that Note renderer (CanvasBench: one for several canvases, as the app's), and its Markdown drawn by `display`
+  /// (by default one of its own, with nothing kept on disk)
+  /// The pasteboard type of a Note's source as copied
+  static let markdownSource = NSPasteboard.PasteboardType("com.yhnocoder.codeboard.markdown")
+
+  package init(frame: NSRect, notes: NoteRenderer, display: NativeNotes? = nil) {
     self.notes = notes
+    self.display = display ?? NativeNotes(web: notes)
     super.init(frame: frame)
     // in a test process: no menu, alert or panel ever comes up
     TestGuard.install()
+    // what a Note copies is read back as its source by every Note, those copied by earlier versions too
+    MarkdownEditorView.sourceType = CanvasView.markdownSource
+    // a Note's [[reference]] points at a card
+    MarkdownEditing.referenceTitle = "Link to Card"
     CanvasView.all.add(self)
     registerForDraggedTypes([.string, .fileURL])
     // layer-hosting: the canvas owns its layer tree, y-down like the board
@@ -569,30 +605,52 @@ public final class CanvasView: NSView {
     let backing = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
     let images = self.images
     let known = CanvasView.highlighter
-    let notes = self.notes
+    let display = self.display
     let open = document?.board
-    let (scene, overviews, shadow, highlighter, b, measures, sizes, inlines, inline) = try await Task.detached(
-      priority: .userInitiated
-    ) {
+    // where the camera will be once it is installed (install: arriving, else kept, else the board's top left at 100 %)
+    let opensAt = keepCamera ? camera : arriving ?? keptCamera(of: board, in: vault)
+    let work = Task.detached(priority: .userInitiated) {
       let package = vault.url(of: board.path)
       let b = try open ?? vault.board(at: board.path)
       let measures = Scene.measures(b, package: package, vault: vault)
-      let sizes = await CanvasView.measure(measures, theme: theme, notes: notes)
+      let sizes = await CanvasView.measure(measures, theme: theme, display: display)
+      display.prepare(
+        CanvasView.inView(measures, of: b, sizes: sizes, camera: opensAt, size: size, theme: theme, backing: backing))
       let inlines = Scene.inlineMeasures(b, package: package, vault: vault, theme: theme)
-      let inline = await CanvasView.measureInline(inlines, theme: theme, notes: notes)
-      let highlighter = known ?? Highlighter()
+      let inline = await CanvasView.measureInline(inlines, theme: theme, display: display)
+      // the Note display's, compiled as the app starts: one in the app
+      let highlighter = known ?? NativeNotes.highlighter
       let scene = Scene(
         b, package: package, vault: vault, theme: theme, highlighter: highlighter, sizes: sizes, inline: inline)
       let fit = Camera.fit(scene.bounds, in: size).zoom
+      let limits = ZoomLimits(view: size, content: scene.bounds)
+      let first =
+        opensAt.map { Camera(origin: $0.origin, zoom: limits.clamp($0.zoom)) } ?? Camera.opening(scene.bounds)
+      let firstView = first.visible(size)
       let overviews = await withTaskGroup(of: (Int, Overview).self) { g in
         for (i, it) in scene.items.enumerated() {
           g.addTask {
+            let inView = it.rect.insetBy(dx: -it.bleed, dy: -it.bleed).intersects(firstView)
+            // in view: at the zoom it opens at, sharp from the first frame, rather than the board's overview size
+            // enlarged until its own bitmap comes
+            let opening = Levels.scale(
+              inView ? max(fit, min(first.zoom, limits.max)) : fit, backing: backing, size: it.bitmapSize)
             guard it.drawing.byRenderer else {
-              let s = Levels.scale(fit, backing: backing, size: it.bitmapSize)
-              return (i, (CanvasView.render(it, scale: s, theme: theme, images: images).surface, s, .drawn))
+              return (i, (CanvasView.render(it, scale: opening, theme: theme, images: images).surface, opening, .drawn))
+            }
+            // A Note drawn natively is drawn now when in view, as the other items are: shown with its paper alone it
+            // would read as blank until its picture came. Out of view its overview is the one kept on disk, else its
+            // paper at first, and the queue draws it right after the board shows (RestPlan), so the board does not
+            // wait for every Note's
+            if inView,
+              let snap = await CanvasView.picture(it, scale: opening, theme: theme, display: display, priority: 1),
+              let drawn = CanvasView.compose(it, snap, scale: opening, theme: theme, images: images)
+            {
+              return (i, (drawn, opening, .drawn))
             }
             let s = Levels.noteOverview(fit, backing: backing, size: it.bitmapSize)
-            if let snap = await CanvasView.picture(it, scale: s, theme: theme, notes: notes, priority: nil),
+            // only from the disk cache here
+            if let snap = await CanvasView.picture(it, scale: s, theme: theme, display: display, priority: nil),
               let drawn = CanvasView.compose(it, snap, scale: s, theme: theme, images: images)
             {
               return (i, (drawn, s, .drawn))
@@ -607,11 +665,13 @@ public final class CanvasView: NSView {
       // drawn here once, so installing it on the main thread finds it ready
       _ = theme.backdrop.flatMap(Backdrop.image)
       return (scene, overviews, CanvasView.shadow(theme), highlighter, b, measures, sizes, inlines, inline)
-    }.value
+    }
+    // the board left is kept where it was (and as it was), also when its camera never came to rest: while the new one
+    // is read and laid out, as its picture takes the main thread tens of milliseconds
+    if !keepCamera { self.keepCamera(now: true) }
+    let (scene, overviews, shadow, highlighter, b, measures, sizes, inlines, inline) = try await work.value
     CanvasView.highlighter = highlighter
     guard load == loads else { return }
-    // the board left is kept where it was (and as it was), also when its camera never came to rest
-    if !keepCamera { self.keepCamera(now: true) }
     shownBoard = b
     measured = [:]
     for m in measures { if let size = sizes[m.card] { measured[m.card] = (m.note, m.width, size) } }
@@ -633,38 +693,71 @@ public final class CanvasView: NSView {
     if remotePictures.count > kept { refresh() }
   }
 
+  /// The Notes of a board that will be in view where it opens, nearest the middle first, from where its cards are
+  /// (`camera`, else its top left at 100 % as Camera.opening puts it, of the cards alone): for drawing them ahead, with
+  /// their stored heights and the scale the board opens them at unless its zoom is clamped (the overview's `opening`)
+  nonisolated static func inView(
+    _ ms: [Scene.Measure], of b: Board, sizes: [CardID: NoteMetrics], camera: Camera?, size: CGSize, theme: Theme,
+    backing: CGFloat
+  ) -> [(note: NoteSizeRequest, height: Double?, scale: Double)] {
+    var at: [CardID: CGPoint] = [:]
+    var stored: [CardID: Double] = [:]
+    for c in b.cards {
+      at[c.id] = CGPoint(x: c.x, y: c.y)
+      stored[c.id] = c.height
+    }
+    let corner = CGPoint(x: at.values.map(\.x).min() ?? 0, y: at.values.map(\.y).min() ?? 0)
+    let view = (camera ?? Camera.opening(CGRect(origin: corner, size: CGSize(width: 1, height: 1)))).visible(size)
+    let mid = CGPoint(x: view.midX, y: view.midY)
+    let zoom = camera?.zoom ?? 1
+    return ms.compactMap { m -> (CGFloat, (NoteSizeRequest, Double?, Double))? in
+      guard m.sidenote == nil, m.width > 0, let p = at[m.card],
+        let h = stored[m.card] ?? sizes[m.card].map({ Double($0.size.height) })
+      else { return nil }
+      let r = CGRect(x: p.x, y: p.y, width: m.width, height: h)
+      guard r.intersects(view) else { return nil }
+      let request = NoteSizeRequest(
+        note: m.note, width: m.width, folder: m.folder, look: theme.id.rawValue, dark: theme.dark, refs: m.refs,
+        hideHead: m.hideHead)
+      // its bitmap's size without the shadow's bleed: only a Note too big for the zoom's scale is capped by it
+      let scale = Levels.scale(zoom, backing: backing, size: r.size)
+      return (hypot(r.midX - mid.x, r.midY - mid.y), (request, stored[m.card], Double(scale)))
+    }.sorted { $0.0 < $1.0 }.map(\.1)
+  }
+
   /// The sizes the Note renderer gives the Notes without a stored height: from what it kept, else measured in the web
   /// view all together. A Note it could not measure is left out (`Scene` gives it a height of its own)
-  nonisolated static func measure(_ ms: [Scene.Measure], theme: Theme, notes: NoteRenderer) async -> [CardID:
+  nonisolated static func measure(_ ms: [Scene.Measure], theme: Theme, display: any NoteDisplay) async -> [CardID:
     NoteMetrics]
   {
     var out: [CardID: NoteMetrics] = [:]
-    let sizes = await metrics(ms, theme: theme, notes: notes)
+    let sizes = await metrics(ms, theme: theme, display: display)
     for (m, s) in zip(ms, sizes) { if let s { out[m.card] = s } }
     return out
   }
 
   /// The heights of the Always Show sidenotes in code cards (`Scene.inlineMeasures`), measured as `measure` does
-  nonisolated static func measureInline(_ ms: [Scene.Measure], theme: Theme, notes: NoteRenderer) async -> [SidenoteID:
+  nonisolated static func measureInline(_ ms: [Scene.Measure], theme: Theme, display: any NoteDisplay) async
+    -> [SidenoteID:
     NoteMetrics]
   {
     var out: [SidenoteID: NoteMetrics] = [:]
-    let sizes = await metrics(ms, theme: theme, notes: notes)
+    let sizes = await metrics(ms, theme: theme, display: display)
     for (m, s) in zip(ms, sizes) { if let id = m.sidenote, let s { out[id] = s } }
     return out
   }
 
-  private nonisolated static func metrics(_ ms: [Scene.Measure], theme: Theme, notes: NoteRenderer) async
+  private nonisolated static func metrics(_ ms: [Scene.Measure], theme: Theme, display: any NoteDisplay) async
     -> [NoteMetrics?]
   {
     guard !ms.isEmpty else { return [] }
     let requests = ms.map {
-      NoteRenderer.SizeRequest(
+      NoteSizeRequest(
         note: $0.note, width: $0.width, folder: $0.folder, look: theme.id.rawValue, dark: theme.dark, refs: $0.refs,
         hideHead: $0.hideHead)
     }
     // before any picture: the board waits for these
-    let sizes = try? await notes.metrics(of: requests, priority: 1)
+    let sizes = try? await display.metrics(of: requests, priority: 1)
     return sizes ?? []
   }
 
@@ -718,8 +811,25 @@ public final class CanvasView: NSView {
         box.addSublayer(l)
       }
       held.minificationFilter = .trilinear
-      held.contents = overview
+      fill(held, overview, scale: o.scale)
       rest.minificationFilter = .linear
+    }
+
+    /// A slot's bitmap over as much of the board as its pixels cover at its scale (its sides are rounded up to whole
+    /// pixels), not stretched over the item's own size: so at the zoom it was drawn for it is shown pixel for pixel,
+    /// where the stretch by a fraction of a pixel would resample it all
+    func fill(_ l: CALayer, _ s: IOSurface?, scale: CGFloat) {
+      l.contents = s
+      guard let s, scale > 0 else {
+        l.frame = box.bounds.insetBy(dx: -bleed, dy: -bleed)
+        return
+      }
+      let b = Raster.bleed(bleed, at: scale)
+      let whole = box.bounds.insetBy(dx: -b, dy: -b)
+      let covers = CGSize(width: CGFloat(s.width) / scale, height: CGFloat(s.height) / scale)
+      // one drawn at another size (a picture of other proportions) stays stretched over the item
+      let near = abs(covers.width - whole.width) * scale < 1.5 && abs(covers.height - whole.height) * scale < 1.5
+      l.frame = near ? CGRect(origin: whole.origin, size: covers) : whole
     }
 
     /// What its bitmaps cover on the board
@@ -732,7 +842,7 @@ public final class CanvasView: NSView {
 
     func showOverview() {
       guard face.mayShowOverview(holdsOwn: heldSurface != nil) else { return }
-      held.contents = overview
+      fill(held, overview, scale: overviewScale)
       heldSurface = nil
       heldScale = overviewScale
       coverHeld()
@@ -744,18 +854,18 @@ public final class CanvasView: NSView {
       switch job.slot {
       case .held:
         if fades { CanvasView.fadeIn(held, over: held.contents) }
-        held.contents = s
+        fill(held, s, scale: job.scale)
         heldSurface = s
         heldScale = job.scale
       case .rest:
         if fades { CanvasView.fadeIn(rest, over: rest.contents) }
-        rest.contents = s
+        fill(rest, s, scale: job.scale)
         restScale = job.scale
       case .overview:
         overview = s
         if heldSurface == nil {
           if fades { CanvasView.fadeIn(held, over: held.contents) }
-          held.contents = s
+          fill(held, s, scale: job.scale)
         }
       }
       coverHeld()
@@ -770,11 +880,11 @@ public final class CanvasView: NSView {
 
     func clearRest() {
       if let s = rest.contents as? IOSurface, let scale = restScale, face.keepsRest(holdsOwn: heldSurface != nil) {
-        held.contents = s
+        fill(held, s, scale: scale)
         heldSurface = s
         heldScale = scale
       }
-      rest.contents = nil
+      fill(rest, nil, scale: 0)
       restScale = nil
       coverHeld()
     }
@@ -975,10 +1085,17 @@ public final class CanvasView: NSView {
     m.m22 = camera.zoom
     m.m41 = -camera.origin.x * camera.zoom
     m.m42 = -camera.origin.y * camera.zoom
+    // at rest on device pixels (settleOnPixels): the camera itself stays where it is
+    if settledAt == camera {
+      let b = backing
+      m.m41 = (m.m41 * b).rounded() / b
+      m.m42 = (m.m42 * b).rounded() / b
+    }
     withoutAnimation {
       world.sublayerTransform = m
       if chrome.sublayers?.isEmpty == false { drawChrome() } else { placeAlignBar() }
       if editing != nil { cameraMovedWhileEditing() }
+      if descWriting != nil { placeDesc() }
       if !pops.isEmpty { positionPop() }
       if refPeek != nil { placeRefPeek() }
       if summaryButtons.superlayer != nil {
@@ -995,6 +1112,7 @@ public final class CanvasView: NSView {
           l.clearRest()
           l.held.minificationFilter = .trilinear
         }
+        placeItems()
       }
       // the pointer at rest over what moved under it
       if let w = pointerInWindow { rehover(convert(w, from: nil)) }
@@ -1205,10 +1323,15 @@ public final class CanvasView: NSView {
 
   /// Where the board shown was last left on this machine (main camsOf), a camera not written yet first
   var storedCamera: Camera? {
-    guard let (board, vault) = shown else { return nil }
+    guard let (board, vault) = shown, let c = keptCamera(of: board, in: vault) else { return nil }
+    return Camera(origin: c.origin, zoom: limits.clamp(c.zoom))
+  }
+
+  /// The camera a board was left at, its zoom not yet held to the board's limits
+  func keptCamera(of board: VaultBoard, in vault: Vault) -> Camera? {
     if let k = cameraToKeep, k.board == board.id, k.vault.root == vault.root { return k.camera }
     guard let c = cameras?.cameras(for: vault)[board.id] else { return nil }
-    return Camera(origin: CGPoint(x: c.x, y: c.y), zoom: limits.clamp(c.zoom))
+    return Camera(origin: CGPoint(x: c.x, y: c.y), zoom: c.zoom)
   }
 
   /// The camera come to rest is kept for the board, to open there next time: written once nothing has moved it for
@@ -1241,6 +1364,7 @@ public final class CanvasView: NSView {
 
   /// At rest: what each item should hold now, within what the other canvases leave of the budget
   func arrive() {
+    if scene != nil, onScreen { settleOnPixels() }
     keepCamera()
     guard scene != nil, onScreen else { return }
     CanvasView.clock += 1
@@ -1279,8 +1403,47 @@ public final class CanvasView: NSView {
     wake()
   }
 
+  /// At rest every item's bitmaps start on a device pixel: Core Animation resamples a layer placed between two, which
+  /// softens all of it (half a pixel off kept 55 % of a line of text's edge contrast at 100 % on a 2x screen, 44 % on a
+  /// 1x one). The world's translation goes to the nearest device pixel (the camera itself does not move: what is
+  /// pressed and where the board opens next are where they were), then each item that is not tilted is moved by what is
+  /// left of its own position at this zoom: each by less than half a device pixel, with no animation. The camera moving
+  /// takes the world's translation back, a zoom the items too (`placeItems`), and the next rest settles them again; a
+  /// pan keeps the items' moves, as it moves everything by the same amount
+  func settleOnPixels() {
+    if settledAt != camera {
+      settledAt = camera
+      applyCamera()
+    }
+    placeItems(onPixels: camera.zoom * backing)
+  }
+
+  /// Each item's box where the scene has it, or (`onPixels`: device pixels per board unit) its corner moved to the
+  /// nearest of them
+  func placeItems(onPixels k: CGFloat? = nil) {
+    guard let scene, scene.items.count == items.count else { return }
+    func off(_ v: CGFloat) -> CGFloat { k.map { ((v * $0).rounded() - v * $0) / $0 } ?? 0 }
+    // the cards Tidy Up is sliding are where the slide has them (it settles them when it ends)
+    let slid = tidySlide?.started == true ? tidySlide?.from ?? [:] : [:]
+    withoutAnimation {
+      for (it, l) in zip(scene.items, items) where it.tilt == 0 && l.box.animation(forKey: "position") == nil {
+        if case .card(let id)? = it.owner, slid[id] != nil { continue }
+        let r = it.rect
+        // the item's own corner: its bitmaps' bleed is whole pixels at the scale they are drawn for
+        l.box.position = CGPoint(x: r.midX + off(r.minX), y: r.midY + off(r.minY))
+      }
+    }
+  }
+
   /// Each frame at rest: start redraws up to the limit, swap in finished ones within the frame's budget
   func pump() {
+    startRedraws()
+    swapIn()
+  }
+
+  /// Redraws started up to the limit: each frame at rest, and as soon as one finishes (most of a Note's pictures take a
+  /// few ms; a lane waiting for the next frame stood idle most of the time)
+  func startRedraws() {
     guard let scene else { return }
     for (job, generation) in queue.start() {
       worked = true
@@ -1295,12 +1458,12 @@ public final class CanvasView: NSView {
       nextTask += 1
       let epoch = gestureStarts
       if job.note {
-        let notes = self.notes
+        let display = self.display
         let priority = nextNote
         nextNote -= 1
         tasks[id] = Task.detached(priority: .userInitiated) { [weak self] in
           let r = await CanvasView.drawNote(
-            item, scale: job.scale, theme: theme, images: images, notes: notes, priority: priority)
+            item, scale: job.scale, theme: theme, images: images, display: display, priority: priority)
           await self?.finished(
             job, generation: generation, surface: r.surface, decodes: 0, cancelled: r.late, epoch: epoch, task: id)
         }
@@ -1313,8 +1476,15 @@ public final class CanvasView: NSView {
         }
       }
     }
+  }
+
+  /// Finished redraws swapped in within the frame's budget
+  func swapIn() {
     let writing = editingIndex
-    let swaps = queue.takeSwaps().filter { $0.job.item != writing }
+    let view = camera.visible(bounds.size)
+    let swaps = queue.takeSwaps { self.items[$0.job.item].bitmapFrame.intersects(view) }.filter {
+      $0.job.item != writing
+    }
     guard !swaps.isEmpty else { return }
     if !motion.isResting || gesture != nil {
       ruleBreaks.swaps += swaps.count
@@ -1338,6 +1508,7 @@ public final class CanvasView: NSView {
       ruleBreaks.redraws += 1
       ruleBreaks.decodes += decodes
     }
+    if motion.isResting && gesture == nil { startRedraws() }
     wake()
   }
 
@@ -1370,10 +1541,10 @@ public final class CanvasView: NSView {
   /// bitmap when cancelled (a gesture started: a picture the web view was drawing still finishes, into the renderer's
   /// cache) or when the renderer failed. late: cancelled while the paper was being drawn under the picture
   nonisolated static func drawNote(
-    _ item: Scene.Item, scale: CGFloat, theme: Theme, images: DecodeCache, notes: NoteRenderer, priority: Int
+    _ item: Scene.Item, scale: CGFloat, theme: Theme, images: DecodeCache, display: any NoteDisplay, priority: Int
   ) async -> (surface: IOSurface?, late: Bool) {
     guard !Task.isCancelled,
-      let snap = await picture(item, scale: scale, theme: theme, notes: notes, priority: priority),
+      let snap = await picture(item, scale: scale, theme: theme, display: display, priority: priority),
       !Task.isCancelled
     else { return (nil, false) }
     let s = compose(item, snap, scale: scale, theme: theme, images: images)
@@ -1382,24 +1553,24 @@ public final class CanvasView: NSView {
 
   /// The Note renderer's picture of an item it draws, at a scale; with no priority only from its disk cache
   nonisolated static func picture(
-    _ item: Scene.Item, scale: CGFloat, theme: Theme, notes: NoteRenderer, priority: Int?
+    _ item: Scene.Item, scale: CGFloat, theme: Theme, display: any NoteDisplay, priority: Int?
   ) async -> NoteSnapshot? {
     switch item.drawing {
     case .note(let n):
       let look = theme.id.rawValue
       guard let priority else {
-        return await notes.cached(
+        return await display.cached(
           of: n.content, width: item.rect.width, height: n.height, folder: n.folder, scale: scale, look: look,
           dark: theme.dark, refs: n.refs, hideHead: n.hideHead)
       }
-      return try? await notes.snapshot(
+      return try? await display.snapshot(
         of: n.content, width: item.rect.width, height: n.height, folder: n.folder, scale: scale, look: look,
         dark: theme.dark, refs: n.refs, hideHead: n.hideHead, priority: priority)
     case .image(let p):
       guard p.svg, let url = p.url else { return nil }
       let width = Int((item.rect.width * scale).rounded(.up))
-      guard let priority else { return await notes.cachedPicture(of: url, width: width, dark: theme.dark) }
-      return try? await notes.picture(of: url, width: width, dark: theme.dark, priority: priority)
+      guard let priority else { return await display.cachedPicture(of: url, width: width, dark: theme.dark) }
+      return try? await display.picture(of: url, width: width, dark: theme.dark, priority: priority)
     case .code(let c) where !c.inline.isEmpty:
       // each Always Show sidenote drawn by the renderer as a Note is, put where it goes in the card; none until all are
       var shots: [(NoteSnapshot, CGPoint)] = []
@@ -1407,13 +1578,13 @@ public final class CanvasView: NSView {
         let look = theme.id.rawValue
         let snap: NoteSnapshot?
         if let priority {
-          snap = try? await notes.snapshot(
+          snap = try? await display.snapshot(
             of: .inline(n.text), width: n.frame.width, height: nil, folder: n.folder, scale: scale, look: look,
-            dark: theme.dark, refs: n.refs, priority: priority)
+            dark: theme.dark, refs: n.refs, hideHead: false, priority: priority)
         } else {
-          snap = await notes.cached(
+          snap = await display.cached(
             of: .inline(n.text), width: n.frame.width, height: nil, folder: n.folder, scale: scale, look: look,
-            dark: theme.dark, refs: n.refs)
+            dark: theme.dark, refs: n.refs, hideHead: false)
         }
         guard let snap, !Task.isCancelled else { return nil }
         shots.append((snap, n.frame.origin))
@@ -1501,6 +1672,42 @@ public final class CanvasView: NSView {
       } else {
         out.drawn.insert(i)
       }
+    }
+    return out
+  }
+
+  /// The items in view (by index) showing a bitmap at the display's resolution (`sharp`) and those showing one below it,
+  /// enlarged (`soft`); items showing nothing, or a Note only its paper, are in neither. Read only, for CanvasBench
+  package var resolutionInView: (sharp: Set<Int>, soft: Set<Int>) {
+    let view = camera.visible(bounds.size)
+    let z = min(camera.zoom, limits.max)
+    var out = (sharp: Set<Int>(), soft: Set<Int>())
+    for (i, l) in items.enumerated() where l.bitmapFrame.intersects(view) {
+      // what shows: the rest bitmap over the held one
+      let shown: CGFloat? = l.rest.contents != nil ? l.restScale : l.held.contents != nil ? l.heldScale : nil
+      guard let s = shown, !(l.note && l.pictureScale == 0) else { continue }
+      if s >= Levels.scale(z, backing: backing, size: l.bitmapFrame.size) * 0.98 {
+        out.sharp.insert(i)
+      } else {
+        out.soft.insert(i)
+      }
+    }
+    return out
+  }
+
+  /// Of the items in view: those whose bitmap's top left falls between device pixels (resampled: softened by up to half a
+  /// pixel) and those whose size caps their bitmap below the display's resolution (Levels.cap: enlarged). For CanvasBench
+  package var placementInView: (inView: Int, between: Int, capped: Int) {
+    let view = camera.visible(bounds.size)
+    let z = min(camera.zoom, limits.max)
+    var out = (inView: 0, between: 0, capped: 0)
+    let t = world.sublayerTransform
+    for l in items where l.bitmapFrame.intersects(view) {
+      out.inView += 1
+      let o = CGPoint(x: t.m41 + l.bitmapFrame.minX * t.m11, y: t.m42 + l.bitmapFrame.minY * t.m22)
+      let (x, y) = (o.x * backing, o.y * backing)
+      if abs(x - x.rounded()) > 0.02 || abs(y - y.rounded()) > 0.02 { out.between += 1 }
+      if Levels.cap(l.bitmapFrame.size) < z * backing * 0.98 { out.capped += 1 }
     }
     return out
   }

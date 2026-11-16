@@ -1,8 +1,8 @@
 import AppKit
 import CodeBoardModel
 import CodeBoardNotes
-import CodeBoardSyntax
 import QuartzCore
+import TreeSitterHighlight
 
 // Editing on the canvas, after the web board's interact.ts and gesture.ts with the Mac's conventions: select (click,
 // ⇧/⌘-click, marquee, ⌘A, Esc), move (drag, arrow keys), resize (per kind), delete, copy, cut, paste, duplicate, stacking
@@ -33,6 +33,8 @@ struct Gesture {
     case sticker(StickerDrag)
     /// A Link List's row dragged
     case row(RowDrag)
+    /// The text of the one card selected, selected at rest (CanvasRestText)
+    case text(CardID)
   }
 
   var kind: Kind
@@ -135,7 +137,6 @@ extension CanvasView {
       stopObserving?()
       document = doc
       stopObserving = doc.observe { [weak self] in self?.documentChanged($0) }
-      _ = noteEditor  // its page loads while the board does
     }
     try await load(board, in: vault, theme: theme, keepCamera: false)
   }
@@ -175,7 +176,7 @@ extension CanvasView {
     refreshes += 1
     let n = refreshes
     let board = doc.board
-    let (theme, notes, images, backing) = (self.theme, self.notes, self.images, self.backing)
+    let (theme, display, images, backing) = (self.theme, self.display, self.images, self.backing)
     let known = measured
     let knownInline = measuredInline
     let fit = fitZoom
@@ -199,7 +200,7 @@ extension CanvasView {
             todo.append(m)
           }
         }
-        sizes.merge(await CanvasView.measure(todo, theme: theme, notes: notes)) { a, _ in a }
+        sizes.merge(await CanvasView.measure(todo, theme: theme, display: display)) { a, _ in a }
         // the Always Show sidenotes in code cards, measured again only when changed
         let ims = Scene.inlineMeasures(board, package: package, vault: vault, theme: theme)
         var inline: [SidenoteID: NoteMetrics] = [:]
@@ -212,7 +213,7 @@ extension CanvasView {
             inlineTodo.append(m)
           }
         }
-        inline.merge(await CanvasView.measureInline(inlineTodo, theme: theme, notes: notes)) { a, _ in a }
+        inline.merge(await CanvasView.measureInline(inlineTodo, theme: theme, display: display)) { a, _ in a }
         let s = Scene(
           board, package: package, vault: vault, theme: theme, highlighter: highlighter ?? Highlighter(), sizes: sizes,
           inline: inline, reusing: old, vaultSeen: seen, fetching: fetching, remote: remote)
@@ -221,7 +222,7 @@ extension CanvasView {
         var fresh: [Int: Fresh] = [:]
         for (i, it) in s.items.enumerated() where !CanvasView.keeps(it.owner.flatMap { before[$0] }, it, s.reused) {
           fresh[i] = await CanvasView.draw(
-            it, fit: fit, zoom: zoom, view: view, backing: backing, theme: theme, images: images, notes: notes)
+            it, fit: fit, zoom: zoom, view: view, backing: backing, theme: theme, images: images, display: display)
         }
         return (s, fresh, ms, sizes, ims, inline)
       }.value
@@ -265,13 +266,13 @@ extension CanvasView {
   /// shows bare paper where its text was
   nonisolated static func draw(
     _ it: Scene.Item, fit: CGFloat, zoom: CGFloat, view: CGRect, backing: CGFloat, theme: Theme, images: DecodeCache,
-    notes: NoteRenderer
+    display: any NoteDisplay
   ) async -> Fresh {
     func bitmap(_ scale: CGFloat) async -> (IOSurface?, NoteFace) {
       guard it.drawing.byRenderer else {
         return (render(it, scale: scale, theme: theme, images: images).surface, .drawn)
       }
-      if let snap = await picture(it, scale: scale, theme: theme, notes: notes, priority: 0),
+      if let snap = await picture(it, scale: scale, theme: theme, display: display, priority: 0),
         let s = compose(it, snap, scale: scale, theme: theme, images: images)
       {
         return (s, .drawn)
@@ -310,7 +311,7 @@ extension CanvasView {
         if let f = fresh[i] {
           let l = ItemLayers(it, overview: f.overview, shadow: it.drawing.framed ? shadow : nil)
           if let (surface, scale) = f.sharp {
-            l.held.contents = surface
+            l.fill(l.held, surface, scale: scale)
             l.heldSurface = surface
             l.heldScale = scale
           }
@@ -408,7 +409,7 @@ extension CanvasView {
     var fresh: [Int: Fresh] = [:]
     for (i, it) in s.items.enumerated() {
       fresh[i] = await CanvasView.draw(
-        it, fit: fit, zoom: zoom, view: view, backing: backing, theme: theme, images: images, notes: notes)
+        it, fit: fit, zoom: zoom, view: view, backing: backing, theme: theme, images: images, display: display)
     }
     reinstall(s, fresh: fresh)
   }
@@ -589,6 +590,7 @@ extension CanvasView {
       if let acts = sectionActsLayer() { chrome.addSublayer(acts) }
       drawHoverLine()
       placeHeadActs()
+      if restText != nil { drawRestText() }
       placeAlignBar()
       drawPorts()
       drawConnect()
@@ -994,6 +996,8 @@ extension CanvasView {
   /// rest, as the web board's :hover and pointer moves follow it
   func rehover(_ v: CGPoint) {
     guard gesture == nil else { return }
+    var onSticker: StickerID?
+    defer { hoverSticker(onSticker) }
     if spaceHeld { return NSCursor.openHand.set() }
     hoverChip(at: camera.board(v))
     let onBar = alignBarButton(at: v)
@@ -1038,6 +1042,7 @@ extension CanvasView {
     }
     if let i = stickerAt(camera.board(v)), markAt(camera.board(v)) == nil {
       (stickerSpots[i].line ? NSCursor.pointingHand : NSCursor.openHand).set()
+      onSticker = stickerSpots[i].id
       hover(nil)
       return
     }
@@ -1108,15 +1113,39 @@ extension CanvasView {
     dropPicture()
     // a press anywhere puts away a row's bookmark (WebBody.tsx: pointerdown leaves the row)
     closeRowPeek()
+    // and the text selected at rest (the browser's selection goes with a press)
+    clearRestText()
     if spacePanDown(e) { return }
+    // a press anywhere but in it writes the description being written (its editor takes its own presses)
+    if descWriting != nil { endDesc() }
+    // a header button of the card written in (its M↓, its ···): the writing goes on, the keys stay in the editor
+    if let ed = editing, ed.writer != nil,
+      let (id, a) = headAct(at: camera.board(convert(e.locationInWindow, from: nil))), id == ed.id
+    {
+      if e.clickCount == 1 {
+        hold(
+          over: { [weak self] in self?.headAct(at: $0).map { $0 == (id, a) } == true },
+          act: { [weak self] in self?.press(a, of: id) })
+      }
+      return
+    }
     // AppKit sends a multi-click's later presses to the view its first went to: a double-click's second press over the
     // editor its first press opened is the editor's, as in main
-    if editing != nil, let sv = noteEditor.view.superview,
-      noteEditor.view.hitTest(sv.convert(e.locationInWindow, from: nil)) != nil
+    if let w = writingView, let sv = w.superview,
+      w.hitTest(sv.convert(e.locationInWindow, from: nil)) != nil
     {
       pressToEditor = true
-      window?.makeFirstResponder(noteEditor.view)
-      return noteEditor.view.mouseDown(with: e)
+      window?.makeFirstResponder(w)
+      return w.mouseDown(with: e)
+    }
+    // on the paper of the card written in natively, off its text: below the text the caret goes to the end, beside it
+    // nothing changes; the writing goes on
+    if let ed = editing, let v = ed.writer, hitCard(camera.board(convert(e.locationInWindow, from: nil))) == ed.id {
+      if v.convert(e.locationInWindow, from: nil).y > v.bounds.maxY {
+        v.doCommand(by: #selector(NSResponder.moveToEndOfDocument(_:)))
+      }
+      window?.makeFirstResponder(v)
+      return
     }
     // a click outside the card being written in ends the writing; on it while its editor is still mounting (that second
     // press, which main's editor would have) the writing goes on
@@ -1233,6 +1262,13 @@ extension CanvasView {
       return
     }
     if pressRow(e, view: v, board: p) { return }
+    // a task's checkbox on a card at rest: checked or unchecked on the release over it
+    if e.clickCount == 1, let t = taskAt(p) {
+      hold(
+        over: { [weak self] in self?.taskAt($0).map { $0.card == t.card && $0.nth == t.nth } == true },
+        act: { [weak self] in self?.toggleTask(t) })
+      return
+    }
     // a ref's preview closes, but on the press on its ref (which closes it too, as its second click)
     refPress = e.clickCount == 1 ? refAt(p) : nil
     if let peek = refPeek,
@@ -1247,12 +1283,15 @@ extension CanvasView {
         let at = boardRect(r.box, on: r.card)
         Task {
           await endEditing()
-          beginEditing(r.card, at: CGPoint(x: at.midX, y: at.midY), openRef: true)
+          beginEditing(r.card, at: CGPoint(x: at.midX, y: at.midY))
         }
         return
       }
-      // a card's grip, or a Note's bottom edge: Fit Content (Card.tsx .grip, .hb); a Text's edge or corner: nothing
-      if let (item, edges) = sectionEdgeOrHandle(v, p) {
+      // a card's grip, or a Note's bottom edge: Fit Content (Card.tsx .grip, .hb); a Text's edge or corner: nothing.
+      // Just inside a card's side its body is under the pointer (the board's side handles lie outside it): written in
+      if let (item, edges) = sectionEdgeOrHandle(v, p),
+        !(edges.isSubset(of: [.left, .right]) && item.card != nil && hitCard(p) == item.card)
+      {
         if case .card(let id) = item, !isText(id) {
           var note = false
           if case .note? = scene?.parts[id]?.content.body { note = true }
@@ -1322,7 +1361,7 @@ extension CanvasView {
   func hold(over: @escaping (CGPoint) -> Bool, act: @escaping () -> Void) { held = (over, act) }
 
   public override func mouseDragged(with e: NSEvent) {
-    if pressToEditor { return noteEditor.view.mouseDragged(with: e) }
+    if pressToEditor { return writingView?.mouseDragged(with: e) ?? () }
     if spacePanDragged(e) { return }
     if chipPressed != nil { return hoverChip(at: camera.board(convert(e.locationInWindow, from: nil))) }
     if alignPressed != nil { return hoverAlignBar(alignBarButton(at: convert(e.locationInWindow, from: nil)) ?? nil) }
@@ -1338,8 +1377,14 @@ extension CanvasView {
     let v = convert(e.locationInWindow, from: nil)
     let p = camera.board(v)
     switch g.kind {
-    case .press(let item, let toggle, _, _):
+    case .press(let item, let toggle, let was, _):
       guard hypot(v.x - g.startView.x, v.y - g.startView.y) >= dragSlop else { return }
+      // the one card selected, dragged on its body: its text is selected, the card stays (interact.ts: solo, inBody)
+      if case .card(let id)? = item, was, !toggle, doc.selection == [.card(id)], restOffset(id, g.start) != nil {
+        g.kind = .text(id)
+        gesture = g
+        return dragRestText(id, from: g.start, to: p)
+      }
       if case .arrow(let id)? = item {
         // an end of the selected arrow moves to another card or line; its label slides along it; the line itself stays
         // where its cards are
@@ -1430,6 +1475,8 @@ extension CanvasView {
       dragRow(&d, view: v)
       g.kind = .row(d)
       gesture = g
+    case .text(let id):
+      dragRestText(id, from: g.start, to: p)
     case .nudge, .still:
       break
     }
@@ -1438,7 +1485,7 @@ extension CanvasView {
   public override func mouseUp(with e: NSEvent) {
     if pressToEditor {
       pressToEditor = false
-      return noteEditor.view.mouseUp(with: e)
+      return writingView?.mouseUp(with: e) ?? ()
     }
     if spacePanUp(e) { return }
     if let b = alignPressed {
@@ -1472,6 +1519,9 @@ extension CanvasView {
     }
     guard let g = gesture, let doc = document else { return }
     switch g.kind {
+    case .text:
+      gesture = nil
+      settleRestText()
     case .press(let item, let toggle, let was, let inside):
       gesture = nil
       // a click on a ref
@@ -1524,7 +1574,8 @@ extension CanvasView {
       commitDraw(
         from: g.start, to: camera.board(v), moved: hypot(v.x - g.startView.x, v.y - g.startView.y) >= dragSlop)
     case .sticker(let d):
-      commitSticker(d, free: e.modifierFlags.contains(.option))
+      let p = camera.board(convert(e.locationInWindow, from: nil))
+      commitSticker(d, at: p, free: e.modifierFlags.contains(.option))
     case .row(let d):
       commitRow(d, view: convert(e.locationInWindow, from: nil))
     case .nudge, .still:
@@ -1694,10 +1745,12 @@ extension CanvasView {
   }
 
   /// Routes these arrows again with their cards where `placed` has them, and moves their labels
-  func reroute(_ indices: [Int], placed: (CardID) -> Scene.Placed?) {
+  func reroute(
+    _ indices: [Int], model: (CodeBoardModel.Arrow) -> CodeBoardModel.Arrow = { $0 }, placed: (CardID) -> Scene.Placed?
+  ) {
     guard let s = scene else { return }
     for i in indices where i < arrowGroups.count {
-      let a = s.arrowModels[i]
+      let a = model(s.arrowModels[i])
       guard let from = placed(a.from.card), let to = placed(a.to.card) else { continue }
       let (arrow, label) = Scene.route(a, from: from, to: to, theme: theme)
       routedArrows[i] = arrow
@@ -1819,11 +1872,11 @@ extension CanvasView {
   private func measureLeast(_ id: CardID, _ body: NoteBody, folder: URL) {
     guard leastWidths[id] == nil, case .text(var t) = body else { return }
     t.wrap = true
-    let req = NoteRenderer.SizeRequest(
+    let req = NoteSizeRequest(
       note: .text(t), width: 0, folder: folder, look: theme.id.rawValue, dark: theme.dark)
-    let notes = self.notes
+    let display = self.display
     Task {
-      guard let size = try? await notes.sizes(of: [req], priority: 0).first ?? nil else { return }
+      guard let size = try? await display.sizes(of: [req], priority: 0).first ?? nil else { return }
       leastWidths[id] = size.width
       if case .resize(var z)? = gesture?.kind, z.item == .card(id) {
         z.minSize.width = size.width
@@ -2013,6 +2066,11 @@ extension CanvasView {
     // Esc closes the bar's open panel, and only that
     if alignMore, e.keyCode == 53 { return setAlignMore(false) }
     guard document != nil else { return super.keyDown(with: e) }
+    if let v = writingView {
+      // the editor is there from the first: a key that came here is its
+      window?.makeFirstResponder(v)
+      return v.keyDown(with: e)
+    }
     if editing != nil {
       // the editor is mounting: its keys wait for it, Esc among them, in the order typed
       editing?.keys.append(e)
@@ -2022,7 +2080,7 @@ extension CanvasView {
       keysAhead?.append(e)
       return
     }
-    if !boardKey(e) { super.keyDown(with: e) }
+    if !restTextKey(e), !boardKey(e) { super.keyDown(with: e) }
   }
 
   public override func keyUp(with e: NSEvent) {
@@ -2136,6 +2194,7 @@ extension CanvasView {
 
   /// ⌘C: the selected cards (only cards: actions/shared.ts copyCardsSel); none, nothing
   @objc public func copy(_ sender: Any?) {
+    if copyRestText() { return }
     guard let board = shown?.board.id, let data = putOnPasteboard(selectedCards) else { return }
     copied = (board, data, 0)
   }

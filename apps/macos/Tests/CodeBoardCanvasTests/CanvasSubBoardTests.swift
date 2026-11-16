@@ -51,6 +51,87 @@ import Testing
     #expect(r.doc.board == board)
   }
 
+  /// On a folder board the new board is in the folder itself: the card left behind is its automatic one, so keeping
+  /// the folder board up with its folder adds none
+  @Test func cardsTurnedIntoABoardOnAFolderBoardLeaveItsOneAutomaticCard() async throws {
+    let r = try await Rig(Board(id: BoardID(rawValue: "here")), zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    let vault = Vault(root: r.root)
+    try vault.newFolder(in: "", name: "Plans")
+    let fb = try vault.newFolderBoard(in: "Plans")
+    let file = vault.url(of: fb.path).appending(path: Vault.boardFileName)
+    try Board(id: fb.id, cards: [note("a", x: 100, y: 100), note("c", x: 900, y: 500)]).encoded().write(to: file)
+    let doc = try BoardDocument { file }
+    try await c.show(doc, at: fb, in: vault, theme: .warmInk)
+    doc.select([.card(cid("a"))])
+    c.turnIntoBoard(nil)
+    await r.until("the name's field") { c.inPlace != nil }
+    c.endInPlace(commit: true)
+    let folder = try #require(try vault.tree().folder(at: "Plans"))
+    let child = try #require(folder.boards.first)
+    doc.sync { $0.keepUp(with: folder.entries) }
+    let showing = doc.board.cards.filter {
+      if case .own(let x) = $0.content, case .board(let s) = x.body { s.target == .board(child.id) } else { false }
+    }
+    #expect(showing.count == 1 && doc.board.isAuto(showing[0].id))
+  }
+
+  /// A double-click on a card drawn in a sub-board card's map enters the sub-board brought to that card (interact.ts
+  /// data-sub)
+  @Test func doubleClickingACardInASubBoardsMapEntersAtThatCard() async throws {
+    let root = FileManager.default.temporaryDirectory.appending(path: "canvas-edit-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    let kid = try Vault(root: root).newBoard(
+      in: "", title: "Kid",
+      board: Board(id: BoardID(rawValue: "kid"), cards: [note("k1", x: 0, y: 0), note("k2", x: 400, y: 0)]))
+    let frame = Card(
+      id: cid("f"), x: 100, y: 100, width: 560, height: 360,
+      content: .own(CardContent(body: .board(SubBoard(board: kid.id)))))
+    let r = try await Rig(Board(id: BoardID(rawValue: "here"), cards: [frame]), zoom: 1, root: root)
+    defer { r.close() }
+    let c = r.canvas
+    var map: Skeleton?
+    await r.until("the map drawn") {
+      if case .board(let d)? = c.scene?.parts[cid("f")]?.drawing { map = d.map }
+      return map != nil
+    }
+    let rect = try #require(c.scene?.placed[cid("f")]?.rect)
+    let block = try #require(map.flatMap { Drawing.block(cid("k2"), in: $0, rect) })
+    var entered: BoardEntry?
+    c.onEnterBoard = { entered = $0 }
+    c.doubleClick(at: CGPoint(x: block.midX, y: block.midY))
+    await r.until("the shell asked") { entered != nil }
+    #expect(entered?.board == kid.id && entered?.frame == cid("f") && entered?.reveal == cid("k2"))
+  }
+
+  /// A sub-board card whose board holds this one (a card pasted into the board it shows) is not entered: it says so
+  /// (subboards.ts enterFrame wouldCycle)
+  @Test func aBoardInsideItselfIsNotEntered() async throws {
+    let root = FileManager.default.temporaryDirectory.appending(path: "canvas-edit-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    func shows(_ id: String, _ b: String) -> Card {
+      Card(
+        id: cid(id), x: 100, y: 100, width: 560, height: 360,
+        content: .own(CardContent(body: .board(SubBoard(board: BoardID(rawValue: b))))))
+    }
+    try Vault(root: root).newBoard(
+      in: "", title: "Kid", board: Board(id: BoardID(rawValue: "kid"), cards: [shows("k", "here")]))
+    let r = try await Rig(
+      Board(id: BoardID(rawValue: "here"), cards: [shows("f", "kid"), shows("g", "here")]), zoom: 1, root: root)
+    defer { r.close() }
+    let c = r.canvas
+    var entered: [BoardEntry] = []
+    c.onEnterBoard = { entered.append($0) }
+    for f in ["f", "g"] {
+      c.toastText = nil
+      #expect(c.openSubBoard(cid(f)))
+      #expect(c.toastText == "Can’t open a board inside itself.")
+      #expect(c.crumbsBar.move == nil)
+    }
+    #expect(entered.isEmpty)
+  }
+
   /// Into a sub-board and out (subboards.ts enterFrame, leaveBoard, boardShown; Crumbs.tsx): the card's name hidden
   /// and its copy flying to the breadcrumb while the board fades out; the shell asked once it has; the board entered
   /// fading in from 1.03 with the breadcrumb, its current crumb hidden until the name lands. Esc deselects first, then

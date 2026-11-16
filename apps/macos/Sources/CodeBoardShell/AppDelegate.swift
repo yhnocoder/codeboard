@@ -45,6 +45,7 @@ import CodeBoardModel
   var driver: AppDriver?
 
   func applicationDidFinishLaunching(_ notification: Notification) {
+    CanvasView.warmUp()
     NSWindow.allowsAutomaticWindowTabbing = false
     NSApp.mainMenu = mainMenu()
     let saved = UserDefaults.standard.data(forKey: Self.stateKey).flatMap {
@@ -71,6 +72,8 @@ import CodeBoardModel
     self.panes = panes
     panes.onVaultChanged = { [weak self] in self?.readTree(reloadBoards: true) }
     panes.cameras = cameras
+    // beside the cameras: Application Support/<this app's id>
+    shell.machineFolder = cameras?.folder.deletingLastPathComponent()
     panes.pictures = CanvasView.defaultPictures
     let ai = AISettings(defaults: .standard)
     let keys = KeychainKeyStore()
@@ -202,12 +205,16 @@ import CodeBoardModel
     }
   }
 
+  /// The board's tabs; the reading pane answers the tab keys first while it has the keys (ReadingPaneView)
   @objc func closeTab(_ sender: Any?) {
     if let tab = shell.selected { shell.close(tab) } else { window?.performClose(sender) }
   }
 
   // Not toggleSidebar(_:): NSWindow answers that one itself (and disables it, having no split view)
   @objc func flipSidebar(_ sender: Any?) { shell.sidebarShown.toggle() }
+  @objc func flipReadingPane(_ sender: Any?) { shell.reading.shown.toggle() }
+  @objc func newWebTab(_ sender: Any?) { shell.openWeb(nil) }
+  @objc func moveReadingPane(_ sender: Any?) { shell.reading.side = shell.reading.side.other }
   /// The toolbar's ⋯ Rename Board… and Edit Mark…: in the sidebar
   @objc func renameBoard(_ sender: Any?) { shell.renameOpenBoard() }
   @objc func editMark(_ sender: Any?) { shell.editOpenBoardMark() }
@@ -240,6 +247,13 @@ import CodeBoardModel
       return window != nil
     case #selector(flipSidebar(_:)):
       item.title = shell.sidebarShown ? "Hide Sidebar" : "Show Sidebar"
+      return shell.vault != nil
+    case #selector(flipReadingPane(_:)):
+      item.title = shell.reading.shown ? "Hide Reading Pane" : "Show Reading Pane"
+      return shell.vault != nil
+    case #selector(newWebTab(_:)): return shell.vault != nil
+    case #selector(moveReadingPane(_:)):
+      item.title = shell.reading.side == .right ? "Move Reading Pane to the Left" : "Move Reading Pane to the Right"
       return shell.vault != nil
     case #selector(renameBoard(_:)): return shell.current != nil
     case #selector(editMark(_:)):
@@ -280,6 +294,11 @@ import CodeBoardModel
     file.addItem(withTitle: "Open Vault…", action: #selector(openVault(_:)), keyEquivalent: "o")
     file.addItem(item("Import Old Boards…", #selector(importOldBoards(_:)), "i", [.command, .shift]))
     file.addItem(.separator())
+    // no keys yet: the shortcut list (CanvasKeys) has no rows for them
+    file.addItem(withTitle: "New Web Tab", action: #selector(newWebTab(_:)), keyEquivalent: "")
+    // a web tab's view answers it
+    file.addItem(withTitle: "Open Location…", action: NSSelectorFromString("openLocation:"), keyEquivalent: "")
+    file.addItem(.separator())
     file.addItem(withTitle: "Close Tab", action: #selector(closeTab(_:)), keyEquivalent: "w")
     file.addItem(item("Close Window", #selector(NSWindow.performClose(_:)), "w", [.command, .shift]))
 
@@ -305,6 +324,8 @@ import CodeBoardModel
 
     let view = NSMenu(title: "View")
     view.addItem(item("Hide Sidebar", #selector(flipSidebar(_:)), "s", [.command, .control]))
+    view.addItem(item("Show Reading Pane", #selector(flipReadingPane(_:)), "r", [.command, .control]))
+    view.addItem(withTitle: "Move Reading Pane to the Left", action: #selector(moveReadingPane(_:)), keyEquivalent: "")
     view.addItem(.separator())
     // the board panes answer these (ShellSearch.swift)
     view.addItem(withTitle: "Search…", action: #selector(BoardPanes.searchBoards(_:)), keyEquivalent: "k")
@@ -333,10 +354,13 @@ import CodeBoardModel
     windows.addItem(item("Show Previous Tab", #selector(showPreviousTab(_:)), "[", [.command, .shift]))
     windows.addItem(item("Show Next Tab", #selector(showNextTab(_:)), "]", [.command, .shift]))
     // ⌃Tab and ⌃⇧Tab, the other tab-switching keys, without a second visible pair of items
-    let tabKeys: [(Selector, NSEvent.ModifierFlags)] = [
-      (#selector(showNextTab(_:)), .control), (#selector(showPreviousTab(_:)), [.control, .shift]),
+    // a keyboard's ⇧Tab types a back tab (U+0019), which a "\t" item does not match; an event made with a plain tab
+    // matches only that one
+    let tabKeys: [(Selector, String, NSEvent.ModifierFlags)] = [
+      (#selector(showNextTab(_:)), "\t", .control), (#selector(showPreviousTab(_:)), "\t", [.control, .shift]),
+      (#selector(showPreviousTab(_:)), "\u{19}", [.control, .shift]),
     ]
-    for (action, mask) in tabKeys { windows.addItem(hidden(item("", action, "\t", mask))) }
+    for (action, key, mask) in tabKeys { windows.addItem(hidden(item("", action, key, mask))) }
     windows.addItem(.separator())
     windows.addItem(
       withTitle: "Bring All to Front", action: #selector(NSApplication.arrangeInFront(_:)), keyEquivalent: "")

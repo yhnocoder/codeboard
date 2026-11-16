@@ -144,6 +144,20 @@ enum Icons {
   }
 
   /// `path` stroked as the board draws an icon (`.ico`), its square's top left at `at`, in a y-down context
+  /// The same at another size (`scale` times its 16 units), its line still 1 wide
+  static func stroke(_ path: CGPath, scale k: CGFloat, at: CGPoint, color: CGColor, in ctx: CGContext) {
+    ctx.saveGState()
+    ctx.translateBy(x: at.x - 0.5, y: at.y - 0.5)
+    ctx.scaleBy(x: k, y: k)
+    ctx.addPath(path)
+    ctx.setStrokeColor(color)
+    ctx.setLineWidth(1 / k)
+    ctx.setLineCap(.round)
+    ctx.setLineJoin(.round)
+    ctx.strokePath()
+    ctx.restoreGState()
+  }
+
   static func stroke(_ path: CGPath, at: CGPoint, color: CGColor, in ctx: CGContext) {
     ctx.saveGState()
     ctx.translateBy(x: at.x - 0.5, y: at.y - 0.5)
@@ -384,10 +398,10 @@ extension CanvasView {
     var other = t
     other.look = look
     let width = t.wrap ? card.width + (look == .box ? 20 : -20) : card.width
-    func req(_ t: TextCard, _ w: Double) -> NoteRenderer.SizeRequest {
+    func req(_ t: TextCard, _ w: Double) -> NoteSizeRequest {
       .init(note: .text(t), width: w, folder: n.folder, look: theme.id.rawValue, dark: theme.dark, refs: n.refs)
     }
-    let m = try? await notes.firstGlyphs(of: [req(t, card.width), req(other, width)])
+    let m = try? await display.firstGlyphs(of: [req(t, card.width), req(other, width)])
     var at = CGPoint(x: card.x, y: card.y)
     if let a = m?[0]?.first, let b = m?[1]?.first {
       at = CGPoint(x: card.x + a.x - b.x, y: card.y + a.y - b.y)

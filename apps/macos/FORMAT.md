@@ -19,17 +19,25 @@ A vault is a folder of its own. Its folder tree is the sidebar's tree: real fold
   Engine step.board/            a board package: the folder name without .board is the board's title
     board.json
     images/<file>               images the board shows
+  Papers.resource/              a resource package (Resources, below): the name without .resource is its title
+    resource.json
+    Attention Is All You Need/  an entry: a folder with entry.json and its files
+      entry.json
+      1706.03762v7.pdf
+    notes.pdf                   an entry that is only a file
   engine/                       a folder
     .folder.board/              the folder's own board (a folder board), titled "engine"
     Scheduler- prefill-decode.board/
   .codeboard/                   the app's own data (Vault.appDataFolder)
     shared/<card id>.json       shared cards
     shared/images/<file>        their images
+    site-rules/<domain>.json    the user's rules for reading saved pages of a site (web reading; not read yet)
 ```
 
 - Names starting with `.` are never listed (so `.codeboard/` is not a folder in the sidebar). A folder whose name ends in
-  `.board` is a package and is not looked into; any other folder is a folder. Files outside packages are ignored for now
-  (resources come later). Sidebar order is Finder's (`localizedStandardCompare`).
+  `.board` is a board package, one whose name ends in `.resource` a resource package (Resources, below); neither is
+  looked into as a folder, and any other folder is a folder. Files outside packages are ignored. Sidebar order is
+  Finder's (`localizedStandardCompare`): in a folder its subfolders, then its boards, then its resources.
 - The title lives only in the package name, so renaming in Finder renames the board; `board.json` has no title.
 - **Folder boards**: a folder (not the vault itself) may hold one board package named `.folder.board`
   (`Vault.folderBoardName`), hidden like every dot name and read as that folder's own board. Its title is always the
@@ -52,6 +60,8 @@ A vault is a folder of its own. Its folder tree is the sidebar's tree: real fold
 - Ids are opaque strings, kept from the old files so `[[title#^id]]` links in Markdown keep working.
 - A board id is unique in the vault; boards refer to each other by id only, so moving or renaming packages is safe.
 - Card, section and arrow ids are unique within a board; segment ids within a card.
+- A resource id and an entry id are unique in the vault, and a version, highlight or entry sidenote id within its entry.
+  Boards refer to an entry by id only, so an entry's folder, and its resource's package, can be renamed or moved.
 - A shared card's id is its file name, so it is limited to `[A-Za-z0-9_-]{1,80}` (no path tricks). The same id is the
   placed card's id on every board that shows it.
 
@@ -69,8 +79,10 @@ one line of text per JSON line, so a git diff shows the lines that changed.
 Read strictly: the file must be exactly what the writer would write for the value it decodes to. An unknown field, a
 `null`, a left-out field (every non-optional field, including `false` and `[]`, is written) or another `version` is an
 error naming the file and the JSON path. So are broken references: a card twice (on the canvas and the shelf together),
-an arrow end, sidenote anchor or sticker on a card, segment or section that is not there, a section that does not exist or
-contains itself, an arrow width other than 1–3, a label position outside 0–1, a Text with a font size outside 10–240, a seal text that is not 1–5 CJK and 1–12 other characters without spaces.
+an arrow end, sidenote anchor or sticker on a card, segment or section that is not there, a sticker on an arrow that is not
+among the arrows of its own list (the board's, or its shelf entry's), a section that does not exist or contains itself,
+an arrow width other than 1–3, a label position outside 0–1, a sticker's size not above 0 or position on its arrow
+outside 0–1, a sub-board card's `previewColumns` other than 2, a Text with a font size outside 10–240, a seal text that is not 1–5 CJK and 1–12 other characters without spaces.
 
 ### Versions: how format 2 grows (decided)
 
@@ -104,7 +116,10 @@ the cards of one board with the same `same` are one card placed several times on
 file where it is not is refused); each has its own id, place, tilt, arrows, sidenotes and stickers, and their segments
 the same ids. Absent: a card of its own.
 
-**CardContent**: `title?` (absent: the kind's default title), `description?` (Markdown under the body), and one of `code`,
+**CardContent**: `title?` (absent: the kind's default title), `description?` (Markdown under the body), `source?` (a
+SourceAnchor, Resources below: where in a resource entry the card was taken from, shown at its foot; the card's content
+is its own and stays as written whatever becomes of the entry; never on an image card whose picture is `resource`,
+which names the place already), and one of `code`,
 `note`, `text`, `image`, `web`, `links`, `board`.
 
 **code**: `segments: [Segment], hide: {comments, docstrings, blankLines}, wrap, framed`. `framed: false` draws the code on
@@ -125,7 +140,8 @@ may be); neither is on a segment with a source. `language` is a VS Code language
   remote URL from git; absent when `repository` is known.
 - `package: {name, version, path}`: an installed package (pip, conda), `path` inside its install folder.
 - `file: {path, hash?}`: a file in no git repository, `hash` a fingerprint of its content.
-- Later: `resource: {item, page, paragraph}` for code or text taken from a resource.
+
+What a card took from a resource is not a segment's source: it is the card's `source` (CardContent, a SourceAnchor).
 
 **note**: `text, layout?`: a card with a frame, a header and the board's Note text size. `text` is Markdown. `layout` is
 `{tables?: [{cols?, rows?} | null], wrap?: [Int]}`, the shape of `@yhnocoder/markdown`'s `MdLayout` (table sizes and
@@ -138,7 +154,9 @@ in px (the toolbar's 20, 24, 30, 40, or any size in 10–240 from dragging a cor
 with it. `wrap`: it wraps at the card's width (a side edge was dragged); otherwise it is as wide as its text. Never a height.
 The old Text, Mark and Free Text are Texts at the size they had (the extension's own upgrade, below).
 
-**image**: `source: {file: name} | {url: "https://…"}, alt?, framed, stillFrame?, loops`. `stillFrame` (from 1): the frame
+**image**: `source: {file: name} | {url: "https://…"} | {resource: SourceAnchor}, alt?, framed, stillFrame?, loops`.
+`resource`: one block of a resource entry (a figure, a table, a region of a PDF page), drawn from the entry's file when
+the card is drawn: a reference, nothing is copied into `images/`. `stillFrame` (from 1): the frame
 an animated image rests on; `loops`: it always plays.
 
 **web**: `url, meta?, style: automatic|banner|side|text|compact` (automatic: a wide picture above, a square one beside).
@@ -147,7 +165,8 @@ an animated image rests on; `loops`: it always plays.
 
 **links**: `items: [{id, url, title?, meta?, rich?}], rich`: a link list; an item's `rich` absent: the card's.
 
-**board**: `board: {board: <board id>, auto?}` or `board: {folder: <name>, auto: true}`: another board shown inside this
+**board**: `board: {board: <board id>, auto?, previewColumns?}` or `board: {folder: <name>, auto: true,
+previewColumns?}`: another board shown inside this
 one (a sub-board card), by id, or a subfolder of a folder board's folder by its name (it shows that folder's folder
 board, when it has one). `auto: true` (only written when true) marks a folder board's automatic card, which the app keeps
 in step with the folder: one for each board and subfolder in it, in sidebar order; one for what came goes after the last
@@ -159,7 +178,8 @@ something on it) it stays where it is with all on it, drawn as missing; that is 
 and when a board of that id (or one of the title it last had, seen while the app runs) is there again the same card shows
 it. The user deletes a missing card as any card. A subfolder renamed in the app keeps its card; renamed in Finder it is a
 missing card and a new one. A plain card (no `auto`) is the user's own and can be on any board.
-Its preview's column count, a choice of the moment, is not kept.
+`previewColumns: 2` (only written as 2; absent: one column): its preview, when open, is in two columns, as the
+extension's `pcols`; which previews are open is a choice of the moment and is not kept.
 
 **Summary** (a card's, a section's `summary` and `directSummary`): `text, title?, at, sig, edited, pairs: [{ai, user, at}],
 input?`, as core `summary.ts` keeps it: `sig` a fingerprint of what it was written from (another one now: out of date),
@@ -175,12 +195,13 @@ line on why it is there, shown under its code; a text sidenote has none (an old 
 **Sticker**: `id, glyph, color?, anchor`. `glyph`: `builtin: star|exclaim|check|flag|zap|bug|todo|heart|hourglass|warning|
 todo-text` (the web board's own, without its `?`) or `emoji: "<one emoji>"`. `color` `#RRGGBB`, absent: the glyph's own.
 `anchor`: `canvas: {x, y, size?}` (its top left; size absent: 32), `card: {card, x, y, size?}` (moves with the card, from
-its top left), `line: {card, segment, line}` (in the line numbers). Stickers on arrows and sticker packs are not part of
+its top left), `line: {card, segment, line}` (in the line numbers), `arrow: {arrow, position, x, y, size?}` (moves with the
+arrow: its top left this far from the point at `position`, 0–1, along the arrow's curve). Sticker packs are not part of
 the format.
 
 **ShelfEntry**: `id, at, cards: [Card], sections: [Section], arrows: [Arrow], stickers: [Sticker]`: what was put aside
 together, as the extension's shelf: the cards with where they were and their `measuredHeight`, the sections with them
-(outermost first), every arrow touching one of them, the stickers on them. Their sidenotes stay in the board's list. A
+(outermost first), every arrow touching one of them, the stickers on them and on those arrows. Their sidenotes stay in the board's list. A
 shelved card's `section` may be one of the board's.
 
 **Seal**: `text?, color?` (`vermilion amber olive teal ink plum rose graphite`): what a [[ref]] to this board from another
@@ -198,6 +219,75 @@ line it was on is gone from the code (drawn red at the card's header).
 
 **Section**: `id, title, x, y, width, height, parent?, color?, collapsed, locked, description?`. A folded section keeps its
 open frame (as the old one did).
+
+## Resources
+
+A resource (资料) is a list the user keeps: papers, saved web pages, files. It is a package `<title>.resource/` anywhere
+a board package can be, its title in the package name alone. Code: `Sources/CodeBoardResources` (reading and writing),
+`Vault.swift` (listing: a resource's id, preset and entry count, without reading its entries).
+
+```
+Papers.resource/
+  resource.json                 {"version": 1, "id": "…", "preset": "papers", "fields": [Field]}
+  <entry folder>/               an entry; the folder's name is the user's to change, the entry is known by its id
+    entry.json
+    <file>                      what its versions name: PDFs, a block list
+  <file>                        an entry that is only a file (no id, no metadata): its name without the extension
+                                is its title
+```
+
+Both files are written and read like `board.json` (deterministic, strict, the same rules for growing: Versions, above),
+each with its own `version`, now 1. Names starting with `.` are not entries. Opening a vault writes nothing.
+
+**resource.json**: `version, id, preset: papers|web|files, fields: [Field]`. The preset says which columns and actions
+the list starts with; it does not limit what an entry may be. **Field** (a column the user added): `id, name, type:
+text|number|date|checkbox`; an entry's value for it is in its `entry.json`.
+
+**entry.json**: `version, id, title, added, origin?, authors?: [String], year?, meta?: WebMeta, versions: [Version],
+highlights: [Highlight], sidenotes: [EntrySidenote], fields: {<field id>: String | Number | Bool}`. `added` and every
+time: ms since 1970. `origin` (where it came from, one of): `arxiv: {id}` (without a version: `1706.03762`), `doi: {doi}`,
+`web: {url}`. `meta` is what a page saved as a link keeps, exactly what a Web card keeps (its WebMeta), so a Web card made
+from the entry copies it as it is; its picture and icon are `{file}` (in `images/` in the entry's folder, as in a board
+package) or `{url}`, never a resource's. The web line saves one entry per address (the exact string, without its
+fragment).
+A date field's value is a `YYYY-MM-DD` string. A value for a field the resource does not define is kept and not shown.
+An entry that is only a file gets a folder and an `entry.json` (the file moved into it, one rename) the first time
+something needs its id: a highlight, a sidenote, a card taken from it.
+
+**Version** (one readable form of the entry; a paper's v1, its v2, a translation of either, one saving of a web page):
+`id, label?, added, language?, of?, content`. `label`: what its tab says (`v2`, `v2 中文`). `of`: the version this one
+translates (blocks of the two correspond by order). `language`: BCP 47 (`zh`, `en`). `content` is one of:
+- `pdf: {file, blocks?}`: a PDF in the entry folder, and `blocks`, the file there listing its blocks (tongtu's
+  `<id>.zh.anchors.json` as written). Without `blocks` it is a plain PDF: text by page only.
+- `page: {hash, bytes}`: a web page saved whole, kept outside the vault by its content fingerprint (`hash`, as the
+  saving service names the file); `bytes` its size.
+- `file: {file}`: any other file in the entry folder, opened as the system opens it; no places in it.
+
+An entry saved as a link alone has no versions. A new version of a paper is one more Version; the old ones stay, and
+every highlight, sidenote and card source keeps naming the version it was made on. Nothing is moved to the new one.
+File names are plain file names, as in `images/`.
+
+**Place** (where in an entry): `version, block, range?`.
+- `block` is one of `id: "<block id>"` (a block of the version's block list, or of a saved page: the id that list or
+  page gives it) or `page: {page, rect?}` (a plain PDF: a page from 1, and `rect: [x, y, width, height]` for a region
+  of it, in PDF points from the page's bottom left).
+- `range: [from, to]`: characters of the block's text (a block's source text as its list gives it; a page's text as
+  PDFKit gives it), in UTF-16 code units, `from` included, `to` not, `0 ≤ from < to`. Absent: the whole block, or with
+  `rect` the region.
+
+**SourceAnchor** (a Place from outside the entry: a card's `source`, an image card's `resource`): `entry, version,
+block, range?`, a Place with the entry's id. The board does not check that the entry is there: a card whose entry is
+gone keeps its anchor and is drawn as missing its source.
+
+Read strictly besides: version, highlight and sidenote ids are each unique among their kind in the entry; a place's
+`version` is one of the entry's versions; `of` never names the version itself; an arXiv id has no `vN`. The sidebar
+lists a resource whose preset this CodeBoard does not know as one that cannot be read.
+
+**Highlight**: `id, place: Place, color: yellow|green|blue|pink|purple, at`. Stored in the entry, so it shows from
+whichever board the entry was opened. Never on a `rect`.
+
+**EntrySidenote** (an annotation): `id, place: Place, text, alwaysShow, question?`: a board's text sidenote (`text`
+Markdown, `question: {at, done, answers}` as there, so it is in the same question list), on a place of the entry.
 
 ## Shared card file
 
@@ -259,8 +349,8 @@ parent (compared as APFS does) gets ` 2`, ` 3`…; the import never puts anythin
 title go through `Vault.packageName`: `/ \ : * ? " < > |` become `-` (illegal on macOS, or break a clone on Windows), control
 characters go, leading dots go (they would hide the board), trailing dots and spaces go, it is cut to 200 bytes of UTF-8,
 stored precomposed (NFC), and an empty one is `Untitled`. A name already in the folder (compared without case or
-normalisation, as APFS does) gets ` 2`, ` 3`… in the order of the old files' paths. A group folder name ending in `.board`
-gets a `-`.
+normalisation, as APFS does) gets ` 2`, ` 3`… in the order of the old files' paths. A group folder name ending in `.board` or
+`.resource` gets a `-`.
 
 **Importing again never overwrites** (decided: a board is imported once and never overwritten). The import writes only
 files that are not in the vault yet; a file that is there is never written, whatever its content:
@@ -313,7 +403,7 @@ files that are not in the vault yet; a file that is there is never written, what
 | image `alt bg frame loop` | `alt framed stillFrame loops` |
 | web `url meta{title desc site image icon at failed} style` | `web {url, meta {title description site image icon fetchedAt failed}, style (absent: automatic)}`; `image`, `icon` as image sources |
 | links `items{id url title meta rich} rich` | `links {items, rich}` |
-| board `board` | `board {board}` |
+| board `board pcols` | `board {board, previewColumns}` (`pcols: 2` → `previewColumns: 2`) |
 | shared ref `{id, kind: "shared"}` | `shared: true`; `cards/<id>.json` → `.codeboard/shared/<id>.json` with its sidenotes |
 | link `from to label at` | arrow `from to label labelPosition` |
 | link `style{dash,width,head,color}` | `dashed`, `width` (absent: 2), `startHead` (absent: no), `endHead` (absent: yes), `color` |
@@ -325,7 +415,7 @@ files that are not in the vault yet; a file that is there is never written, what
 | sidenote code `why code` | `why`, `code` (a Segment) |
 | sidenote `lineRemoved boardOnly review` | the same |
 | sticker `icon{pack: builtin / emoji, name} color` | `glyph {builtin / emoji}`, `color` |
-| sticker `at` line / canvas / canvas `on.card` | `anchor` `line` / `canvas` / `card` |
+| sticker `at` line / canvas / canvas `on.card` / canvas `on.link t` | `anchor` `line` / `canvas` / `card` / `arrow {arrow, position}` (`t` kept within 0–1) |
 | shelf entry `id at place sections links stickers` | `id at cards sections arrows stickers` |
 | `seal{text color}` | `seal` |
 
@@ -360,12 +450,12 @@ holds more. Kinds:
   `classMembers` (a class card keeps its code), `messageNote` (kept as a plain Note), `processes` (process tags)
 - `callMark`: an arrow's `call`, `rpc`, `back` or `gen` (the arrow is kept plain)
 - `arrowWithoutEnd`, `sidenoteWithoutAnchor` (on a card, segment or section not imported or not there, or on a Variant the
-  card does not show), `stickerWithoutAnchor`, `danglingReference` (a card's section or a section's parent that does not
+  card does not show), `stickerWithoutAnchor` (on a card, segment or arrow not imported or not there),
+  `danglingReference` (a card's section or a section's parent that does not
   exist: left out)
-- `arrowSticker`: a sticker on an arrow (where it is drawn depends on the arrow's route, which the importer does not lay
-  out), `stickerPack`: a sticker from a sticker pack or a built-in glyph the format does not have
+- `stickerPack`: a sticker from a sticker pack or a built-in glyph the format does not have
 - `missingImage`: named but not in `assets/` (the reference is kept); `imageNameTaken`: a shared card's image whose name
   the vault's shared images already have for other bytes (left as it is)
 - `field` (`<owner id>.<field>`): any other field, known or unknown: e.g. `born`, `seq`, `marks`, `legend`, `hideNumbers`
   (it hides the call graph marks, which are not drawn; line numbers are always drawn), `place.collapsed`, `place.start`,
-  `segment.keep`, `keepOld`, a sub-board's `pcols`, a Note's `fill fs wrap`, a seal text or colour the format does not accept
+  `segment.keep`, `keepOld`, a sub-board's `pcols` other than 2, a Note's `fill fs wrap`, a seal text or colour the format does not accept

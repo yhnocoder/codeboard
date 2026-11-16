@@ -86,7 +86,7 @@ CodeBoard 的画布有这些规则（原型验证过，见 `design/notes/macos-z
 
 “用量”是项目主人现有 20 块旧白板里 350 段 Markdown 中用到这种语法的段数（只统计数量），用来排轻重，表按用量排序。“要求”一列中，“做”指要渲染、能编辑；“显示成源码”指不渲染，按源码的样子显示，原样保存。
 
-脚注、`<details>`、`[toc]` 不支持（已定）。不需要为它们写任何代码：解析器不认识它们，按 CommonMark 它们自然就是普通文字（`[toc]`、`[^1]`、`[^1]: …`）或 HTML 块（`<details>`），照常显示，原样保存。唯一要注意的是只有一个词的 `[^1]: 词`：CommonMark 会把它读成链接引用定义，默认不显示。组件要把链接引用定义照源码显示出来，不能让字看不见。
+脚注、`<details>`、`[toc]` 不支持（已定）。不需要为它们写任何代码：解析器不认识它们，按 CommonMark 它们自然就是普通文字（`[toc]`、`[^1]`、`[^1]: …`）或 HTML 块（`<details>`），照常显示，原样保存。唯一要注意的是只有一个词的 `[^1]: 词`：CommonMark 会把它读成链接引用定义，默认不显示。组件要把链接引用定义照源码显示出来，不能让字看不见。连着写的几条定义（中间没有空行）是一个块，和 TypeScript 包的 refDefs 一样，原样保存；引用式链接 `[文字][标签]`、`[标签][]`、`[标签]` 链到同一标签的第一条定义（schema.ts inlineTokens 的 links）；一段里有一行可能是定义时，这一段里的不这样读（spans.ts blockInfo）。
 
 | 语法 | 用量 | 要求 | 行为参照（`packages/markdown/src/`） |
 |---|---|---|---|
@@ -497,7 +497,7 @@ public protocol MarkdownResources: Sendable {
   var mathPreamble: String { get }
 }
 
-/// 代码的颜色类，和 CodeBoardSyntax 的 TokenClass 一一对应，颜色取自 MarkdownTheme.CodeColors
+/// 代码的颜色类，和 TreeSitterHighlight 的 TokenClass 一一对应，颜色取自 MarkdownTheme.CodeColors
 public enum MarkdownTokenKind: Sendable, Hashable {
   case keyword, `operator`, function, string, comment, number, receiver, punctuation
 }

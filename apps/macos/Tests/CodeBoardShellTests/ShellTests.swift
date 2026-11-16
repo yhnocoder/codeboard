@@ -194,6 +194,33 @@ private func tree(_ boards: [(String, String)] = [("a", "A.board"), ("b", "B.boa
     #expect(t.canGoBack)
   }
 
+  /// The reading pane, per machine with the rest of the state: shown or not, its side and width, its tabs and which is
+  /// current; a state saved before it reads with the pane hidden, and another vault keeps how it is laid out, not its tabs
+  @Test func theReadingPaneRoundTripsThroughRelaunch() throws {
+    let s = shell()
+    s.openReadingTab(title: "Alpha", key: "r/alpha")
+    s.openReadingTab(title: "Beta", key: "r/beta")
+    s.openReadingTab(title: "Alpha", key: "r/alpha")
+    s.reading.side = .left
+    s.reading.width = 520
+    let saved = try JSONDecoder().decode(ShellState.self, from: JSONEncoder().encode(try #require(s.state)))
+    let t = Shell()
+    t.open(Vault(root: URL(filePath: "/v")), restoring: saved)
+    #expect(t.reading.state == s.reading.state)
+    #expect(t.reading.shown && t.reading.side == .left && t.reading.width == 520)
+    #expect(t.reading.tabs.map(\.title) == ["Alpha", "Beta"] && t.reading.selected == t.reading.tabs[0].id)
+
+    var old = try #require(s.state)
+    old.reading = nil
+    let before = try JSONDecoder().decode(ShellState.self, from: JSONEncoder().encode(old))
+    let u = Shell()
+    u.open(Vault(root: URL(filePath: "/v")), restoring: before)
+    #expect(!u.reading.shown && u.reading.tabs.isEmpty)
+
+    t.open(Vault(root: URL(filePath: "/other")), restoring: saved)
+    #expect(t.reading.tabs.isEmpty && t.reading.side == .left && t.reading.width == 520)
+  }
+
   @Test func anotherVaultStartsWithoutTabs() throws {
     let s = shell()
     s.show(id("a"))
@@ -207,7 +234,7 @@ private func tree(_ boards: [(String, String)] = [("a", "A.board"), ("b", "B.boa
     let report = ImportReport(
       imported: [
         .init(source: "a.json", destination: "A.board", skipped: [.init(kind: .compareCard, ids: ["x", "y"])]),
-        .init(source: "g/b.json", destination: "g/B.board", skipped: [.init(kind: .arrowSticker, ids: ["s"])]),
+        .init(source: "g/b.json", destination: "g/B.board", skipped: [.init(kind: .stickerPack, ids: ["s"])]),
         .init(source: "cards/c.json", destination: ".codeboard/shared/c.json", skipped: []),
         .init(source: "h.json", destination: "H copy.board", copyOf: "H.board", skipped: []),
       ],
@@ -219,7 +246,7 @@ private func tree(_ boards: [(String, String)] = [("a", "A.board"), ("b", "B.boa
         == "1 of them was in the vault already and came in as a copy, leaving what is there as it is. 1 file could not "
         + "be imported. 3 items left out, which this version does not keep yet.")
     #expect(
-      summary.details == ["/old/z.json: bad", "H copy.board: a copy of H.board", "compare card: 2", "arrow sticker: 1"])
+      summary.details == ["/old/z.json: bad", "H copy.board: a copy of H.board", "compare card: 2", "sticker pack: 1"])
   }
 
   @Test func theBoardPanelTakesTheCanvasThemesBackground() {

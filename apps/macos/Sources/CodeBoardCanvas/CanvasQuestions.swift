@@ -12,6 +12,8 @@ extension CanvasView {
   static var sharedList: QuestionListView?
   /// Watches for a press outside the list while it is open
   static var listOutside: Any?
+  /// The canvas the list is open on: opening it on another closes it there first, as there is one list
+  static weak var listOwner: CanvasView?
 
   package var questionList: QuestionListView {
     if let l = CanvasView.sharedList { return l }
@@ -69,6 +71,22 @@ extension CanvasView {
     }
   }
 
+  /// The other boards' questions (host exports.ts allQuestions, core collectQuestions): each board with its shared cards
+  /// read in; one that travels with a shared card is listed once, on the first board in the vault that shows it (this
+  /// one, `current`, among them)
+  nonisolated static func otherQuestions(
+    in vault: Vault, current: Board, at vb: VaultBoard
+  ) -> [(VaultBoard, [QuestionListView.Shown.Item])] {
+    var seen = Set<String>()
+    return ((try? vault.tree().allBoards) ?? []).compactMap { o in
+      let read = o.id == vb.id ? current : (try? vault.board(at: o.path))?.inflated { try? vault.sharedCard($0) }
+      guard let ob = read else { return nil }
+      let r = RefResolver(ob, package: vault.url(of: o.path), vault: vault)
+      let rows = items(ob, notes: ob.sidenotes, board: o, title: r.title).filter { seen.insert($0.note).inserted }
+      return o.id == vb.id ? nil : (o, rows)
+    }
+  }
+
   func listData(
     _ b: Board, _ vb: VaultBoard, _ vault: Vault, others: [(VaultBoard, [QuestionListView.Shown.Item])]
   ) -> QuestionListView.Shown {
@@ -86,6 +104,10 @@ extension CanvasView {
   public func toggleQuestionList(under button: CGRect) {
     if listShown { return closeQuestionList() }
     guard let doc = document, let (vb, vault) = shown, let host = superview else { return }
+    // else that canvas would go on believing it shows the list: its next press would close this one's, and what it
+    // was still reading would be shown in it
+    CanvasView.listOwner?.closeQuestionList()
+    CanvasView.listOwner = self
     let list = questionList
     if list.view.superview !== host { host.addSubview(list.view, positioned: .above, relativeTo: self) }
     listShown = true
@@ -108,14 +130,7 @@ extension CanvasView {
     let b = doc.board
     Task {
       // the other boards' questions: their files read off the main thread
-      let others = await Task.detached { () -> [(VaultBoard, [QuestionListView.Shown.Item])] in
-        let all = (try? vault.tree().allBoards) ?? []
-        return all.filter { $0.id != vb.id }.compactMap { o in
-          guard let ob = try? vault.board(at: o.path) else { return nil }
-          let r = RefResolver(ob, package: vault.url(of: o.path), vault: vault)
-          return (o, CanvasView.items(ob, notes: ob.sidenotes, board: o, title: r.title))
-        }
-      }.value
+      let others = await Task.detached { CanvasView.otherQuestions(in: vault, current: b, at: vb) }.value
       guard listShown else { return }
       listOthers = others
       await list.show(listData(b, vb, vault, others: others), maxHeight: min(420, bounds.height - 80))
@@ -139,6 +154,7 @@ extension CanvasView {
   public func closeQuestionList() {
     guard listShown else { return }
     listShown = false
+    CanvasView.listOwner = nil
     if let m = CanvasView.listOutside { NSEvent.removeMonitor(m) }
     CanvasView.listOutside = nil
     listOthers = []
@@ -158,7 +174,8 @@ extension CanvasView {
     }
   }
 
-  /// The camera to a question (what it is on in view, with room on its right for the popup), and its popup open there
+  /// The camera to a question when it is not in view (what it is on, with room on its right for the popup), and its
+  /// popup open there once the camera is at rest (actions/notes.ts goToQuestion)
   public func showQuestion(_ id: SidenoteID) {
     guard let scene, let n = scene.notes.first(where: { $0.id == id }) else { return }
     func rect(_ o: Scene.Owner) -> CGRect? { scene.items.first { $0.owner == o }?.rect }
@@ -171,11 +188,12 @@ extension CanvasView {
       }
     case .point(let x, let y): r = CGRect(x: x - 20, y: y - 20, width: 40, height: 40)
     }
+    // the sidenote popups open go first
+    openPop(nil)
     if let r {
       let z = camera.zoom
       let room = bounds.width < 700 ? 0 : 500 / z
-      let want = r.union(CGRect(x: r.maxX, y: r.minY, width: room, height: min(r.height, 320 / z)))
-      if !camera.visible(bounds.size).contains(want) { place(zoom: z, centre: CGPoint(x: want.midX, y: want.midY)) }
+      reveal(r, also: CGRect(x: r.maxX, y: r.minY, width: room, height: min(r.height, 320 / z)))
     }
     let at: PopAt
     if let l = n.anchor.lines {
@@ -185,9 +203,10 @@ extension CanvasView {
     } else {
       return
     }
-    // the sidenote popups open go first (actions/notes.ts goToQuestion)
-    openPop(nil)
-    openPop(at, focus: id)
+    Task {
+      await rest()
+      openPop(at, focus: id)
+    }
   }
 
   /// Zoom to 100 % (the toolbar's zoom figure), about the middle of the view

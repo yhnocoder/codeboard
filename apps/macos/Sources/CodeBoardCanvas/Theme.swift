@@ -1,7 +1,8 @@
 import AppKit
 import CodeBoardModel
 import CodeBoardNotes
-import CodeBoardSyntax
+import CodeUI
+import TreeSitterHighlight
 
 /// A complete description of how the board looks, which the drawing code only reads: colours, fonts, sizes, and the few
 /// ways of drawing that are not values (`Paper`, `Header`, `Line`…), each a small closed set the drawing code switches on.
@@ -129,6 +130,12 @@ public struct Theme: Sendable {
   var accentInk = CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 1)
   /// A resize's size hint (--guide)
   var guide = CGColor(srgbRed: 0x2f / 255, green: 0x7d / 255, blue: 0xe1 / 255, alpha: 1)
+  /// Selected text's tint, over the text so it reads through (markdown.css .md-pm ::selection: the accent at 26 %; Ink
+  /// Wash's themes.css: the ink at 13 %, 20 % dark)
+  var textSelection: NSColor {
+    let c = id == .inkWash ? ink.copy(alpha: dark ? 0.2 : 0.13) : accent.copy(alpha: 0.26)
+    return c.flatMap { NSColor(cgColor: $0) } ?? .selectedTextBackgroundColor
+  }
   /// A row's hover tint (--hlrow)
   var hlrow = CGColor(srgbRed: 60 / 255, green: 45 / 255, blue: 20 / 255, alpha: 0.07)
 
@@ -248,7 +255,7 @@ public struct Theme: Sendable {
       headerGap: 7,
       sectionTitleAt: CGPoint(x: 16, y: 6), sectionTitleHeight: 22, foldedTitleAt: CGPoint(x: 16, y: 6),
       arrowWidth: 1.25,
-      metrics: CodeMetrics(charWidth: code.advance))
+      metrics: CodeMetrics(charWidth: code.advance, font: code))
   }()
 
   public static let inkWash: Theme = {
@@ -297,7 +304,7 @@ public struct Theme: Sendable {
       cardRadius: 2, sectionRadius: 2, labelRadius: 0, headerHeight: 36, headerPad: 14, headerPadRight: 8, headerGap: 9,
       sectionTitleAt: CGPoint(x: 24, y: -17), sectionTitleHeight: 32, foldedTitleAt: CGPoint(x: 14, y: 4),
       arrowWidth: 2,
-      metrics: CodeMetrics(charWidth: code.advance))
+      metrics: CodeMetrics(charWidth: code.advance, font: code))
     t.subName = serif(25, 600).tracked(-0.375)
     t.guide = rgb(0xb8321f)
     t.subCount = serif(25, 500).tracked(-0.375)
@@ -440,18 +447,10 @@ public struct Theme: Sendable {
   }
 }
 
-/// CTFont is immutable and documented safe to use from any thread, but the SDK does not mark it Sendable
-struct Font: @unchecked Sendable {
-  let ct: CTFont
-  /// Extra space after each character (CSS letter-spacing), points
-  var tracking: CGFloat = 0
+typealias Font = CodeFont
 
-  init(_ f: CTFont, tracking: CGFloat = 0) {
-    ct = f
-    self.tracking = tracking
-  }
-
-  init(_ f: NSFont) { ct = f }
+extension CodeFont {
+  init(_ f: NSFont) { self.init(f as CTFont) }
 
   /// One character's advance (the code font is monospaced)
   var advance: CGFloat {
@@ -520,4 +519,31 @@ enum BoardFonts {
     ["JetBrainsMono-400-600", "JetBrainsMono-400i", "SourceSerif4-400-600", "SourceSerif4-400i", "ZhiMangXing-latin"]
       .allSatisfy { loaded[$0] != nil }
   }
+}
+
+extension Theme {
+  /// A code card's code as the code component draws it: its runs' styles are the highlighter's token classes
+  var codeStyle: CodeStyle {
+    var runs = [CodeStyle.Run?](repeating: nil, count: Int(TokenClass.allCases.map(\.rawValue).max() ?? 0) + 1)
+    for k in TokenClass.allCases {
+      let font: CTFont? =
+        switch k {
+        case .comment: codeComment.ct
+        case .keyword, .operator: codeKeyword.ct
+        default: nil
+        }
+      runs[Int(k.rawValue)] = CodeStyle.Run(color: syntax[k] ?? ink, font: font)
+    }
+    return CodeStyle(font: code, ink: ink, runs: runs)
+  }
+
+  /// A run of hidden lines' row: "··· N lines hidden (a–b) · Show"
+  var foldStyle: CodeFoldStyle {
+    CodeFoldStyle(fill: hiddenRow, line: hair, label: small, labelColor: ink3, action: smallStrong, actionColor: ink2)
+  }
+}
+
+extension CodeRun {
+  /// The highlighter's class the run is drawn in (`Theme.codeStyle`)
+  var kind: TokenClass? { TokenClass(rawValue: style) }
 }

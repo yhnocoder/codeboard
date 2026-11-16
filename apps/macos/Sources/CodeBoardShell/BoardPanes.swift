@@ -17,6 +17,8 @@ import CodeBoardNotes
   var onVaultChanged: (() -> Void)?
   /// The Note renderer its canvases share (nil: the app's)
   private let notes: NoteRenderer?
+  /// What draws its tabs' Markdown when `notes` is given (a test's): the native component, or the web page when nil
+  private let display: NativeNotes?
   /// 摘要切换, and who writes a summary again (nil: no AI key, no ↻), for every canvas
   var summarySwitch = SummarySwitch.default {
     didSet { for p in panes.values { p.canvas.summarySwitch = summarySwitch } }
@@ -81,11 +83,15 @@ import CodeBoardNotes
   }
 
   /// The sidebar's Delete Folder: main's Delete Group question (actions.ts deleteGroup) in the words of what it does here,
-  /// where the boards go with their folder
-  static func deleteFolderQuestion(_ name: String, boards: Int) -> NSAlert {
-    destroying(
-      "Delete folder “\(name)”?",
-      boards == 1 ? "Its 1 board goes to the Trash with it." : "Its \(boards) boards go to the Trash with it.",
+  /// where the boards and resources go with their folder
+  static func deleteFolderQuestion(_ name: String, boards: Int, resources: Int = 0) -> NSAlert {
+    func count(_ n: Int, _ one: String) -> String { n == 1 ? "1 \(one)" : "\(n) \(one)s" }
+    let what =
+      resources == 0
+      ? count(boards, "board")
+      : boards == 0 ? count(resources, "resource") : "\(count(boards, "board")) and \(count(resources, "resource"))"
+    return destroying(
+      "Delete folder “\(name)”?", "Its \(what) \(boards + resources == 1 ? "goes" : "go") to the Trash with it.",
       "Delete Folder")
   }
 
@@ -103,9 +109,10 @@ import CodeBoardNotes
     return a
   }
 
-  init(shell: Shell, notes: NoteRenderer? = nil) {
+  init(shell: Shell, notes: NoteRenderer? = nil, display: NativeNotes? = nil) {
     self.shell = shell
     self.notes = notes
+    self.display = display
     super.init(frame: .zero)
     shell.cameraNow = { [weak self] in
       guard let self, let t = self.shell.selected, let p = self.panes[t], p.document != nil else { return nil }
@@ -210,7 +217,7 @@ import CodeBoardNotes
       for pane in panes.values where pane.document != nil { pane.canvas.vaultChanged() }
     }
     for tab in shell.tabs {
-      let pane = panes[tab.id] ?? Pane(notes: notes)
+      let pane = panes[tab.id] ?? Pane(notes: notes, display: display)
       if panes[tab.id] == nil {
         panes[tab.id] = pane
         pane.frame = bounds
@@ -344,6 +351,11 @@ import CodeBoardNotes
     panes = [:]
   }
 
+  /// The board in front takes the keys (the reading pane had them and is hidden)
+  func takeKeys() {
+    if let id = front { panes[id]?.takeKeys() }
+  }
+
   private func reveal() {
     guard let selected = shell.selected, let pane = panes[selected] else { return place(nil) }
     if pane.ready || front.flatMap({ panes[$0] }) == nil { place(selected) }
@@ -399,8 +411,8 @@ final class Pane: NSView {
   func arriving(_ a: Arrival) { pending = a }
   private let problem = NSTextField(wrappingLabelWithString: "")
 
-  init(notes: NoteRenderer?) {
-    canvas = notes.map { CanvasView(frame: .zero, notes: $0) } ?? CanvasView()
+  init(notes: NoteRenderer?, display: NativeNotes?) {
+    canvas = notes.map { CanvasView(frame: .zero, notes: $0, display: display) } ?? CanvasView()
     super.init(frame: .zero)
     canvas.autoresizingMask = [.width, .height]
     addSubview(canvas)

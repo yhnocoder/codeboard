@@ -7,8 +7,8 @@ import Testing
 
 // Writing through an input method (Pinyin) and Esc, as on the board: one Esc after the text is committed leaves the
 // editor with it; while a composition is in progress the first Esc only cancels it. The input method is this process's
-// own: WebKit gives each key to the input context (handleEventByInputMethod:completionHandler:), and an input method
-// answers there by setting the marked text on the client or committing it before it completes, as `Pinyin` does here.
+// own: the native editors give each key to the input context, and an input method answers there
+// by setting the marked text on the client or committing it, as `Pinyin` does here.
 // The system's input sources are never touched.
 
 /// A Pinyin input method for the keys WebKit or a native field hands the input context while `on`: letters compose,
@@ -109,45 +109,13 @@ extension NSTextInputContext {
   }
 }
 
-extension Rig {
-  /// The window key as a person's is while they type, and the editor's page with the focus
-  func pageFocused() async {
-    KeyWindows.add(window)
-    let v = canvas.noteEditor.view
-    await until("the page has the focus") {
-      (try? await v.callAsyncJavaScript("return document.hasFocus()", contentWorld: .page) as? Bool) == true
-    }
-  }
-
-  /// The editor's page takes the focus a second late from now on, as on a busy machine: WebKit gives the web view its
-  /// input context only then, so keys typed at once wait longer than a page frame or two
-  func editorFocusesLate() async {
-    let v = canvas.noteEditor.view
-    await until("the editor page loaded") {
-      (try? await v.callAsyncJavaScript("return typeof edit.focusLate", contentWorld: .page) as? String) == "function"
-    }
-    _ = try? await v.callAsyncJavaScript("edit.focusLate(1000)", contentWorld: .page)
-  }
-
-  /// Keys as a person types them, once the editor takes them itself: each once the page has had the one before (a burst
-  /// would have the input method answer every key before the page saw the first)
-  func typeInTurn(_ text: String) async {
-    let v = canvas.noteEditor.view
-    await until("the editor takes the keys itself") { v.held == nil && v.inputContext != nil }
-    for ch in text {
-      let n = (try? await v.callAsyncJavaScript("return edit.keysSeen()", contentWorld: .page) as? Int) ?? 0
-      press(String(ch))
-      _ = try? await v.callAsyncJavaScript(
-        "return await edit.seen(n, 2000)", arguments: ["n": n + 1], contentWorld: .page)
-    }
-  }
-}
-
 @MainActor @Suite(.serialized) struct CanvasIMETests {
+  /// What the editor shows: its text and what is being composed
   func text(_ r: Rig) async -> String {
-    (try? await r.canvas.noteEditor.view.callAsyncJavaScript(
-      "return document.querySelector('#root .slot.shown .card')?.innerText ?? ''", contentWorld: .page) as? String)
-      ?? ""
+    guard let v = r.canvas.editing?.writer else { return "" }
+    let m = v.markedRange()
+    let marked = m.location == NSNotFound ? "" : v.attributedSubstring(forProposedRange: m, actualRange: nil)?.string
+    return v.source + (marked ?? "")
   }
 
   /// "ni", Space: 你 is written; one Esc leaves with it
@@ -162,20 +130,17 @@ extension Rig {
     await r.editorReady()
     let id = try #require(r.canvas.editing?.id)
     Pinyin.windows.insert(r.window.windowNumber)
-    await r.typeInTurn("ni ")
+    r.press("ni ")
     await r.until("你 written") { await text(r).contains("你") }
     r.press("\u{1b}")
     await r.until("left") { !r.canvas.isEditing }
     #expect(r.doc.board.card(id)?.writing == "你")
   }
 
-  /// "ni" and Space typed at once after the double-click, before the editor is there: they go through the input method
-  /// too, so 你 is written (WebKit gives a web view an input context only once it has heard from the page that the
-  /// focused element is editable; keys handed to it before that went past the input method)
-  /// …on a Note, a Text and a Box, also when the editor takes the focus late (a busy machine): the keys wait for the
-  /// input context however long it takes, then go in the order typed
-  @Test(arguments: ["n1", "t1", "b1"], [false, true])
-  func pinyinTypedAtOnceAfterTheDoubleClickIsComposed(id: String, late: Bool) async throws {
+  /// "ni" and Space typed at once after the double-click, as the editor comes: they go through the input method too, so
+  /// 你 is written, on a Note, a Text and a Box
+  @Test(arguments: ["n1", "t1", "b1"])
+  func pinyinTypedAtOnceAfterTheDoubleClickIsComposed(id: String) async throws {
     Pinyin.install()
     let r = try await Rig(zoom: 1)
     defer {
@@ -184,33 +149,15 @@ extension Rig {
     }
     // a key window, as the one a person types in (CanvasFreeCodeTests has the same)
     KeyWindows.add(r.window)
-    if late { await r.editorFocusesLate() }
     let before = r.doc.board.card(cid(id))?.writing ?? ""
     Pinyin.windows.insert(r.window.windowNumber)
     r.doubleClick(id == "n1" ? CGPoint(x: 40, y: 40) : r.centre(id))
     r.press("ni ")
     await r.editorReady()
-    await r.until("the keys handed over") { r.canvas.noteEditor.view.held == nil }
     r.press("\u{1b}")
     await r.until("left") { !r.canvas.isEditing }
     let now = r.doc.board.card(cid(id))?.writing ?? ""
     #expect(now.contains("你") && now.count == before.count + 1, "\(before) → \(now)")
-  }
-
-  /// Keys typed at once, then the writing left before the editor took them (its focus late): they are dropped, not
-  /// written anywhere, and the keys after that reach the board
-  @Test func keysTypedForAnEditorLeftBeforeItTookThemAreDropped() async throws {
-    let r = try await Rig(zoom: 1)
-    defer { r.close() }
-    await r.editorFocusesLate()
-    let before = r.doc.board.card(cid("n1"))?.writing
-    r.doubleClick(CGPoint(x: 40, y: 40))
-    r.press("xyz")
-    await r.editorReady()
-    await r.canvas.endEditing()
-    await r.until("the keys let go") { r.canvas.noteEditor.view.held == nil }
-    #expect(r.doc.board.card(cid("n1"))?.writing == before)
-    #expect(!r.canvas.isEditing)
   }
 
   /// "ni", Space and at once Esc, on a Note, a Text and a Box being written: the Esc right after the commit leaves. Here
@@ -229,7 +176,7 @@ extension Rig {
     await r.editorReady()
     let before = r.doc.board.card(cid(id))?.writing ?? ""
     Pinyin.windows.insert(r.window.windowNumber)
-    await r.typeInTurn("ni \u{1b}")
+    r.press("ni \u{1b}")
     await r.until("left") { !r.canvas.isEditing }
     let now = r.doc.board.card(cid(id))?.writing ?? ""
     #expect(now.contains("你") && now.count == before.count + 1, "\(before) → \(now)")
@@ -247,7 +194,7 @@ extension Rig {
     await r.editorReady()
     let id = try #require(r.canvas.editing?.id)
     Pinyin.windows.insert(r.window.windowNumber)
-    await r.typeInTurn("ni")
+    r.press("ni")
     await r.until("composing") { await text(r).contains("ni") }
     r.press("\u{1b}")
     // a key after it, with nothing composed: once it is written, whatever the Esc did has happened

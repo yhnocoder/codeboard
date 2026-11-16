@@ -136,6 +136,8 @@ package final class KeysPanel: NSView, NSSearchFieldDelegate {
     if k.count == 1, k.first!.isUppercase { m.insert(.shift) }
     let special: [String: String] = [
       "\u{8}": "⌫", "\u{7f}": "⌫", "\r": "↵", "\u{1b}": "Esc", " ": "Space", "\t": "⇥",
+      // the back tab ⇧Tab types, which ⌃⇧Tab's second item takes
+      "\u{19}": "⇥",
       String(UnicodeScalar(NSLeftArrowFunctionKey)!): "←", String(UnicodeScalar(NSRightArrowFunctionKey)!): "→",
       String(UnicodeScalar(NSUpArrowFunctionKey)!): "↑", String(UnicodeScalar(NSDownArrowFunctionKey)!): "↓",
     ]

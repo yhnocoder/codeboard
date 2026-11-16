@@ -1,7 +1,7 @@
 import Foundation
 
-// Stickers (core commands/stickers.ts, edit/refs.ts pruneStickers): marks put on the board, on a card or in a code
-// card's line numbers. Their colour is kept only where it is not the glyph's own.
+// Stickers (core commands/stickers.ts, edit/refs.ts pruneStickers): marks put on the board, on a card or an arrow, or
+// in a code card's line numbers. Their colour is kept only where it is not the glyph's own.
 
 extension BuiltinSticker {
   /// Its own colour (glyphs.tsx BUILTIN)
@@ -20,6 +20,23 @@ extension BuiltinSticker {
     case .todoText: "#8B6FD6"
     }
   }
+
+  /// What it means, its tip and spoken name (glyphs.tsx BUILTIN)
+  public var label: String {
+    switch self {
+    case .star: "Important"
+    case .exclaim: "Attention"
+    case .check: "Understood"
+    case .flag: "Flag"
+    case .zap: "Performance"
+    case .bug: "Bug"
+    case .todo: "To Check"
+    case .heart: "Favourite"
+    case .hourglass: "Later"
+    case .warning: "Careful"
+    case .todoText: "TODO"
+    }
+  }
 }
 
 extension Sticker {
@@ -34,13 +51,21 @@ extension Sticker {
     if case .builtin(let b) = g { b.color } else { nil }
   }
 
+  /// Its tip and spoken name (actions/stickers.ts stickerLabel): a built-in's label, an emoji itself
+  public static func label(_ g: Glyph) -> String {
+    switch g {
+    case .builtin(let b): b.label
+    case .emoji(let e): e
+    }
+  }
+
   /// The colour it is drawn in
   public var drawnColor: String? { color ?? Sticker.ownColor(glyph) }
 
   /// Its size on the board (a line's is the line numbers', not its own)
   public var size: Double? {
     switch anchor {
-    case .canvas(_, _, let s), .card(_, _, _, let s): s ?? Sticker.defaultSize
+    case .canvas(_, _, let s), .card(_, _, _, let s), .arrow(_, _, _, _, let s): s ?? Sticker.defaultSize
     case .line: nil
     }
   }
@@ -53,13 +78,6 @@ extension Board {
   public mutating func addSticker(_ s: Sticker) {
     stickers.append(s)
     selfCheck()
-  }
-
-  /// Another glyph for it; its colour goes back to the glyph's own
-  public mutating func setStickerGlyph(_ id: StickerID, _ g: Sticker.Glyph) {
-    guard let i = stickers.firstIndex(where: { $0.id == id }) else { return }
-    stickers[i].glyph = g
-    stickers[i].color = nil
   }
 
   /// Its colour ("#RRGGBB"); the glyph's own is kept as none
@@ -76,11 +94,12 @@ extension Board {
     switch stickers[i].anchor {
     case .canvas(let x, let y, _): stickers[i].anchor = .canvas(x: x, y: y, size: s)
     case .card(let c, let x, let y, _): stickers[i].anchor = .card(c, x: x, y: y, size: s)
+    case .arrow(let a, let t, let x, let y, _): stickers[i].anchor = .arrow(a, position: t, x: x, y: y, size: s)
     case .line: break
     }
   }
 
-  /// Where it is now: free on the board or on a card (a line's stays in its line)
+  /// Where it is now: free on the board, on a card or on an arrow (a line's stays in its line)
   public mutating func moveSticker(_ id: StickerID, to anchor: Sticker.Anchor) {
     guard let i = stickers.firstIndex(where: { $0.id == id }) else { return }
     if case .line = stickers[i].anchor { return }

@@ -1,9 +1,11 @@
 import AppKit
-import CodeBoardMarkdown
+import MarkdownCore
 import Testing
 
-@testable import CodeBoardMarkdownUI
 @testable import MarkdownDemoKit
+@testable import MarkdownUI
+
+private let underDesktop = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.desktopWindow)) - 1)
 
 /// ⌘ on a column of two cards with the inspector open, as she did it: a press and release on a block without moving is
 /// main's ⌘-click (the blocks picked up, floating right of the Note, nothing written); the float stays where the window
@@ -167,6 +169,8 @@ import Testing
     w.alphaValue = 0.02
     w.ignoresMouseEvents = true
     w.setFrameOrigin(CGPoint(x: -30000, y: -30000))
+    // under the desktop: shown to AppKit (it draws and runs display links), never on the owner's screen
+    w.level = underDesktop
     w.orderFrontRegardless()
     defer { w.orderOut(nil) }
     let r = demo.page.cardRects[0]
@@ -205,6 +209,8 @@ import Testing
     w.alphaValue = 0.02
     w.ignoresMouseEvents = true
     w.setFrameOrigin(CGPoint(x: -30000, y: -30000))
+    // under the desktop: shown to AppKit (it draws and runs display links), never on the owner's screen
+    w.level = underDesktop
     w.orderFrontRegardless()
     defer { w.orderOut(nil) }
     func draw() {

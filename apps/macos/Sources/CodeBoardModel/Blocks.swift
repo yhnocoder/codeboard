@@ -24,7 +24,7 @@ extension BlockRef {
   }
 }
 
-enum Blocks {
+public enum Blocks {
   /// What kind of block its Markdown starts as: a rewrite one for one is only matched within a kind
   static func kind(_ src: String) -> String {
     let t = src.drop { $0.isWhitespace }
@@ -71,7 +71,7 @@ enum Blocks {
   /// A Note's blocks old → new (core blockMap; nil: that block is gone): blocks not changed are matched by fingerprint
   /// (Myers); within a run of changes between two of them, one block for one of the same kind is its rewrite, and
   /// otherwise each goes to the new one that reads most like it, if alike enough
-  static func map(_ old: [String], _ now: [String]) -> [Int?] {
+  public static func map(_ old: [String], _ now: [String]) -> [Int?] {
     var out = [Int?](repeating: nil, count: old.count)
     let diff = now.map(BlockRef.sig).difference(from: old.map(BlockRef.sig))
     var removed = Set<Int>()

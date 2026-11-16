@@ -55,3 +55,30 @@ public struct StickerID: RawRepresentable, Hashable, Codable, Sendable {
     self.rawValue = rawValue
   }
 }
+
+/// A resource (a `.resource` package), unique in the vault
+public struct ResourceID: RawRepresentable, Hashable, Codable, Sendable {
+  public let rawValue: String
+
+  public init(rawValue: String) {
+    self.rawValue = rawValue
+  }
+}
+
+/// An entry of a resource, unique in the vault: what a card's source names, wherever its folder is
+public struct EntryID: RawRepresentable, Hashable, Codable, Sendable {
+  public let rawValue: String
+
+  public init(rawValue: String) {
+    self.rawValue = rawValue
+  }
+}
+
+/// A version of an entry, unique within it
+public struct VersionID: RawRepresentable, Hashable, Codable, Sendable {
+  public let rawValue: String
+
+  public init(rawValue: String) {
+    self.rawValue = rawValue
+  }
+}

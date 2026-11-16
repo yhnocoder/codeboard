@@ -1,0 +1,27 @@
+import CodeBoardModel
+import Foundation
+
+/// Every entry of the vault's resources by its id, with its folder's path: how a tab or a card's source finds an entry
+/// wherever its folder went. Made from a tree read, each resource's entries read once
+public struct EntryIndex: Sendable {
+  public struct Found: Equatable, Sendable {
+    public var entry: Entry
+    /// The entry's folder, relative to the vault
+    public var path: String
+  }
+
+  private var byID: [EntryID: Found] = [:]
+
+  public init() {}
+
+  // ponytail: every entry file read again on each tree read; keep the last read per resource when vaults grow large
+  public init(_ vault: Vault, _ tree: VaultFolder) {
+    for r in tree.allFolders.flatMap(\.resources) {
+      for case .entry(let e, let path) in (try? vault.items(in: r.path)) ?? [] where byID[e.id] == nil {
+        byID[e.id] = Found(entry: e, path: path)
+      }
+    }
+  }
+
+  public subscript(_ id: EntryID) -> Found? { byID[id] }
+}

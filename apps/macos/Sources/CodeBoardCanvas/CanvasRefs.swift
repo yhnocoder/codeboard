@@ -1,8 +1,9 @@
 import AppKit
 import CodeBoardModel
 import CodeBoardNotes
-import CodeBoardSyntax
+import MarkdownCore
 import SwiftUI
+import TreeSitterHighlight
 
 // Clicks on [[refs]] (the web board's ui/Md.tsx openRef, ui/pops/cardpeek.tsx, actions/subboards.ts openCardRef,
 // cardNear, goToNearCard, goAfterDblClick): in a Note, Text or Box at rest, in the one being written in, in the sidenote
@@ -27,6 +28,39 @@ extension CanvasView {
     return (c, b)
   }
 
+  // MARK: Task checkboxes at rest (view.ts mdClick, toggleTask; Editable.tsx onToggle)
+
+  /// A Note's, Text's or Box's task boxes on the board, in the order of their tasks in its source; none on a card
+  /// being written in, locked, or not of its own text
+  func taskBoxes(_ c: CardID) -> [CGRect] {
+    guard editing?.id != c, let doc = document, isWriting(c), !doc.board.isLocked(.card(c)),
+      let i = index(of: .card(c)), case .note(let n) = scene!.items[i].drawing, n.content.markdown.contains("["),
+      let card = doc.board.card(c),
+      let l = try? display.laid(
+        n.content, width: card.width, folder: n.folder, look: theme.id.rawValue, dark: theme.dark, refs: n.refs,
+        hideHead: n.hideHead)
+    else { return [] }
+    let r = scene!.items[i].rect
+    let o = l.origin(in: l.size(height: n.height.map { Double($0) }))
+    return l.layout.taskBoxes.map { $0.offsetBy(dx: r.minX + o.x, dy: r.minY + o.y) }
+  }
+
+  /// The task whose box is under a board point (with a press's slop round it, as in the editor)
+  func taskAt(_ p: CGPoint) -> (card: CardID, nth: Int)? {
+    guard let c = hitCard(p) else { return nil }
+    return taskBoxes(c).firstIndex { $0.insetBy(dx: -3, dy: -3).contains(p) }.map { (c, $0) }
+  }
+
+  /// Checks or unchecks a task on a card at rest: its text written as one step, as writing in it would
+  func toggleTask(_ t: (card: CardID, nth: Int)) {
+    guard let doc = document, let card = doc.board.card(t.card), let text = card.writing,
+      let next = MarkdownSourceOps.toggleTask(text, nth: t.nth)
+    else { return }
+    doc.edit(card.textCard == nil ? "Edit Note" : "Edit Text") {
+      $0.write(t.card, text: next, layout: CanvasView.layout(of: card))
+    }
+  }
+
   func boardRect(_ box: NoteRefBox, on c: CardID) -> CGRect {
     let o = scene?.placed[c]?.rect.origin ?? .zero
     return box.rect.offsetBy(dx: o.x, dy: o.y)
@@ -46,18 +80,11 @@ extension CanvasView {
     refClicked(.card(r.card, boardRect(r.box, on: r.card)), r.box.ref, r.box.target, go: false, writing: false)
   }
 
-  /// A ref pressed in a web view: the editor's (on the card being written in) or the popup's; nil: the second press
-  /// of a double-click on one, which drops what the first began
-  func refPressed(_ p: RefPress?, inPopup: Bool) {
+  /// A ref pressed in the sidenote popup; nil: the second press of a double-click on one, which drops what the first
+  /// began
+  func refPressed(_ p: RefPress?) {
     guard let p else { return cancelRefGo() }
-    if inPopup {
-      refClicked(.popup(p.rect), p.ref, p.target, go: p.go, writing: p.writing)
-    } else if let id = editing?.id {
-      let v = noteEditor.view.convert(p.rect, to: self)
-      let r = CGRect(
-        origin: camera.board(v.origin), size: CGSize(width: v.width / camera.zoom, height: v.height / camera.zoom))
-      refClicked(.card(id, r), p.ref, p.target, go: p.go, writing: true)
-    }
+    refClicked(.popup(p.rect), p.ref, p.target, go: p.go, writing: p.writing)
   }
 
   /// A click on a ref (`writing`: in an editor, whose caret stays: the camera only moves, nothing is selected)
@@ -160,12 +187,13 @@ extension CanvasView {
     return dx < v.width && dy < v.height
   }
 
-  /// `r` into view, the zoom kept (lower when it is wider than the view); nothing moves when it is in view
-  func reveal(_ r: CGRect) {
+  /// `r` into view, the zoom kept (lower when it is wider than the view); nothing moves when it is in view. `also`:
+  /// brought into view with it when it moves (camera.ts ensureVisible)
+  func reveal(_ r: CGRect, also: CGRect = .null) {
     let v = safeView
     let top = CGRect(x: r.minX, y: r.minY, width: r.width, height: min(r.height, v.height))
     guard !v.contains(top) else { return }
-    motion.fly(to: fitTop(r, maxZoom: camera.zoom))
+    motion.fly(to: fitTop(r.union(also), maxZoom: camera.zoom))
     moved()
   }
 
@@ -275,9 +303,9 @@ extension CanvasView {
       peek.put = CGPoint(x: o.x + m - a.ref.x, y: o.y + m - a.ref.y)
     }
     refPeek = peek
-    host.addSubview(peek, positioned: .above, relativeTo: pops.last?.web.view ?? self)
+    host.addSubview(peek, positioned: .above, relativeTo: pops.last?.pop.view ?? self)
     let theme = self.theme
-    let notes = self.notes
+    let display = self.display
     let images = self.images
     let here = doc.board
     let backing = self.backing
@@ -295,7 +323,7 @@ extension CanvasView {
         }
         guard let card = source.card(c) else { return nil }
         return await CanvasView.peekPicture(
-          card, board: source.id, package: package, vault: vault, theme: theme, notes: notes, images: images,
+          card, board: source.id, package: package, vault: vault, theme: theme, display: display, images: images,
           room: room, backing: backing)
       }.value
       guard refPeek === peek else { return }
@@ -307,14 +335,15 @@ extension CanvasView {
 
   /// The card alone drawn as the board draws it, `room` points wide at most, cut at the preview's height
   nonisolated static func peekPicture(
-    _ card: Card, board: BoardID, package: URL, vault: Vault, theme: Theme, notes: NoteRenderer, images: DecodeCache,
+    _ card: Card, board: BoardID, package: URL, vault: Vault, theme: Theme, display: any NoteDisplay,
+    images: DecodeCache,
     room: CGFloat, backing: CGFloat
   ) async -> RefPeek.Picture? {
     var lone = card
     lone.section = nil
     let b = Board(id: board, cards: [lone])
     let measures = Scene.measures(b, package: package, vault: vault)
-    let sizes = await CanvasView.measure(measures, theme: theme, notes: notes)
+    let sizes = await CanvasView.measure(measures, theme: theme, display: display)
     let highlighter = await MainActor.run { CanvasView.highlighter } ?? Highlighter()
     let scene = Scene(b, package: package, vault: vault, theme: theme, highlighter: highlighter, sizes: sizes)
     guard let it = scene.items.first(where: { $0.owner == .card(card.id) }) else { return nil }
@@ -322,7 +351,7 @@ extension CanvasView {
     let scale = k * backing
     let surface: IOSurface?
     if it.drawing.byRenderer {
-      guard let snap = await CanvasView.picture(it, scale: scale, theme: theme, notes: notes, priority: 1) else {
+      guard let snap = await CanvasView.picture(it, scale: scale, theme: theme, display: display, priority: 1) else {
         return nil
       }
       surface = CanvasView.compose(it, snap, scale: scale, theme: theme, images: images)
@@ -330,7 +359,8 @@ extension CanvasView {
       surface = CanvasView.render(it, scale: scale, theme: theme, images: images).surface
     }
     guard let surface else { return nil }
-    return RefPeek.Picture(surface: surface, size: it.rect.size, bleed: it.bleed, k: k, header: theme.headerHeight)
+    return RefPeek.Picture(
+      surface: surface, size: it.rect.size, bleed: Raster.bleed(it.bleed, at: scale), k: k, header: theme.headerHeight)
   }
 
   /// Esc in a web view over the canvas: a preview open closes first
@@ -356,9 +386,9 @@ extension CanvasView {
       let b = camera.view(CGPoint(x: card.maxX, y: r.maxY))
       return (CGRect(x: a.x, y: a.y, width: b.x - a.x, height: b.y - a.y), camera.view(r.origin))
     case .popup(let r):
-      guard let p = refPop, p.shown, p.web.view.superview != nil else { return nil }
-      let v = p.web.view
-      let box = v.convert(CGRect(origin: p.web.origin, size: p.web.size), to: self)
+      guard let p = refPop, p.shown, p.pop.view.superview != nil else { return nil }
+      let v = p.pop.view
+      let box = v.convert(CGRect(origin: p.pop.origin, size: p.pop.size), to: self)
       return (box, v.convert(r, to: self).origin)
     }
   }

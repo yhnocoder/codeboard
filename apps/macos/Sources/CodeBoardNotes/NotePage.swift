@@ -110,13 +110,6 @@ final class NotePage {
     return d
   }
 
-  /// The language Free code's text looks like (nil: it cannot tell)
-  func freeLanguage(_ text: String) async throws -> String? {
-    await signal.ready()
-    return try await view.callAsyncJavaScript("return note.lang(t)", arguments: ["t": text], contentWorld: .page)
-      as? String
-  }
-
   /// Where each mounted Note's first glyph is from its top left at 100 % (nil: it has no text)
   func firstGlyphs(_ ids: [String]) async throws -> [String: CGPoint] {
     let r = try await view.callAsyncJavaScript("return note.first(ids)", arguments: ["ids": ids], contentWorld: .page)

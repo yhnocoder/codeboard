@@ -1,7 +1,8 @@
-import CodeBoardMarkdown
-import CodeBoardMarkdownUI
+import CodeBoardMarkdownLooks
 import CodeBoardModel
 import Foundation
+import MarkdownCore
+import MarkdownUI
 
 /// A Note of a vault's board as the demo shows it: its Markdown, the folder its images resolve against (the package for
 /// its own content, the shared folder for a shared card: FORMAT.md's one rule), and its layout info

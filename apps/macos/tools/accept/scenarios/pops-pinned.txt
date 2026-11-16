@@ -12,14 +12,14 @@ shot at @cfree+-60,-40 1800 1000
 # the first is still open: its title bar takes the press
 click @sn1:c+60,0
 wait 200
-mac: expect press has PopWebView
+mac: expect press has PopWebView|PopView
 web: expect press has pop
 # its marker closes it only
 click @sn1:c
 wait 500
 click @sn1:c+60,0
 wait 200
-mac: expect press lacks PopWebView
+mac: expect press lacks PopWebView|PopView
 web: expect press lacks pop
 # open again; Esc closes both
 click @sn1:c
@@ -28,7 +28,7 @@ key esc
 wait 500
 click @sn1:c+60,0
 wait 200
-mac: expect press lacks PopWebView
+mac: expect press lacks PopWebView|PopView
 web: expect press lacks pop
 # both again; a press on the canvas closes them all
 click @sn1:c
@@ -39,5 +39,5 @@ click @cfree+500,170
 wait 500
 click @sn1:c+60,0
 wait 200
-mac: expect press lacks PopWebView
+mac: expect press lacks PopWebView|PopView
 web: expect press lacks pop

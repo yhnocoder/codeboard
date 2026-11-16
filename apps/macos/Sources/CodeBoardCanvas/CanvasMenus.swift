@@ -75,7 +75,7 @@ extension CanvasView {
       if let id = s.board { m.addItem(menuItem("Delete Board…") { [weak self] in self?.deleteBoard(id) }) }
       return m
     }
-    for i in webMenuItems(c) + linksMenuItems(c) + codeMenuItems(c) { m.addItem(i) }
+    for i in descMenuItems(c) + webMenuItems(c) + linksMenuItems(c) + codeMenuItems(c) { m.addItem(i) }
     m.addItem(arrange)
     m.addItem(copyPathItem([c.rawValue]))
     m.addItem(.separator())
@@ -106,6 +106,18 @@ extension CanvasView {
       let n = await ask(id, cardTitle(k)) { d?.edit("Delete Everywhere", selection: []) { $0.delete([.card(id)]) } }
       if let n, self?.document === d { self?.toast("Deleted from \(n) boards") }
     }
+  }
+
+  /// A code or image card's description, written in place (menus.ts: a code card's Description / Edit Description, an
+  /// image's Add Description / Edit Description)
+  func descMenuItems(_ id: CardID) -> [NSMenuItem] {
+    guard writesDescription(id), case .own(let k)? = document?.board.card(id)?.content else { return [] }
+    let has = k.description != nil
+    let edit: () -> Void = { [weak self] in self?.editDescription(id) }
+    // an image's is its own item; a code card's goes in its Add ▸ (menus.ts kindItems: Generated Code and the
+    // process tags, not drawn here, go there too)
+    if case .image = k.body { return [menuItem(has ? "Edit Description" : "Add Description", edit)] }
+    return [submenu("Add", [menuItem(has ? "Edit Description" : "Description", edit)])]
   }
 
   /// A code card's View ▸ (kindItems view): what it hides, and its background
@@ -324,31 +336,18 @@ extension CanvasView {
     return submenu(
       "Insert Board",
       others.map { o in
-        menuItem(o.title) { [weak self] in self?.insertBoard(o, at: p, in: vault, tree: tree) }
+        menuItem(o.title) { [weak self] in self?.insertBoard(o, at: p) }
       })
   }
 
-  private func insertBoard(_ child: VaultBoard, at p: CGPoint, in vault: Vault, tree: VaultFolder) {
-    guard let doc = document, let (here, _) = shown else { return }
-    // the boards each board shows as sub-boards, read once
-    let byID = Dictionary(tree.allBoards.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
-    var seen: Set<BoardID> = []
-    func holds(_ b: BoardID) -> Bool {
-      guard seen.insert(b).inserted, let vb = byID[b],
-        let file = try? vault.board(at: vb.path)
-      else { return false }
-      return file.cards.contains { c in
-        guard case .own(let k) = c.content, case .board(let s) = k.body, case .board(let t) = s.target else {
-          return false
-        }
-        return t == here.id || holds(t)
-      }
-    }
-    if holds(child.id) {
+  private func insertBoard(_ child: VaultBoard, at p: CGPoint) {
+    guard let (here, _) = shown else { return }
+    if holdsThisBoard(child.id) {
       return toast("Can’t put \(child.title) inside \(here.title): \(here.title) is already inside \(child.title).")
     }
     let id = CardID(rawValue: Board.newID("c"))
-    doc.edit("Insert Board", selection: [.card(id)]) {
+    // filed in the Section it lands in (settleHome)
+    settle(id, CGSize(width: 560, height: 360), "Insert Board") {
       $0.cards.append(
         Card(
           id: id, x: p.x, y: p.y, width: 560, height: 360,

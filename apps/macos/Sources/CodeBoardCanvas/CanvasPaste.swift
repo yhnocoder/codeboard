@@ -114,7 +114,7 @@ extension CanvasView {
   @discardableResult
   private func addImage(_ dataURL: String, width w: CGFloat, at p: CGPoint?, _ step: String) -> CGRect? {
     guard let (board, vault) = shown,
-      let address = try? NoteEditor.store(dataURL: dataURL, in: vault.url(of: board.path))
+      let address = try? NoteImages.store(dataURL: dataURL, in: vault.url(of: board.path))
     else {
       toast("Could not add the image")
       return nil
@@ -137,7 +137,7 @@ extension CanvasView {
   func addPicture(_ data: Data, named name: String, scale: Double = 1, at p: CGPoint?, _ step: String) async -> CGRect?
   {
     let doc = document
-    guard let (ext, _) = NoteEditor.kind(of: data), let mime = UTType(filenameExtension: ext)?.preferredMIMEType else {
+    guard let (ext, _) = NoteImages.kind(of: data), let mime = UTType(filenameExtension: ext)?.preferredMIMEType else {
       toast("\(name) is not a PNG, JPEG, WebP, GIF or SVG image.")
       return nil
     }

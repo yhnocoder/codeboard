@@ -137,7 +137,8 @@ private func titles(_ m: NSMenu?) -> [String] { m?.items.map { $0.isSeparatorIte
         "Add Sidenote", "-", "Open All in Browser", "View", "Rename", "Arrange", "Copy Path", "-", "Delete",
       ])
     let code = menu(r, at: r.centre("c1"))
-    #expect(titles(code) == ["Add Sidenote", "-", "View", "Arrange", "Copy Path", "-", "Delete"])
+    #expect(titles(code) == ["Add Sidenote", "-", "Add", "View", "Arrange", "Copy Path", "-", "Delete"])
+    #expect(titles(item(code, "Add")?.submenu) == ["Description"])
     #expect(
       titles(item(code, "View")?.submenu) == [
         "Hide Blank Lines", "Hide Comments", "Hide Docstrings", "Show All Hidden Lines", "-", "Background",
@@ -239,6 +240,24 @@ private func titles(_ m: NSMenu?) -> [String] { m?.items.map { $0.isSeparatorIte
     #expect(made.map { CGPoint(x: $0.x, y: $0.y) } == at)
     await r.editorReady()
     await r.canvas.endEditing()
+  }
+
+  /// Insert Board ▸ puts the board's card where the menu was asked, in the Section it lands in (settleHome)
+  @Test func anInsertedBoardsCardGoesIntoTheSectionItLandsIn() async throws {
+    let r = try await Rig(menusBoard(), zoom: 1)
+    defer { r.close() }
+    let other = try Vault(root: r.root).newBoard(in: "", title: "Other")
+    let at = CGPoint(x: 600, y: 330)
+    let before = Set(r.doc.board.cards.map(\.id))
+    fire(item(menu(r, at: at), "Insert Board", "Other"))
+    let made = try #require(r.doc.board.cards.first { !before.contains($0.id) })
+    #expect(CGPoint(x: made.x, y: made.y) == at)
+    #expect(made.section == gid("g2"), "the innermost Section it covers by more than a third")
+    guard case .own(let c) = made.content, case .board(let s) = c.body else {
+      Issue.record("not a sub-board")
+      return
+    }
+    #expect(s.target == .board(other.id))
   }
 
   /// The toolbar's ⋯ (Chrome.tsx more): after the tools and a separator; Undo, Redo, Copy Path (the board's file),

@@ -1,16 +1,16 @@
 import AppKit
 import CodeBoardModel
 import CodeBoardNotes
-import CodeBoardSyntax
+import TreeSitterHighlight
 
 // The sidenote popups on the canvas (web board state/pop.ts, ui/pops/index.tsx besidePos, PopFrame; notes.tsx): every
-// one is pinned as it opens (actions/notes.ts pinMarker, openSpot, openAddNote), so several stay open together, each in a
-// web view of its own over the canvas, the newest on top; Esc and a press on the canvas close them all (closeAllPops). One
+// one is pinned as it opens (actions/notes.ts pinMarker, openSpot, openAddNote), so several stay open together, each a
+// view of its own over the canvas (NativePop.swift), the newest on top; Esc and a press on the canvas close them all (closeAllPops). One
 // predictable place, whatever is around: right of what it belongs to (the card with its markers past its edge, a
 // Section's title with its marker, a free marker), its top at the marker's (else the lines or the block); with no room on
 // the right it covers the card, inside the window; it never changes side and the board never moves for it. Dragged by its
 // title bar it keeps its offset from its marker as the camera moves, with a thin dashed line back to it; closed and opened
-// again it is in its place again. A camera move only moves the web views.
+// again it is in its place again. A camera move only moves their views.
 
 private let popGap: CGFloat = 12
 private let popPad: CGFloat = 8
@@ -24,15 +24,17 @@ struct PopAnchor {
   var right: CGFloat
 }
 
-/// A sidenote popup open (state/pop.ts PopInst): what it shows, its web view, where it is
+/// A sidenote popup open (state/pop.ts PopInst): what it shows, its view, where it is
 @MainActor final class Popup {
   var at: PopAt
-  let web: SidenotePop
-  /// Its web view shows it (kept until it lets it go: what a closing ends is still added there)
+  let pop: SidenotePop
+  /// Its view shows it (kept until it lets it go: what a closing ends is still added there)
   var shown = false
-  /// The key its web view shows it under, and the [[ list for its inputs
+  /// The key its view shows it under, and the [[ list for its inputs
   var key = ""
   var refList: RefCandidates?
+  /// The code its input's search looks through, with the board each is on (read once it first searches)
+  var code: [(Segment, String)]?
   /// Dragged away: its top left from its marker's, in board units
   var held: CGVector?
   /// Its top left in the view now, and where a drag of it began
@@ -41,31 +43,26 @@ struct PopAnchor {
   /// The dashed line back to its marker when dragged away, in the view's units
   let line = CAShapeLayer()
 
-  init(_ at: PopAt, _ web: SidenotePop) {
+  init(_ at: PopAt, _ pop: SidenotePop) {
     self.at = at
-    self.web = web
+    self.pop = pop
     line.isHidden = true
   }
 }
 
 extension CanvasView {
-  /// The popup web views no popup shows, kept for the next ones (a web view takes a while to load its page).
-  /// ponytail: shared by every canvas; one given back is taken again before its closing has run only by this canvas,
-  /// whose popup work runs one after another
-  static var idlePops: [SidenotePop] = []
-
-  /// The newest popup's web view, else the one the next popup takes
+  /// The newest popup, else the one the next popup takes (tests: the popup one opened right after uses)
   package var sidenotePop: SidenotePop {
-    if let p = pops.last { return p.web }
-    if let p = CanvasView.idlePops.last { return p }
+    if let p = pops.last { return p.pop }
+    if let p = nextPop { return p }
     let p = SidenotePop()
-    CanvasView.idlePops.append(p)
+    nextPop = p
     return p
   }
 
   /// The newest popup open, by what it shows
   var openPop: PopAt? { pops.last?.at }
-  /// What the newest popup's web view shows
+  /// What the newest popup's view shows
   var popShown: PopAt? { pops.last.flatMap { $0.shown ? $0.at : nil } }
   /// The newest popup's offset from its marker, dragged away (tests)
   package var popHeld: CGVector? { pops.last?.held }
@@ -91,7 +88,8 @@ extension CanvasView {
       p = open
       p.held = nil
     } else {
-      p = Popup(at, CanvasView.idlePops.popLast() ?? SidenotePop())
+      p = Popup(at, nextPop ?? SidenotePop())
+      nextPop = nil
       pops.append(p)
     }
     placeMarks()
@@ -99,11 +97,10 @@ extension CanvasView {
     queuePop { await self.showPop(p, write: write, ask: ask, focus: focus) }
   }
 
-  /// One popup closed (what is being written in it is added, where it was written); its web view kept for the next
+  /// One popup closed (what is being written in it is added, where it was written)
   func closePop(_ p: Popup) {
     guard let i = pops.firstIndex(where: { $0 === p }) else { return }
     pops.remove(at: i)
-    CanvasView.idlePops.append(p.web)
     placeMarks()
     onPop?(openPop)
     queuePop { await self.letGo(p) }
@@ -118,11 +115,12 @@ extension CanvasView {
     }
   }
 
-  /// What `p`'s web view shows let go: what is being written is added (the field posts it before this returns)
+  /// What `p`'s view shows let go: what is being written is added first
   private func letGo(_ p: Popup) async {
     guard p.shown else { return }
-    await p.web.end()
-    p.web.clear()
+    p.pop.end()
+    p.pop.clear()
+    p.pop.view.removeFromSuperview()
     p.shown = false
     withoutAnimation { p.line.removeFromSuperlayer() }
     if refPop === p {
@@ -132,40 +130,37 @@ extension CanvasView {
   }
 
   private func showPop(_ p: Popup, write: Bool, ask: Bool, focus: SidenoteID?) async {
-    let pop = p.web
+    let pop = p.pop
     await letGo(p)
     guard pops.contains(where: { $0 === p }), let host = superview else { return }
     // over the popups opened before it
-    let below = pops.prefix { $0 !== p }.last { $0.web.view.superview === host }?.web.view ?? self
+    let below = pops.prefix { $0 !== p }.last { $0.pop.view.superview === host }?.pop.view ?? self
     host.addSubview(pop.view, positioned: .above, relativeTo: below)
-    pop.onAction = { [weak self] in self?.popAction($0, in: p) }
+    pop.pasteboard = pasteboard
+    // the popup weakly, as the canvas: it holds its view, which holds these (a closed popup stayed, with its view and
+    // the code it searched)
+    pop.onAction = { [weak self, weak p] a in if let p { self?.popAction(a, in: p) } }
+    pop.menuOf = { [weak self, weak p] n in p.flatMap { self?.sidenoteMenu(SidenoteID(rawValue: n), in: $0) } }
+    pop.findCode = { [weak self, weak p] q in p.map { self?.codeFound(q, for: $0) ?? [] } ?? [] }
     pop.view.escape = { [weak self] in self?.escapePeek() ?? false }
-    pop.onSize = { [weak self] _ in self?.positionPop(p) }
-    pop.onWriting = { [weak self] on in if !on { self?.refreshPop(p) } }
-    pop.onDrag = { [weak self] d, ended in self?.dragPop(p, d, ended: ended) }
+    pop.onSize = { [weak self, weak p] _ in if let p { self?.positionPop(p) } }
+    pop.onWriting = { [weak self, weak p] on in if !on, let p { self?.refreshPop(p) } }
+    pop.onDrag = { [weak self, weak p] d, ended in if let p { self?.dragPop(p, d, ended: ended) } }
     p.shown = true
     p.key = UUID().uuidString
     p.refList = nil
     guard let data = popData(p, write: write, ask: ask, focus: focus) else { return }
-    let low = popAnchor(p.at).map { camera.view(CGPoint(x: 0, y: $0.el.minY)).y > bounds.height / 2 } ?? false
-    await pop.show(data, maxHeight: popMaxHeight, roomAbove: low)
-    guard pops.contains(where: { $0 === p }), p.shown else { return }
+    pop.show(data, maxHeight: popMaxHeight)
     withoutAnimation {
       positionPop(p)
       pop.view.alphaValue = 1
     }
-    if write { window?.makeFirstResponder(pop.view) }
-    // the [[ list: this board's cards and Sections, the vault's other boards (read off the main thread)
-    if let doc = document, let (vb, vault) = shown {
-      let b = doc.board
-      let package = vault.url(of: vb.path)
-      let recent = CanvasView.recentRefs
-      let key = p.key
-      let list = await Task.detached { RefResolver(b, package: package, vault: vault).candidates(recent: recent) }.value
-      guard p.key == key else { return }
-      p.refList = list
-      refreshPop(p)
-    }
+    if write { pop.focus() }
+    // the [[ list: this board's cards and Sections, the vault's other boards
+    let key = p.key
+    guard let list = await refCandidates(), p.key == key else { return }
+    p.refList = list
+    refreshPop(p)
   }
 
   var popMaxHeight: CGFloat { max(120, min(560, bounds.height - 16)) }
@@ -180,12 +175,12 @@ extension CanvasView {
       p.at = .lines(Lines(card: l.card, segment: l.segment, range: h))
       placeMarks()
     }
-    if popGone(p.at, in: scene) && !p.web.writing { return closePop(p) }
+    if popGone(p.at, in: scene) && !p.pop.writing { return closePop(p) }
     guard let data = popData(p, write: false, ask: false, focus: nil) else { return }
     let max = popMaxHeight
     queuePop {
       guard p.shown, self.pops.contains(where: { $0 === p }) else { return }
-      await p.web.show(data, maxHeight: max, roomAbove: false)
+      p.pop.show(data, maxHeight: max)
       self.positionPop(p)
     }
   }
@@ -263,19 +258,19 @@ extension CanvasView {
           SidenotePop.Shown.Ask(
             done: q.done, answers: q.answers.map { SidenotePop.Shown.Answer(id: $0.id, md: $0.text) })
         }
-        return .text(
-          n.id.rawValue, t.text, q: q, place: place, review: n.review, lines: n.anchor.lines != nil,
-          always: t.alwaysShow)
+        return .init(
+          id: n.id.rawValue, place: place, review: n.review,
+          body: .text(t.text, q: q, lines: n.anchor.lines != nil, always: t.alwaysShow))
       case .code(let seg):
-        return .code(
-          n.id.rawValue, head: Self.codeHead(seg), start: seg.firstLine, html: Self.codeHTML(seg), place: place,
-          review: n.review, why: n.why)
+        return .init(
+          id: n.id.rawValue, place: place, review: n.review,
+          body: .code(Self.codeHead(seg), start: seg.firstLine, lines: seg.lines, language: seg.language, why: n.why))
       }
     }
     return SidenotePop.Shown(
-      key: p.key, look: theme.id.rawValue, dark: theme.dark, range: range, title: title, remove: remove,
-      notes: shownNotes, write: write, ask: ask, focus: focus?.rawValue, folder: package,
-      refs: resolver.refs(in: texts.joined(separator: "\n\n")), refList: p.refList)
+      key: p.key, theme: theme, range: range, title: title, remove: remove, notes: shownNotes, write: write, ask: ask,
+      focus: focus?.rawValue, folder: package, refs: resolver.refs(in: texts.joined(separator: "\n\n")),
+      refList: p.refList)
   }
 
   /// A code sidenote's head (notes.tsx SnHead): its symbol, else the file and lines; where it is; its version
@@ -286,37 +281,6 @@ extension CanvasView {
     return .init(
       title: s.symbol?.name ?? "\(base) \(s.firstLine)–\(s.lastLine)", where: "\(base):\(s.firstLine)",
       version: Scene.version(s) ?? "")
-  }
-
-  /// A code sidenote's lines as the board's code HTML: spans of its code classes (kw, fn, str…)
-  static func codeHTML(_ s: Segment) -> [String] {
-    let tokens = (CanvasView.highlighter ?? Highlighter()).tokens(lines: s.lines, language: s.language)
-    func esc(_ t: Substring) -> String {
-      String(t).replacing("&", with: "&amp;").replacing("<", with: "&lt;").replacing(">", with: "&gt;")
-    }
-    return s.lines.enumerated().map { i, line in
-      let u = Array(line.utf16)
-      var out = ""
-      var at = 0
-      for t in i < tokens.count ? tokens[i] : [] where t.columns.lowerBound >= at && t.columns.upperBound <= u.count {
-        out += esc(Substring(String(decoding: u[at..<t.columns.lowerBound], as: UTF16.self)))
-        let cls =
-          switch t.kind {
-          case .keyword: "kw"
-          case .operator: "kw op"
-          case .function: "fn"
-          case .string: "str"
-          case .comment: "com"
-          case .number: "num"
-          case .receiver: "self"
-          case .punctuation: "p"
-          }
-        out += "<span class=\"\(cls)\">"
-        out += esc(Substring(String(decoding: u[t.columns], as: UTF16.self))) + "</span>"
-        at = t.columns.upperBound
-      }
-      return out + esc(Substring(String(decoding: u[at...], as: UTF16.self)))
-    }
   }
 
   // MARK: Where it is
@@ -385,12 +349,12 @@ extension CanvasView {
       y: max(popPad, min(el.minY - 6, vh - popPad - size.height)))
   }
 
-  /// Each popup's web view where it goes now
+  /// Each popup's view where it goes now
   func positionPop() { pops.forEach(positionPop) }
 
-  /// The web view where `p` goes now, and the dashed line back to its marker when dragged away
+  /// The view where `p` goes now, and the dashed line back to its marker when dragged away
   func positionPop(_ p: Popup) {
-    let pop = p.web
+    let pop = p.pop
     guard p.shown, let host = pop.view.superview, let a = popAnchor(p.at) else { return }
     let at = popPosition(a, size: pop.size, held: p.held)
     p.origin = at
@@ -420,7 +384,7 @@ extension CanvasView {
   /// offset from its marker from now on
   func dragPop(_ p: Popup, _ d: CGSize, ended: Bool) {
     guard p.shown, let a = popAnchor(p.at) else { return }
-    let size = p.web.size
+    let size = p.pop.size
     let from = p.dragFrom ?? p.origin
     p.dragFrom = ended ? nil : from
     let x = min(max(from.x + d.width, keepIn - size.width), bounds.width - keepIn)
@@ -455,6 +419,9 @@ extension CanvasView {
       doc.edit(ask ? "Add Question" : "Add Sidenote") {
         _ = $0.addSidenote(n, text: text, at: Self.anchor(at), question: ask ? now : nil)
       }
+    case .addCode(let seg):
+      if case .lines = at { lineSel = nil }
+      doc.edit("Add Sidenote") { _ = $0.addCodeSidenote(id(Board.newID("n")), code: seg, at: Self.anchor(at)) }
     case .write(let n, let text): doc.edit("Edit Sidenote") { $0.writeSidenote(id(n), text) }
     case .delete(let n): doc.edit("Delete Sidenote") { $0.deleteSidenotes([id(n)]) }
     case .place(let n): placeSidenote(id(n))
@@ -477,20 +444,65 @@ extension CanvasView {
     case .close:
       closePop(p)
       window?.makeFirstResponder(self)
-    case .picked(let group, let card):
-      let b = group ?? doc.board.id.rawValue
-      CanvasView.recentRefs = Array(
-        ([(board: b, id: card)] + CanvasView.recentRefs.filter { $0.board != b || $0.id != card }).prefix(3))
+    case .picked(let group, let card): rememberRef(group: group, card)
     case .ref(let r):
       refPop = p
-      refPressed(r, inPopup: true)
+      refPressed(r)
     case .elsewhere: closeRefPeek()
     case .openLink(let u): openLink(u)
-    case .menu(let n, let xy):
-      let v = p.web.view
-      sidenoteMenu(id(n), in: p).popUp(
-        positioning: nil, at: v.isFlipped ? xy : CGPoint(x: xy.x, y: v.bounds.height - xy.y), in: v)
     }
+  }
+
+  /// A ref picked from a [[ list, first of the recent ones the next list offers
+  func rememberRef(group: String?, _ card: String) {
+    guard let doc = document else { return }
+    let b = group ?? doc.board.id.rawValue
+    CanvasView.recentRefs = Array(
+      ([(board: b, id: card)] + CanvasView.recentRefs.filter { $0.board != b || $0.id != card }).prefix(3))
+  }
+
+  /// The [[ list's candidates for this board (its cards and Sections, the vault's other boards), read off the main
+  /// thread
+  func refCandidates() async -> RefCandidates? {
+    guard let doc = document, let (vb, vault) = shown else { return nil }
+    let b = doc.board
+    let package = vault.url(of: vb.path)
+    let recent = CanvasView.recentRefs
+    return await Task.detached { RefResolver(b, package: package, vault: vault).candidates(recent: recent) }.value
+  }
+
+  /// What the input's code search finds (NoteComposer's Code: the web board asks its host for functions and files):
+  /// the code on the vault's boards, this board's first, each segment once, by its function's name or its file's,
+  /// best first. The other boards are read once a popup first searches.
+  /// ponytail: only code already on a board; the repository's own functions once the app reads repositories
+  func codeFound(_ q: String, for p: Popup) -> [SidenotePop.Found] {
+    if p.code == nil, let doc = document {
+      var all: [(Segment, String)] = []
+      func take(_ b: Board, _ name: String) {
+        for c in b.cards {
+          guard case .own(let content) = c.content, case .code(let code) = content.body else { continue }
+          for s in code.segments { all.append((s, name)) }
+        }
+      }
+      take(doc.board, "This board")
+      if let (vb, vault) = shown, let tree = try? vault.tree() {
+        for m in tree.allBoards where m.id != vb.id {
+          if let b = try? vault.board(at: m.path) { take(b, m.title) }
+        }
+      }
+      p.code = all
+    }
+    var seen = Set<String>()
+    let scored = (p.code ?? []).compactMap { s, board -> (Double, SidenotePop.Found)? in
+      let path = CodeLayout.path(s) ?? ""
+      let file = path.split(separator: "/").last.map(String.init) ?? path
+      let label = s.symbol?.name ?? (file.isEmpty ? s.language : "\(file) \(s.firstLine)–\(s.lastLine)")
+      let score = max(BoardSearch.fuzzy(q, label), BoardSearch.fuzzy(q, path) - 10)
+      guard score >= 0, seen.insert("\(path) \(s.firstLine) \(s.lines.count) \(label)").inserted else { return nil }
+      let detail = [path.isEmpty ? nil : "\(path):\(s.firstLine)", board].compactMap { $0 }.joined(separator: " · ")
+      return (score, SidenotePop.Found(label: label, detail: detail, symbol: s.symbol != nil, segment: s))
+    }
+    return scored.sorted { $0.0 > $1.0 }.map(\.1)
   }
 
   /// A sidenote's right-click menu (notes.tsx noteMenu): Edit for a text one, Place on Board for one on a card that is no
@@ -498,11 +510,7 @@ extension CanvasView {
   func sidenoteMenu(_ n: SidenoteID, in p: Popup? = nil) -> NSMenu {
     let m = NSMenu()
     if case .text? = document?.board.sidenote(n)?.body {
-      m.addItem(
-        menuItem("Edit") { [weak self] in
-          guard let pop = p?.web ?? self?.sidenotePop else { return }
-          Task { _ = await pop.run("pop.click(s)", ["s": ".slip[data-note=\"\(n.rawValue)\"] [aria-label=Edit]"]) }
-        })
+      m.addItem(menuItem("Edit") { [weak self] in (p?.pop ?? self?.sidenotePop)?.edit(n.rawValue) })
     }
     if document?.board.sidenote(n)?.placeable == true {
       m.addItem(menuItem("Place on Board") { [weak self] in self?.placeSidenote(n) })

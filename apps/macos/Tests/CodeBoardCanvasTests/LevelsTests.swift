@@ -195,6 +195,19 @@ import Testing
     #expect(q.isIdle)
   }
 
+  @Test func swapsOutOfViewGoBesideThoseInViewUpToTheirOwnCount() {
+    var q = RedrawQueue<Int>()
+    q.replace(with: (0..<24).map { RestPlan.Job(item: $0, slot: .held, scale: 2) })
+    while !q.isIdle && q.ready.count < 24 {
+      for s in q.start() { q.finish(s.job, generation: s.generation, payload: s.job.item, pixels: 5_000_000) }
+    }
+    // items 0 and 1 in view: one (the pixel budget), with sixteen out of view
+    let swaps = q.takeSwaps { $0.job.item < 2 }
+    #expect(swaps.map(\.payload) == [0] + Array(2..<18))
+    #expect(q.takeSwaps { $0.job.item < 2 }.map(\.payload) == [1] + Array(18..<24))
+    #expect(q.isIdle)
+  }
+
   @Test func aBitmapOverThePixelBudgetStillGoesAlone() {
     var q = RedrawQueue<Int>()
     q.replace(with: jobs(2))

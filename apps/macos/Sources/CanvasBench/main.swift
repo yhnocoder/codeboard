@@ -6,14 +6,21 @@ import CodeBoardModel
 //        CanvasBench <vault folder> <five board ids or titles> --memory <folder>
 //   --hud    frame rate, dropped frames, main-thread time per frame, pixels held and footprint over the canvas
 //   --bench  opens the board (every board when none is named), runs the scripted pan and zoom segments on it and opens it
-//            again, prints one JSON object per board on stdout and quits. The window floats on top: a covered window
-//            gets no frames
-//   --memory see MemoryRun
+//            again, prints one JSON object per board on stdout and quits. The window is below the desktop picture and
+//            never activated; its frames are ticked at 60 Hz (Meter): dropped frames are ticks the main thread made late,
+//            and the window server's and the GPU's share of a frame is not measured
+//   --memory see MemoryRun; in a window below the desktop picture that is never activated
 //   --drag   see DragBench: drags on a copy of each board named (every board when none is), in a window never on screen
 //   --open-frames  what each frame shows while each board named opens, then while it is panned and zoomed (OpenFrames),
 //            in a window below the desktop picture that is never activated; with --note-cache <folder> the Note
 //            snapshots are kept there across runs (a relaunch with the disk cache filled); with --pictures <folder> the
 //            board pictures and the cameras they were taken at are kept there (the app's first board after a launch)
+//            With --early-scroll: a scroll of one screen as soon as each board is installed instead of the pan and zoom
+//   --code   heavy code cards made for it (CodeCards): the whole board drawn offscreen again and again (CPU time), then
+//            --open-frames on it; no vault folder
+//   --import <folder> the vault is that VS Code storage folder (.codeboard) imported into a new temporary vault first
+//   --edit   see EditBench: writing in the boards named (every board when none is), on copies, in a window below the
+//            desktop picture that is never activated
 //   --arrows the same drags on two boards made for it (ArrowBoards): a card with twenty arrows, a Section of twenty
 //            cards with their arrows; no vault folder
 // Note snapshots are cached in a new temporary folder, never in the app's cache: every run draws its Notes anew
@@ -44,6 +51,7 @@ final class App: NSObject, NSApplicationDelegate {
   func applicationDidFinishLaunching(_ n: Notification) {
     if drag { return runDrag() }
     if openFrames { return runOpenFrames() }
+    if editBench { return runEdit() }
     let screen = NSScreen.main?.visibleFrame ?? CGRect(x: 0, y: 0, width: 1440, height: 900)
     let w = NSWindow(
       contentRect: screen.insetBy(dx: 40, dy: 30), styleMask: [.titled, .closable, .resizable, .miniaturizable],
@@ -55,15 +63,11 @@ final class App: NSObject, NSApplicationDelegate {
     let root = NSView(frame: w.contentLayoutRect)
     root.addSubview(canvas)
     w.contentView = root
-    w.makeKeyAndOrderFront(nil)
-    w.makeFirstResponder(canvas)
-    if bench || memory != nil {
-      w.level = .floating
-      w.orderFrontRegardless()
-    }
-    NSApp.activate()
     window = w
     if let memory {
+      // below the desktop picture, never activated nor made key: the memory run waits for redraws, not for frames
+      w.level = .underDesktop
+      w.orderFrontRegardless()
       canvas.removeFromSuperview()
       Task {
         do {
@@ -75,7 +79,16 @@ final class App: NSObject, NSApplicationDelegate {
       }
       return
     }
-    let meter = Meter(canvas)
+    if bench {
+      // below the desktop picture, never activated nor made key, its frames ticked by the meter
+      w.level = .underDesktop
+      w.orderFrontRegardless()
+    } else {
+      w.makeKeyAndOrderFront(nil)
+      w.makeFirstResponder(canvas)
+      NSApp.activate()
+    }
+    let meter = Meter(canvas, ticking: bench)
     self.meter = meter
     if hud { meter.showHUD(in: root) }
     Task {
@@ -121,6 +134,8 @@ final class App: NSObject, NSApplicationDelegate {
 
   /// Below the desktop picture, never activated nor made key: its frames are ticked by OpenFrames
   private func runOpenFrames() {
+    // as the app does as it launches
+    NativeNotes.warmUp()
     let frame = CGRect(x: 0, y: 0, width: 1440, height: 900)
     let w = NSWindow(contentRect: frame, styleMask: [.titled], backing: .buffered, defer: false)
     w.level = .underDesktop
@@ -133,7 +148,15 @@ final class App: NSObject, NSApplicationDelegate {
     w.orderFrontRegardless()
     window = w
     Task {
+      if code {
+        for b in boards {
+          do { print(try CodeCards.draw(b, in: vault)) } catch {
+            FileHandle.standardError.write(Data("\(error)\n".utf8))
+          }
+        }
+      }
       let run = OpenFrames(canvas: canvas)
+      run.earlyScroll = earlyScroll
       for b in boards {
         do {
           print(try await run.run(b, in: vault, pictures: keptPictures))
@@ -142,6 +165,35 @@ final class App: NSObject, NSApplicationDelegate {
         }
       }
       if let p = keptPictures { run.leave(pictures: p) }
+      NSApp.terminate(nil)
+    }
+  }
+
+  /// Below the desktop picture, never activated nor made key: its frames are ticked by EditBench
+  private func runEdit() {
+    _ = webKitAtStart
+    NativeNotes.warmUp()
+    let frame = CGRect(x: 0, y: 0, width: 1440, height: 900)
+    let w = NSWindow(contentRect: frame, styleMask: [.titled], backing: .buffered, defer: false)
+    w.level = .underDesktop
+    let cache = FileManager.default.temporaryDirectory.appending(path: "canvasbench-notes-\(UUID().uuidString)")
+    let scratch = FileManager.default.temporaryDirectory.appending(path: "canvasbench-edit-\(UUID().uuidString)")
+    noteCache = cache
+    let canvas = CanvasView(frame: frame, noteCache: cache)
+    w.contentView = canvas
+    w.orderFrontRegardless()
+    window = w
+    Task {
+      try? FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
+      let run = EditBench(canvas: canvas, window: w) { $0.writerView?.source }
+      for b in boards {
+        do {
+          print(try await run.run(b, in: vault, scratch: scratch))
+        } catch {
+          FileHandle.standardError.write(Data("\(b.path): \(error)\n".utf8))
+        }
+      }
+      try? FileManager.default.removeItem(at: scratch)
       NSApp.terminate(nil)
     }
   }
@@ -158,7 +210,10 @@ let hud = args.contains("--hud")
 let bench = args.contains("--bench")
 let arrows = args.contains("--arrows")
 let drag = arrows || args.contains("--drag")
-let openFrames = args.contains("--open-frames")
+let code = args.contains("--code")
+let openFrames = code || args.contains("--open-frames")
+let editBench = args.contains("--edit")
+let earlyScroll = args.contains("--early-scroll")
 var keptNoteCache: URL?
 if let i = args.firstIndex(of: "--note-cache"), i + 1 < args.count {
   keptNoteCache = URL(filePath: args[i + 1])
@@ -174,12 +229,33 @@ if let i = args.firstIndex(of: "--memory"), i + 1 < args.count {
   memory = URL(filePath: args[i + 1])
   args.removeSubrange(i...i + 1)
 }
+if let i = args.firstIndex(of: "--import"), i + 1 < args.count {
+  let into = FileManager.default.temporaryDirectory.appending(path: "canvasbench-import-\(UUID().uuidString)")
+  do {
+    _ = try LegacyImport.run(from: URL(filePath: args[i + 1]), to: into)
+  } catch {
+    FileHandle.standardError.write(Data("\(error)\n".utf8))
+    exit(1)
+  }
+  args.removeSubrange(i...i + 1)
+  args.insert(into.path(percentEncoded: false), at: 0)
+}
 args.removeAll { $0.hasPrefix("-") }
 if arrows {
   let root = FileManager.default.temporaryDirectory.appending(path: "canvasbench-arrows-\(UUID().uuidString)")
   args = [root.path(percentEncoded: false)]
   do {
     _ = try ArrowBoards.make(in: root)
+  } catch {
+    FileHandle.standardError.write(Data("\(error)\n".utf8))
+    exit(1)
+  }
+}
+if code {
+  let root = FileManager.default.temporaryDirectory.appending(path: "canvasbench-code-\(UUID().uuidString)")
+  args = [root.path(percentEncoded: false)]
+  do {
+    _ = try CodeCards.make(in: root)
   } catch {
     FileHandle.standardError.write(Data("\(error)\n".utf8))
     exit(1)
@@ -199,7 +275,7 @@ do {
 }
 let named = args.dropFirst().compactMap { a in all.first { $0.id.rawValue == a || $0.title == a } }
 let chosen =
-  memory != nil || (drag || openFrames) && args.count > 1
+  memory != nil || (drag || openFrames || editBench) && args.count > 1
   ? named : args.count > 1 ? Array(named.prefix(1)) : bench || drag ? all : Array(all.prefix(1))
 guard !chosen.isEmpty else {
   FileHandle.standardError.write(Data("no such board in \(folder)\n".utf8))
@@ -209,7 +285,7 @@ guard !chosen.isEmpty else {
 _ = webKitFootprint()
 let app = NSApplication.shared
 // --drag shows nothing: no Dock icon, no menu bar, never the active app
-app.setActivationPolicy(drag ? .prohibited : openFrames ? .accessory : .regular)
+app.setActivationPolicy(drag ? .prohibited : openFrames || bench || editBench || memory != nil ? .accessory : .regular)
 let delegate = App(
   vault: vault, boards: chosen, hud: hud, bench: bench, memory: memory, drag: drag, openFrames: openFrames)
 app.delegate = delegate

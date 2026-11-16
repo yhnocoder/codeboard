@@ -48,7 +48,6 @@ extension FullWindowEditTests {
     change()
     w.panes.sync()
     await until("\(id.rawValue) shown", in: w) { w.shows(id) }
-    w.canvas.noteEditor.drawOffScreen()
     await w.frames(4)
   }
 

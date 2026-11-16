@@ -1,4 +1,4 @@
-import CodeBoardMarkdown
+import MarkdownCore
 import Testing
 
 @testable import MarkdownDemoKit
