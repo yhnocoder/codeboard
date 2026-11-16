@@ -1,0 +1,14 @@
+# 整页保存（只跑 Mac，不对照，不进 ci.txt）：要有 apps/macos/.build-shiyi（node apps/macos/tools/shiyi/fetch.mjs 取来的保存服务和页面脚本），没有时 Save Full Page 是关着的。开一个网页标签页到环回上的一页，Save Full Page，等它存完；保存按钮读不到状态，以截图为准；vault 里有了这一页的条目
+# only: mac
+# site: site/web
+zoom 1
+menubar File/New Web Tab
+wait 300
+type $SITE/a.html\n
+wait 500
+expect webviews has "Page A" view shown page visible
+click @ui.websave
+pick Save Full Page
+wait 12000
+expect entry:网页 has Page A
+shot fullpage @ui.webbar
