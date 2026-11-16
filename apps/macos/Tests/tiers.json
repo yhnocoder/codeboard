@@ -490,7 +490,7 @@
         },
         "reading: web": {
           "sources": ["CodeBoardReading/Web"],
-          "tests": ["ReadingPaneTests/tabsOpenSwitchAndCloseAndTheSameKeyGoesToItsTab"]
+          "tests": ["WebBarVisibilityTests", "WebAddressTests", "WebHistoryTests", "WebPageTests"]
         },
         "reading: list": {
           "sources": ["CodeBoardReading/List"],
