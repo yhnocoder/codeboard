@@ -77,7 +77,8 @@ extension ListColumn {
     switch preset {
     case .papers: papers
     case .web: web
-    case .files: files
+    // images (until their grid) and blank resources list as files do
+    case .files, .images, .blank: files
     }
   }
 
@@ -87,7 +88,7 @@ extension ListColumn {
     switch preset {
     case .papers: [NSSortDescriptor(key: "year", ascending: false), NSSortDescriptor(key: "title", ascending: true)]
     case .web: [NSSortDescriptor(key: "saved", ascending: false)]
-    case .files: [NSSortDescriptor(key: "modified", ascending: false)]
+    case .files, .images, .blank: [NSSortDescriptor(key: "modified", ascending: false)]
     }
   }
 }
