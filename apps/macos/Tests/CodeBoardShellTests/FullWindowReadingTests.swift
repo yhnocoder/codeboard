@@ -216,6 +216,22 @@ import Testing
     }
   }
 
+  /// A panel's first tab is as far from the panel's left edge as from its top, where its corner is concentric with
+  /// the panel's (the panel's radius less that distance is the tab's)
+  @Test func thePanelsFirstTabSitsInItsCornerConcentricWithIt() async throws {
+    let w = try await env.opened()
+    defer { w.close() }
+    let p = try parts(w)
+    w.shell.reading.shown = true
+    await settle(w, "the pane shown") { visible(p, w) }
+    for (name, tabs, panel) in [("board", p.boardTabs, p.board), ("reading", p.readingTabs, p.reading)] {
+      let left = place(tabs, w).minX + ShellTheme.stripPadding - place(panel, w).minX
+      let top = place(tabs, w).midY - ShellTheme.tabHeight / 2 - place(panel, w).minY
+      #expect(abs(left - top) < 0.5, "\(name): \(left) from the left, \(top) from the top")
+      #expect(abs(ShellTheme.panelRadius - top - ShellTheme.rowRadius) < 0.5, "\(name): concentric")
+    }
+  }
+
   /// Tabs open in the pane with the keys, switch and close; the same key goes to the tab it opened; the last one
   /// closed leaves the pane open and empty. With the keys on the board, the tab keys are not the pane's
   @Test func readingTabsOpenSwitchAndCloseAndAnEmptyPaneStaysOpen() async throws {

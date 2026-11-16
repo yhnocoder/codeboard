@@ -299,48 +299,28 @@ private func tree(_ boards: [(String, String)] = [("a", "A.board"), ("b", "B.boa
   }
 }
 
-/// The surface under the tabs: whole over the bar and gone a dissolve's length below it, the material and its
-/// canvas-coloured tint along the same curve, under a light and a dark appearance
+/// The surface under the tabs: the canvas colour, whole over the bar and gone a dissolve's length below it, with
+/// nothing else under it that would show through the dissolve (a material did, as a pale band)
 @MainActor
 @Test(arguments: [Theme.warmInk, .inkWash, .warmInkDark, .inkWashDark])
 func topGlassCoversTheBarAndDissolvesBelowIt(_ theme: Theme) throws {
   let bar: CGFloat = 36
   let d = ShellTheme.glassDissolve
-  let window = NSView(frame: NSRect(x: 0, y: 0, width: 200, height: bar + d))
-  window.appearance = NSAppearance(named: theme.dark ? .darkAqua : .aqua)
-  let glass = TopGlass(frame: window.bounds)
-  window.addSubview(glass)
+  let glass = TopGlass(frame: NSRect(x: 0, y: 0, width: 200, height: bar + d))
   glass.theme = theme
   glass.place(bar: bar)
-  // it follows the window's appearance
-  #expect(glass.appearance == nil)
-  #expect(glass.blendingMode == .withinWindow && glass.state == .active)
-
-  // the mask as the material stretches it over the glass, y-down
-  let mask = try #require(glass.maskImage)
-  let rep = try #require(
-    NSBitmapImageRep(
-      bitmapDataPlanes: nil, pixelsWide: 10, pixelsHigh: Int(bar + d), bitsPerSample: 8, samplesPerPixel: 4,
-      hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0))
-  NSGraphicsContext.saveGraphicsState()
-  NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
-  mask.draw(in: NSRect(x: 0, y: 0, width: 10, height: bar + d))
-  NSGraphicsContext.restoreGraphicsState()
-  let alpha = { (y: CGFloat) in rep.colorAt(x: 5, y: min(Int(y * (bar + d)), Int(bar + d) - 1))?.alphaComponent ?? -1 }
-  #expect(alpha(0) > 0.99 && alpha((bar - 1) / (bar + d)) > 0.99)
-  #expect(abs(alpha((bar + d / 2) / (bar + d)) - 0.5) < 0.15)
-  #expect(alpha(1) < 0.05)
-
-  let tint = try #require(glass.subviews.last?.layer as? CAGradientLayer)
+  #expect(glass.subviews.isEmpty)
+  let tint = try #require(glass.layer as? CAGradientLayer)
   let colors = try #require(tint.colors as? [CGColor])
   let locations = try #require(tint.locations).map { CGFloat($0.doubleValue) }
   let top = try #require(colors.first)
   #expect(top.copy(alpha: 1)?.components == theme.canvas.components)
-  #expect(abs(top.alpha - ShellTheme.glassTint) < 0.001)
+  #expect(top.alpha == 1)
+  #expect(colors.allSatisfy { $0.copy(alpha: 1)?.components == theme.canvas.components }, "only the canvas colour")
   #expect(colors.last?.alpha == 0 && locations.last == 1)
   // whole over the bar, then down without a step
   let barEnd = try #require(locations.firstIndex { $0 >= bar / (bar + d) - 0.001 })
-  #expect(abs(colors[barEnd].alpha - ShellTheme.glassTint) < 0.001)
+  #expect(colors[barEnd].alpha == 1)
   #expect(zip(colors, colors.dropFirst()).allSatisfy { $1.alpha <= $0.alpha })
-  #expect(zip(colors, colors.dropFirst()).allSatisfy { $0.alpha - $1.alpha < 0.3 * ShellTheme.glassTint })
+  #expect(zip(colors, colors.dropFirst()).allSatisfy { $0.alpha - $1.alpha < 0.3 })
 }
