@@ -286,12 +286,12 @@ import WebKit
     let elsewhere = await WKWebsiteDataStore.default().httpCookieStore.allCookies()
     #expect(!elsewhere.contains { $0.name == "session" && $0.domain == "127.0.0.1" })
     v.go(to: url("/home"))
-    try await until("home") { v.web.url == url("/home") && !v.web.isLoading && v.web.title != nil }
-    #expect(v.web.title == "session=made-up-token")
+    // (its title, not any title: WebKit has an empty one before the page's own)
+    try await until("home, with the cookie") {
+      v.web.url == url("/home") && !v.web.isLoading && v.web.title == "session=made-up-token"
+    }
   }
 
-  /// A blank tab edits its address at once; Return goes; ⌘L edits the whole address again, Escape gives it up;
-  /// typing suggests the pages visited, the arrows choose one and Return goes there
   /// On a page online the body and language choices are off: a press on one says why above the bar, until the page
   /// changes
   @Test func aPressOnAChoiceThatIsOffSaysWhyAboveTheBar() async throws {
@@ -316,6 +316,8 @@ import WebKit
     }
   }
 
+  /// A blank tab edits its address at once; Return goes; ⌘L edits the whole address again, Escape gives it up;
+  /// typing suggests the pages visited, the arrows choose one and Return goes there
   @Test func theAddressIsEditedGoneToAndSuggested() async throws {
     let (v, tabs) = try tab(nil)
     defer { tabs.close() }
