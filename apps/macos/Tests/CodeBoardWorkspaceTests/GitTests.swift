@@ -217,6 +217,24 @@ import Testing
     #expect(stdout.utf8.count == 17 * 40_000)
   }
 
+  /// More gits running at once than dispatch has threads (64): each waits until all have started, so they finish only
+  /// if none waits for a thread another is holding
+  @Test(.timeLimit(.minutes(1))) func moreGitsAtOnceThanDispatchHasThreadsAllFinish() async throws {
+    let d = tempDir()
+    defer { remove(d) }
+    let n = 100
+    let stub = try script(
+      d,
+      #"touch "$1/started.$$"; i=0; while [ "$(ls "$1" | grep -c started)" -lt \#(n) ]; do i=$((i+1)); "#
+        + #"[ $i -gt 400 ] && exit 1; sleep 0.05; done; echo done"#)
+    let runner = ProcessGitRunner(executable: stub)
+    let all = try await withThrowingTaskGroup(of: GitRun.self) { g in
+      for _ in 0..<n { g.addTask { try await runner.run([d], in: d, environment: [:]) } }
+      return try await g.reduce(into: []) { $0.append($1) }
+    }
+    #expect(all.count == n && all.allSatisfy { $0 == .exited(status: 0, stdout: "done\n", stderr: "") })
+  }
+
   @Test func cancellingTheTaskStopsGit() async throws {
     let d = tempDir()
     defer { remove(d) }
