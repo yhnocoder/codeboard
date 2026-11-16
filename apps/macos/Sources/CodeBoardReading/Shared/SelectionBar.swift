@@ -51,8 +51,6 @@ public final class SelectionBar: NSView {
     setAccessibilityElement(true)
     setAccessibilityRole(.toolbar)
     wantsLayer = true
-    glass.state = .active
-    tint.wantsLayer = true
     for v in [glass, tint] + buttons { addSubview(v) }
     for (i, b) in buttons.enumerated() {
       b.target = self
@@ -77,44 +75,44 @@ public final class SelectionBar: NSView {
 
   public override func layout() {
     super.layout()
-    let r = bounds
-    glass.frame = r
-    glass.material = look.material
-    glass.blendingMode = look.blending
-    tint.frame = r
-    glass.maskImage = NSImage(size: r.size, flipped: true) { [look] b in
-      NSBezierPath(roundedRect: b, xRadius: look.radius, yRadius: look.radius).fill()
-      return true
-    }
-    let y = ((r.height - look.button.height) / 2).rounded()
+    let y = ((bounds.height - look.button.height) / 2).rounded()
     for (i, b) in buttons.enumerated() {
       b.frame = CGRect(
         x: 4 + CGFloat(i) * (look.button.width + 2), y: y, width: look.button.width, height: look.button.height)
     }
-    restyle()
+    Self.paint(self, glass: glass, tint: tint, look: look)
+    for case let b as BarButton in buttons { b.ink(look) }
   }
 
-  /// CanvasToolbar.pill's glass, hairline and float shadow, in the look's theme
-  private func restyle() {
-    appearance = NSAppearance(named: look.dark ? .darkAqua : .aqua)
-    guard let t = tint.layer, let me = layer else { return }
+  /// CanvasToolbar.pill's glass, hairline and float shadow, in the look's theme, over the whole of `bar` (its glass
+  /// and tint views under everything else in it): what every floating bar of a tab is drawn on
+  static func paint(_ bar: NSView, glass: NSVisualEffectView, tint: NSView, look: ReadingBarLook) {
+    let r = bar.bounds
+    glass.state = .active
+    glass.frame = r
+    glass.material = look.material
+    glass.blendingMode = look.blending
+    glass.maskImage = NSImage(size: r.size, flipped: true) { b in
+      NSBezierPath(roundedRect: b, xRadius: look.radius, yRadius: look.radius).fill()
+      return true
+    }
+    tint.frame = r
+    tint.wantsLayer = true
+    bar.wantsLayer = true
+    bar.appearance = NSAppearance(named: look.dark ? .darkAqua : .aqua)
+    guard let t = tint.layer, let me = bar.layer else { return }
     t.cornerRadius = look.radius
     t.cornerCurve = .continuous
     t.backgroundColor = look.glass
     t.borderWidth = 0.5
     t.borderColor = look.ring
     me.shadowPath = CGPath(
-      roundedRect: bounds.insetBy(dx: 8, dy: 8).offsetBy(dx: 0, dy: 10), cornerWidth: look.radius,
+      roundedRect: r.insetBy(dx: 8, dy: 8).offsetBy(dx: 0, dy: 10), cornerWidth: look.radius,
       cornerHeight: look.radius, transform: nil)
     me.shadowColor = CGColor(gray: 0, alpha: 1)
     me.shadowOpacity = look.dark ? 0.55 : 0.18
     me.shadowRadius = 14
     me.shadowOffset = .zero
-    let ink = NSColor(cgColor: look.ink) ?? .labelColor
-    for case let b as BarButton in buttons {
-      b.contentTintColor = ink
-      b.lit = look.ink.copy(alpha: 0.07) ?? look.ink
-    }
   }
 
   /// Where the bar goes over a selection whose lines are `lines` in reading order (y-down, the view's units), in the
@@ -131,11 +129,28 @@ public final class SelectionBar: NSView {
   }
 }
 
-/// A bar's button: its icon in the bar's ink, and the toolbar's soft tint under it while the pointer is on it
-private final class BarButton: NSButton {
+/// A bar's button: its icon (or title) in the bar's ink, and the toolbar's soft tint under it while the pointer is on
+/// it, or while it is `on` (the version a tab shows)
+final class BarButton: NSButton {
   var lit = CGColor(gray: 0, alpha: 0.07)
+  var on = false {
+    didSet { shade() }
+  }
+  /// Its fill when neither on nor hovered (a failed job's red)
+  var base: CGColor? {
+    didSet { shade() }
+  }
   private var hovered = false {
-    didSet { layer?.backgroundColor = hovered ? lit : nil }
+    didSet { shade() }
+  }
+
+  private func shade() { layer?.backgroundColor = hovered || on ? (on ? lit.copy(alpha: 0.12) : lit) : base }
+
+  /// In the bar's ink
+  func ink(_ look: ReadingBarLook) {
+    contentTintColor = NSColor(cgColor: look.ink) ?? .labelColor
+    lit = look.ink.copy(alpha: 0.07) ?? look.ink
+    shade()
   }
 
   init(radius: CGFloat) {

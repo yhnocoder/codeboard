@@ -141,6 +141,12 @@ may be); neither is on a segment with a source. `language` is a VS Code language
 - `package: {name, version, path}`: an installed package (pip, conda), `path` inside its install folder.
 - `file: {path, hash?}`: a file in no git repository, `hash` a fingerprint of its content.
 
+Where a source's code is on a machine is not part of the format: the app keeps the repositories added there (a folder
+read in place, or a GitHub repository cloned into `repositories/<owner>/<name>`, whole or blobless) in its own data
+folder (Application Support/<its id>, `repositories.json`), never in the vault, and finds a `git` source by its
+`repository` (remote URLs compared without scheme, user, `.git` or the case of their host, and on GitHub of owner and
+name), else by the origin or folder of an absolute `checkout`, else by the commit (`CodeBoardWorkspace`, `Repositories`).
+
 What a card took from a resource is not a segment's source: it is the card's `source` (CardContent, a SourceAnchor).
 
 **note**: `text, layout?`: a card with a frame, a header and the board's Note text size. `text` is Markdown. `layout` is
@@ -257,27 +263,42 @@ something needs its id: a highlight, a sidenote, a card taken from it.
 **Version** (one readable form of the entry; a paper's v1, its v2, a translation of either, one saving of a web page):
 `id, label?, added, language?, of?, content`. `label`: what its tab says (`v2`, `v2 中文`). `of`: the version this one
 translates (blocks of the two correspond by order). `language`: BCP 47 (`zh`, `en`). `content` is one of:
-- `pdf: {file, blocks?}`: a PDF in the entry folder, and `blocks`, the file there listing its blocks (tongtu's
-  `<id>.zh.anchors.json` as written). Without `blocks` it is a plain PDF: text by page only.
-- `page: {hash, bytes}`: a web page saved whole, kept outside the vault by its content fingerprint (`hash`, as the
-  saving service names the file); `bytes` its size.
+- `pdf: {file, blocks?, source?}`: a PDF in the entry folder, and `blocks`, the file there listing its blocks (tongtu's
+  `<id>.zh.anchors.json` as written). `source`, only with `blocks`: the TeX file there whose lines the list's
+  `first_line`…`last_line` number (tongtu's `zh.tex`, kept as `<id>.zh.tex`). Without `blocks` it is a plain PDF: text
+  by page only.
+- `page: {hash, bytes, blocks?}`: a web page saved whole, kept outside the vault by its content fingerprint (`hash`, as
+  the saving service names the file); `bytes` its size. `blocks`: the file in the entry folder listing the page's
+  blocks as the reader cut them, in order, each `{id, kind, level?, hash, text}` (a heading's `level`; `hash` of its
+  `text`), written when the saved page is first opened; with it a place in the page is named (its nearest heading
+  above) without loading the page. Without it the page reads as before.
 - `file: {file}`: any other file in the entry folder, opened as the system opens it; no places in it.
+- `translation: {file}`: a saved page translated block by block. The version has `of`, a `page` version of the entry,
+  and its `language` (a file without either is refused). `file`, in the entry folder (`<of>.<language>.json`, as
+  `v1.zh.json`), is `{version: 1, scheme, blocks: {"<block id>": {hash, text}}}`: by the ids of the page's blocks, each
+  block's `text` in that language and the `hash` of the text it was translated from (a block whose text has another
+  hash now is translated again); `scheme` numbers how blocks are cut and hashed. A Place in this version names a block
+  by the same id, and its `range` counts in the translated `text`.
 
 An entry saved as a link alone has no versions. A new version of a paper is one more Version; the old ones stay, and
 every highlight, sidenote and card source keeps naming the version it was made on. Nothing is moved to the new one.
 File names are plain file names, as in `images/`.
 
 **Place** (where in an entry): `version, block, range?`.
-- `block` is one of `id: "<block id>"` (a block of the version's block list, or of a saved page: the id that list or
-  page gives it) or `page: {page, rect?}` (a plain PDF: a page from 1, and `rect: [x, y, width, height]` for a region
-  of it, in PDF points from the page's bottom left).
-- `range: [from, to]`: characters of the block's text (a block's source text as its list gives it; a page's text as
+- `block` is one of `id: "<block id>"` (a block of the version's block list, by the `id` the list gives it, or of a
+  saved page: the id the page gives it) or `page: {page, rect?}` (a plain PDF: a page from 1, and `rect: [x, y, width,
+  height]` for a region of it, in PDF points from the page's bottom left).
+- A block's text is its lines of the version's `source`, `first_line` to `last_line`, joined with "\n". The block
+  list's rects are in PDF points of their page's MediaBox, from its bottom left (y up).
+- `range: [from, to]`: characters of the block's text (a block of a list: its text as above; a page: its text as
   PDFKit gives it), in UTF-16 code units, `from` included, `to` not, `0 ≤ from < to`. Absent: the whole block, or with
   `rect` the region.
 
 **SourceAnchor** (a Place from outside the entry: a card's `source`, an image card's `resource`): `entry, version,
-block, range?`, a Place with the entry's id. The board does not check that the entry is there: a card whose entry is
-gone keeps its anchor and is drawn as missing its source.
+block, range?`, a Place with the entry's id; or `entry` alone, the entry as a whole (what was taken from a page saved
+as a link, which has no version: its source shows the entry's title and opens its address). An image card's `resource`
+always has its place (a file where it has none is refused). The board does not check that the entry is there: a card
+whose entry is gone keeps its anchor and is drawn as missing its source.
 
 Read strictly besides: version, highlight and sidenote ids are each unique among their kind in the entry; a place's
 `version` is one of the entry's versions; `of` never names the version itself; an arXiv id has no `vN`. The sidebar

@@ -29,14 +29,15 @@ public struct ReadingTab: Codable, Equatable, Identifiable, Sendable {
     case id, key, title, kind, payload
   }
 
-  // a tab saved before tabs had kinds is a blank page
+  // a tab saved before tabs had kinds is a blank page, a resource's a list
   public init(from decoder: any Decoder) throws {
     let c = try decoder.container(keyedBy: CodingKeys.self)
     id = try c.decode(UUID.self, forKey: .id)
     key = try c.decodeIfPresent(String.self, forKey: .key)
     title = try c.decode(String.self, forKey: .title)
-    kind = try c.decodeIfPresent(String.self, forKey: .kind) ?? ""
-    payload = try c.decodeIfPresent([String: String].self, forKey: .payload) ?? [:]
+    let resource = key?.hasPrefix("resource:") == true ? key.map { String($0.dropFirst(9)) } : nil
+    kind = try c.decodeIfPresent(String.self, forKey: .kind) ?? (resource == nil ? "" : "list")
+    payload = try c.decodeIfPresent([String: String].self, forKey: .payload) ?? resource.map { ["resource": $0] } ?? [:]
   }
 }
 
@@ -79,6 +80,10 @@ public struct ReadingTab: Codable, Equatable, Identifiable, Sendable {
   @ObservationIgnored public var onCollect: ((Collected) -> Void)?
   /// This machine's data of the app, never in the vault: each kind has a folder in it (ReadingContext.dataFolder)
   @ObservationIgnored public var machineFolder: URL?
+  /// arXiv, where a paper's newer versions come from; tests give one that answers without the network
+  @ObservationIgnored public var arxiv = Arxiv()
+  /// This machine's translations (the shell makes them); nil: none, and no "+ 译文"
+  @ObservationIgnored public var translations: Translations?
   /// The board's bar look in its theme now (the shell sets it); tabs' views follow it
   public var barLook = ReadingBarLook.warmInk(dark: false)
 

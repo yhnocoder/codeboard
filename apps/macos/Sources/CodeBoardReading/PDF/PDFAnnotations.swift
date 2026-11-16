@@ -12,10 +12,10 @@ extension PDFTabView {
   /// A yellow highlight on each page of the selection, in the entry's file (a file alone becomes an entry first);
   /// one already there for the same text and colour is not added again
   func highlight() {
-    guard let s = pdf.currentSelection, selectedText != nil, let doc = pdf.document else { return }
+    guard let s = pdf.currentSelection, selectedText != nil else { return }
     let now = Self.now
     func marks(_ version: VersionID) -> [Highlight] {
-      PDFPlaces.places(s, in: doc, version: version).map {
+      places(s, version: version).map {
         Highlight(id: Board.newID("h"), place: $0, color: .yellow, at: now)
       }
     }
@@ -32,18 +32,18 @@ extension PDFTabView {
   func draw(_ entry: Entry) {
     for (page, a) in drawn { page.removeAnnotation(a) }
     drawn = []
-    guard case .entry(_, let version)? = target, let doc = pdf.document else { return }
+    guard case .entry(_, let version)? = target, pdf.document != nil else { return }
     for group in PDFPlaces.groups(entry.highlights) where group[0].place.version == version {
       var last: (PDFPage, PDFAnnotation)?
       for h in group {
-        for (page, a) in PDFPlaces.annotations(h, in: doc) {
+        for (page, a) in PDFPlaces.annotations(h, on: selection([h.place])) {
           page.addAnnotation(a)
           drawn.append((page, a))
           last = (page, a)
         }
       }
       if let (page, a) = last, !notes(of: group, in: entry).isEmpty {
-        let m = PDFPlaces.mark(after: a.bounds, group[0].color, id: group[0].id)
+        let m = PDFPlaces.mark(after: a.bounds, on: page, group[0].color, id: group[0].id)
         page.addAnnotation(m)
         drawn.append((page, m))
       }
@@ -96,8 +96,8 @@ extension PDFTabView {
     write(e, at: path)
   }
 
-  /// The popup for the shown highlight, below its last line (above its first when there is no room), with its
-  /// annotations
+  /// The popup for the shown highlight, below its last line (above its first when there is no room for it with one
+  /// more note), with its annotations
   func openPop() {
     guard let entry, !shownHighlight.isEmpty else { return }
     let ls = lines(of: shownHighlight)
@@ -117,7 +117,12 @@ extension PDFTabView {
       pop = p
     }
     guard let first = ls.min(by: { $0.1.minY < $1.1.minY }) else { return }
-    pin(p, at: AnnotationPop.origin(size: p.size, lines: ls.map(\.1), visible: bounds), on: first.0)
+    // the side is chosen once, with room for one more note, and kept: a note added grows it away from the highlight
+    let area = floatArea
+    if p.below == nil {
+      p.below = AnnotationPop.below(height: p.size.height + p.oneMoreNote, lines: ls.map(\.1), visible: area)
+    }
+    pin(p, at: AnnotationPop.origin(size: p.size, lines: ls.map(\.1), visible: area, below: p.below), on: first.0)
   }
 
   func closePop() {

@@ -82,13 +82,14 @@ public struct ShellState: Codable, Equatable, Sendable {
   public var reading: ReadingPane.State?
 }
 
-/// The app's state: the open vault and its tree, the tabs, the sidebar. Views derive from it; disk access happens outside
-/// and reaches it through `open(_:restoring:)` and `apply(_:)`.
+/// One window's state: its tabs, its sidebar and its reading pane, over the session the app's windows share (the vault,
+/// its tree, the theme). Views derive from it; disk access happens outside and reaches it through `open(_:restoring:)`
+/// and `apply(_:)`.
 @MainActor @Observable public final class Shell {
-  public private(set) var vault: Vault?
-  public private(set) var tree: VaultFolder?
-  /// Why the tree could not be read; the last good tree stays
-  public private(set) var treeError: String?
+  public let session: VaultSession
+  public var vault: Vault? { session.vault }
+  public var tree: VaultFolder? { session.tree }
+  public var treeError: String? { session.treeError }
   public private(set) var tabs: [Tab] = []
   public private(set) var selected: Tab.ID?
   /// Folder paths shown open in the sidebar
@@ -105,17 +106,22 @@ public struct ShellState: Codable, Equatable, Sendable {
   public private(set) var collected: Collected?
   /// Where a collected passage goes on: the board's side sets it
   @ObservationIgnored public var onCollect: ((Collected) -> Void)?
-  /// This app's own data on this machine, never the vault's (Application Support/<its id>): the reading tabs' kinds
-  /// keep theirs in it; nil: none (tests)
-  @ObservationIgnored public var machineFolder: URL? {
-    didSet { reading.machineFolder = machineFolder }
+  public var machineFolder: URL? {
+    get { session.machineFolder }
+    set {
+      session.machineFolder = newValue
+      reading.machineFolder = newValue
+    }
   }
-  public var importing = false
-  /// The look every board is drawn in; app-wide, kept by the app delegate
-  public var theme: Theme.ID = .warmInk
-  /// Whether the Mac's appearance is dark: the app follows it (`follow(_:)`) and has no setting of its own
-  public private(set) var dark = false
-  private var byID: [BoardID: VaultBoard] = [:]
+  public var importing: Bool {
+    get { session.importing }
+    set { session.importing = newValue }
+  }
+  public var theme: Theme.ID {
+    get { session.theme }
+    set { session.theme = newValue }
+  }
+  public var dark: Bool { session.dark }
   /// Where the selected tab's view is (the board panel's canvas)
   public var cameraNow: (() -> Camera?)?
   /// Before the vault's files change from the sidebar: what open boards have not written yet is written
@@ -133,15 +139,23 @@ public struct ShellState: Codable, Equatable, Sendable {
   public var entryLeft: ((String, FolderEntry) -> Void)?
   /// What is being renamed in the sidebar: a board or resource by id, a folder by path
   public var renaming: Renaming?
-  /// Where deleted boards and folders go: the system Trash; tests give a stand-in
-  public var trasher: Vault.Trasher = Vault.systemTrash
-  /// Where Copy Path, and Copy in the reading pane, put text: the general pasteboard; tests give one of their own
-  @ObservationIgnored public var pasteboard = NSPasteboard.general {
-    didSet { reading.pasteboard = pasteboard }
+  public var trasher: Vault.Trasher {
+    get { session.trasher }
+    set { session.trasher = newValue }
+  }
+  public var pasteboard: NSPasteboard {
+    get { session.pasteboard }
+    set {
+      session.pasteboard = newValue
+      reading.pasteboard = newValue
+    }
   }
   /// Asks which PDF files to add (Add PDF…): an open panel in a sheet on the main window (makeMainWindow); with no
   /// window to ask in, none
   @ObservationIgnored public var askPDFs: @MainActor () async -> [URL] = { [] }
+  /// Add arXiv Paper… for a resource: a sheet on the main window (makeMainWindow) asking for the id, which adds it with
+  /// `addArxiv`; with no window, nothing
+  @ObservationIgnored public var askArxiv: @MainActor (VaultResource) -> Void = { _ in }
   /// Asks a question before a delete, the first button the yes: a sheet on the main window (makeMainWindow); with no
   /// window to ask in, nothing is deleted
   @ObservationIgnored public var confirm: @MainActor (NSAlert) async -> Bool = { _ in false }
@@ -158,36 +172,35 @@ public struct ShellState: Codable, Equatable, Sendable {
     case resource(ResourceID)
   }
 
-  public init() {
+  public init(session: VaultSession = VaultSession()) {
     // in a test process: no menu, alert or panel ever comes up
     TestGuard.install()
     ReadingKinds.registerBuiltIn()
     WebReading.register(saving: Self.webSaving, scripts: Self.webScripts)
+    self.session = session
     sources = ReadingSources(pane: reading)
     reading.onCollect = { [weak self] in self?.collect($0) }
   }
 
   public var current: Tab? { tabs.first { $0.id == selected } }
 
-  /// The theme in the appearance the app shows: what boards, the board panel and its glass are drawn in
-  public var look: Theme { Theme.named(theme, dark: dark) }
+  public var look: Theme { session.look }
 
-  /// Takes the appearance the app is shown in (NSApp's effective appearance)
-  public func follow(_ appearance: NSAppearance) {
-    let dark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-    if dark != self.dark { self.dark = dark }
-  }
+  public func follow(_ appearance: NSAppearance) { session.follow(appearance) }
 
-  public func board(_ id: BoardID) -> VaultBoard? { byID[id] }
+  public func board(_ id: BoardID) -> VaultBoard? { session.board(id) }
 
   /// Opens a vault; the state is restored only when it was saved for this vault. Tabs wait for the tree to be pruned.
   public func open(_ vault: Vault, restoring state: ShellState?) {
-    self.vault = vault
+    session.open(vault)
+    vaultOpened(restoring: state)
+  }
+
+  /// The session opened a vault, for every window: this one starts on it, with the state saved for it or with nothing
+  func vaultOpened(restoring state: ShellState?) {
+    guard let vault else { return }
     reading.vault = vault
     reading.entries = EntryIndex()
-    tree = nil
-    treeError = nil
-    byID = [:]
     if let state, state.vault == vault.root.path {
       tabs = state.tabs
       selected = state.selected.flatMap { id in tabs.contains { $0.id == id } ? id : nil } ?? tabs.first?.id
@@ -212,33 +225,34 @@ public struct ShellState: Codable, Equatable, Sendable {
 
   /// A fresh read of the tree. Boards gone from it leave every history, and a tab whose board is gone closes.
   public func apply(_ result: Result<VaultFolder, any Error>) {
-    switch result {
-    case .failure(let error):
-      treeError = String(describing: error)
-    case .success(let tree):
-      self.tree = tree
-      treeError = nil
-      byID = Dictionary(tree.allBoards.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
-      for tab in tabs where byID[tab.board] == nil { close(tab.id) }
-      if let vault { reading.entries = EntryIndex(vault, tree) }
-      // a resource's tab takes its new name, and closes when it is gone, as does any tab whose kind says so
-      let resources = Dictionary(
-        tree.allFolders.flatMap(\.resources).map { (Self.readingKey($0.id), $0.title) }, uniquingKeysWith: { a, _ in a }
-      )
-      reading.follow { tab in
-        guard let key = tab.key, key.hasPrefix("resource:") else { return ReadingKinds.follow(tab, in: reading) }
-        return resources[key]
-      }
-      sources.sourcesChanged()
-      // a crumb whose board is gone cuts the crumbs there: what is past it is no way back
-      func kept(_ cs: [Tab.Crumb]) -> [Tab.Crumb] { Array(cs.prefix { byID[$0.board] != nil }) }
-      for i in tabs.indices {
-        tabs[i].back.removeAll { byID[$0.board] == nil }
-        tabs[i].forward.removeAll { byID[$0.board] == nil }
-        tabs[i].crumbs = kept(tabs[i].crumbs)
-        for j in tabs[i].back.indices { tabs[i].back[j].crumbs = kept(tabs[i].back[j].crumbs) }
-        for j in tabs[i].forward.indices { tabs[i].forward[j].crumbs = kept(tabs[i].forward[j].crumbs) }
-      }
+    session.apply(result)
+    if case .success = result { treeChanged() }
+  }
+
+  /// The session's tree read again, for every window: this one's tabs and reading pane take it in
+  func treeChanged() {
+    guard let tree = session.tree else { return }
+    for tab in tabs where session.board(tab.board) == nil { close(tab.id) }
+    if let vault { reading.entries = EntryIndex(vault, tree) }
+    // a resource's tab takes its new name, and closes when it is gone, as does any tab whose kind says so; its kind
+    // hears every read too
+    let resources = Dictionary(
+      tree.allFolders.flatMap(\.resources).map { (Self.readingKey($0.id), $0.title) }, uniquingKeysWith: { a, _ in a })
+    reading.follow { tab in
+      guard let key = tab.key, key.hasPrefix("resource:") else { return ReadingKinds.follow(tab, in: reading) }
+      guard let title = resources[key] else { return nil }
+      _ = ReadingKinds.follow(tab, in: reading)
+      return title
+    }
+    sources.sourcesChanged()
+    // a crumb whose board is gone cuts the crumbs there: what is past it is no way back
+    func kept(_ cs: [Tab.Crumb]) -> [Tab.Crumb] { Array(cs.prefix { session.board($0.board) != nil }) }
+    for i in tabs.indices {
+      tabs[i].back.removeAll { session.board($0.board) == nil }
+      tabs[i].forward.removeAll { session.board($0.board) == nil }
+      tabs[i].crumbs = kept(tabs[i].crumbs)
+      for j in tabs[i].back.indices { tabs[i].back[j].crumbs = kept(tabs[i].back[j].crumbs) }
+      for j in tabs[i].forward.indices { tabs[i].forward[j].crumbs = kept(tabs[i].forward[j].crumbs) }
     }
   }
 
@@ -319,12 +333,18 @@ public struct ShellState: Codable, Equatable, Sendable {
     reading.open(title, key: key)
   }
 
-  /// A resource's tab (its row clicked in the sidebar): opened, or gone to when it is open
+  /// A resource's tab (its row clicked in the sidebar), a list of its entries: opened, or gone to when it is open
   public func openResource(_ r: VaultResource) {
-    openReadingTab(title: r.title, key: Self.readingKey(r.id))
+    reading.open(r.title, key: Self.readingKey(r.id), kind: "list", payload: ["resource": r.id.rawValue])
   }
 
   static func readingKey(_ id: ResourceID) -> String { "resource:" + id.rawValue }
+
+  /// Whether the reading pane is showing this resource's list now: what its row in the sidebar marks (the board's row
+  /// keeps the selection, the board being what the board side shows)
+  public func readingShows(_ id: ResourceID) -> Bool {
+    reading.shown && reading.tabs.first { $0.id == reading.selected }?.key == Self.readingKey(id)
+  }
 
   /// A PDF in the reading pane (an entry's version, or a file that is an entry alone): opened, or gone to when it is
   /// open; nil when it is not in the vault

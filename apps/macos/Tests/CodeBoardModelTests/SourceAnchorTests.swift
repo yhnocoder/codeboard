@@ -26,7 +26,7 @@ private func board(_ contents: [CardContent]) -> Board {
   let b = board([
     CardContent(title: "Scaled dot product", source: anchor, body: .note(Note(text: "Divide by √d"))),
     CardContent(
-      source: SourceAnchor(entry: anchor.entry, place: Place(version: anchor.place.version, block: .page(2))),
+      source: SourceAnchor(entry: anchor.entry, place: Place(version: VersionID(rawValue: "v1"), block: .page(2))),
       body: .text(TextCard(text: "x"))),
     CardContent(body: .image(ImageCard(source: .resource(region), alt: "Figure 1", framed: true))),
   ])
@@ -68,6 +68,26 @@ private func board(_ contents: [CardContent]) -> Board {
   #expect(!String(decoding: try plain.encoded(), as: UTF8.self).contains("source"))
 }
 
+/// The entry as a whole (a page saved as a link has no version): the entry's id alone; a picture always names its place
+@Test func aSourceOfTheEntryAsAWholeIsItsIdAloneAndAPictureAlwaysHasItsPlace() throws {
+  let whole = SourceAnchor(entry: anchor.entry)
+  let b = board([CardContent(source: whole, body: .note(Note(text: "x")))])
+  let data = try b.encoded()
+  #expect(try Board(decoding: data, file: file) == b)
+  let source = try #require(
+    ((try JSONSerialization.jsonObject(with: data) as? [String: Any])?["cards"] as? [[String: Any]])?.first.flatMap {
+      ($0["content"] as? [String: Any])?["source"] as? [String: String]
+    })
+  #expect(source == ["entry": "e-attention"])
+  let picture = board([CardContent(body: .image(ImageCard(source: .resource(whole))))])
+  #expect {
+    try Board(decoding: try picture.encoded(), file: file)
+  } throws: { error in
+    guard case .malformed(_, let why) = error as? VaultError else { return false }
+    return why.contains("a picture's resource names no place in its entry")
+  }
+}
+
 @Test func aSourceIsReadStrictly() throws {
   func json(_ change: (inout [String: Any]) -> Void) throws -> Data {
     var j = try #require(
@@ -87,6 +107,9 @@ private func board(_ contents: [CardContent]) -> Board {
     ("cards[0].content.source.range: [3, 3]: not 0 ≤ from < to", { $0["range"] = [3, 3] }),
     ("cards[0].content.source.block.page: page 0: pages are from 1", { $0["block"] = ["page": ["page": 0]] }),
     ("cards[0].content.source.entry: missing", { $0["entry"] = nil }),
+    // part of a place is not the entry as a whole
+    ("cards[0].content.source.version: missing", { $0["version"] = nil }),
+    ("cards[0].content.source.block: missing", { $0["block"] = nil }),
     ("cards[0].content.source.block: more than one kind", { $0["block"] = ["id": "p", "page": ["page": 1]] }),
     ("cards[0].content.source.paragraph: not in format", { $0["paragraph"] = 2 }),
   ]

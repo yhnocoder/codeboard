@@ -50,7 +50,7 @@ private func isHex(_ s: String, _ length: ClosedRange<Int>) -> Bool {
 func isSha(_ s: String) -> Bool { isHex(s, 40...40) }
 
 /// /^[\w./~^@{}-]+$/: a ref git can be given without it reading an option
-private func isRefName(_ s: String) -> Bool {
+func isRefName(_ s: String) -> Bool {
   !s.isEmpty
     && s.utf8.allSatisfy { c in
       (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || "_./~^@{}-".utf8.contains(c)

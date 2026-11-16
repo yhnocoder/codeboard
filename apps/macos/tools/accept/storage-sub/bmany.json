@@ -1,0 +1,589 @@
+{
+ "version": 15,
+ "id": "bmany",
+ "name": "Many",
+ "cards": [
+  {
+   "id": "m00",
+   "kind": "note",
+   "look": "note",
+   "md": "# Card 1\nOne of many."
+  },
+  {
+   "id": "m01",
+   "kind": "note",
+   "look": "note",
+   "md": "# Card 2\nOne of many."
+  },
+  {
+   "id": "m02",
+   "kind": "note",
+   "look": "note",
+   "md": "# Card 3\nOne of many."
+  },
+  {
+   "id": "m03",
+   "kind": "note",
+   "look": "note",
+   "md": "# Card 4\nOne of many."
+  },
+  {
+   "id": "m04",
+   "kind": "note",
+   "look": "note",
+   "md": "# Card 5\nOne of many."
+  },
+  {
+   "id": "m05",
+   "kind": "note",
+   "look": "note",
+   "md": "# Card 6\nOne of many."
+  },
+  {
+   "id": "m06",
+   "kind": "note",
+   "look": "note",
+   "md": "# Card 7\nOne of many."
+  },
+  {
+   "id": "m07",
+   "kind": "note",
+   "look": "note",
+   "md": "# Card 8\nOne of many."
+  },
+  {
+   "id": "m08",
+   "kind": "note",
+   "look": "note",
+   "md": "# Card 9\nOne of many."
+  },
+  {
+   "id": "m09",
+   "kind": "note",
+   "look": "note",
+   "md": "# Card 10\nOne of many."
+  },
+  {
+   "id": "m10",
+   "kind": "note",
+   "look": "note",
+   "md": "# Card 11\nOne of many."
+  },
+  {
+   "id": "m11",
+   "kind": "note",
+   "look": "note",
+   "md": "# Card 12\nOne of many."
+  },
+  {
+   "id": "m12",
+   "kind": "note",
+   "look": "note",
+   "md": "# Card 13\nOne of many."
+  },
+  {
+   "id": "m13",
+   "kind": "note",
+   "look": "note",
+   "md": "# Card 14\nOne of many."
+  },
+  {
+   "id": "m14",
+   "kind": "note",
+   "look": "note",
+   "md": "# Card 15\nOne of many."
+  },
+  {
+   "id": "m15",
+   "kind": "note",
+   "look": "note",
+   "md": "# Card 16\nOne of many."
+  },
+  {
+   "id": "m16",
+   "kind": "note",
+   "look": "note",
+   "md": "# Card 17\nOne of many."
+  },
+  {
+   "id": "m17",
+   "kind": "note",
+   "look": "note",
+   "md": "# Card 18\nOne of many."
+  },
+  {
+   "id": "m18",
+   "kind": "note",
+   "look": "note",
+   "md": "# Card 19\nOne of many."
+  },
+  {
+   "id": "m19",
+   "kind": "note",
+   "look": "note",
+   "md": "# Card 20\nOne of many."
+  },
+  {
+   "id": "m20",
+   "kind": "note",
+   "look": "note",
+   "md": "# Card 21\nOne of many."
+  },
+  {
+   "id": "m21",
+   "kind": "note",
+   "look": "note",
+   "md": "# Card 22\nOne of many."
+  },
+  {
+   "id": "m22",
+   "kind": "note",
+   "look": "note",
+   "md": "# Card 23\nOne of many."
+  },
+  {
+   "id": "m23",
+   "kind": "note",
+   "look": "note",
+   "md": "# Card 24\nOne of many."
+  },
+  {
+   "id": "m24",
+   "kind": "note",
+   "look": "note",
+   "md": "# Card 25\nOne of many."
+  },
+  {
+   "id": "m25",
+   "kind": "note",
+   "look": "note",
+   "md": "# Card 26\nOne of many."
+  },
+  {
+   "id": "m26",
+   "kind": "note",
+   "look": "note",
+   "md": "# Card 27\nOne of many."
+  },
+  {
+   "id": "m27",
+   "kind": "note",
+   "look": "note",
+   "md": "# Card 28\nOne of many."
+  },
+  {
+   "id": "m28",
+   "kind": "note",
+   "look": "note",
+   "md": "# Card 29\nOne of many."
+  },
+  {
+   "id": "m29",
+   "kind": "note",
+   "look": "note",
+   "md": "# Card 30\nOne of many."
+  },
+  {
+   "id": "m30",
+   "kind": "note",
+   "look": "note",
+   "md": "# Card 31\nOne of many."
+  },
+  {
+   "id": "m31",
+   "kind": "note",
+   "look": "note",
+   "md": "# Card 32\nOne of many."
+  },
+  {
+   "id": "m32",
+   "kind": "note",
+   "look": "note",
+   "md": "# Card 33\nOne of many."
+  },
+  {
+   "id": "m33",
+   "kind": "note",
+   "look": "note",
+   "md": "# Card 34\nOne of many."
+  },
+  {
+   "id": "m34",
+   "kind": "note",
+   "look": "note",
+   "md": "# Card 35\nOne of many."
+  },
+  {
+   "id": "m35",
+   "kind": "note",
+   "look": "note",
+   "md": "# Card 36\nOne of many."
+  },
+  {
+   "id": "m36",
+   "kind": "note",
+   "look": "note",
+   "md": "# Card 37\nOne of many."
+  },
+  {
+   "id": "m37",
+   "kind": "note",
+   "look": "note",
+   "md": "# Card 38\nOne of many."
+  },
+  {
+   "id": "m38",
+   "kind": "note",
+   "look": "note",
+   "md": "# Card 39\nOne of many."
+  },
+  {
+   "id": "m39",
+   "kind": "note",
+   "look": "note",
+   "md": "# Card 40\nOne of many."
+  },
+  {
+   "id": "m40",
+   "kind": "note",
+   "look": "note",
+   "md": "# Card 41\nOne of many."
+  },
+  {
+   "id": "m41",
+   "kind": "note",
+   "look": "note",
+   "md": "# Card 42\nOne of many."
+  },
+  {
+   "id": "m42",
+   "kind": "note",
+   "look": "note",
+   "md": "# Card 43\nOne of many."
+  },
+  {
+   "id": "m43",
+   "kind": "note",
+   "look": "note",
+   "md": "# Card 44\nOne of many."
+  },
+  {
+   "id": "m44",
+   "kind": "note",
+   "look": "note",
+   "md": "# Card 45\nOne of many."
+  },
+  {
+   "id": "m45",
+   "kind": "note",
+   "look": "note",
+   "md": "# Card 46\nOne of many."
+  },
+  {
+   "id": "m46",
+   "kind": "note",
+   "look": "note",
+   "md": "# Card 47\nOne of many."
+  },
+  {
+   "id": "m47",
+   "kind": "note",
+   "look": "note",
+   "md": "# Card 48\nOne of many."
+  }
+ ],
+ "place": {
+  "m00": {
+   "x": 0,
+   "y": 0,
+   "w": 200,
+   "h": 120
+  },
+  "m01": {
+   "x": 240,
+   "y": 0,
+   "w": 200,
+   "h": 120
+  },
+  "m02": {
+   "x": 480,
+   "y": 0,
+   "w": 200,
+   "h": 120
+  },
+  "m03": {
+   "x": 720,
+   "y": 0,
+   "w": 200,
+   "h": 120
+  },
+  "m04": {
+   "x": 960,
+   "y": 0,
+   "w": 200,
+   "h": 120
+  },
+  "m05": {
+   "x": 1200,
+   "y": 0,
+   "w": 200,
+   "h": 120
+  },
+  "m06": {
+   "x": 1440,
+   "y": 0,
+   "w": 200,
+   "h": 120
+  },
+  "m07": {
+   "x": 1680,
+   "y": 0,
+   "w": 200,
+   "h": 120
+  },
+  "m08": {
+   "x": 0,
+   "y": 160,
+   "w": 200,
+   "h": 120
+  },
+  "m09": {
+   "x": 240,
+   "y": 160,
+   "w": 200,
+   "h": 120
+  },
+  "m10": {
+   "x": 480,
+   "y": 160,
+   "w": 200,
+   "h": 120
+  },
+  "m11": {
+   "x": 720,
+   "y": 160,
+   "w": 200,
+   "h": 120
+  },
+  "m12": {
+   "x": 960,
+   "y": 160,
+   "w": 200,
+   "h": 120
+  },
+  "m13": {
+   "x": 1200,
+   "y": 160,
+   "w": 200,
+   "h": 120
+  },
+  "m14": {
+   "x": 1440,
+   "y": 160,
+   "w": 200,
+   "h": 120
+  },
+  "m15": {
+   "x": 1680,
+   "y": 160,
+   "w": 200,
+   "h": 120
+  },
+  "m16": {
+   "x": 0,
+   "y": 320,
+   "w": 200,
+   "h": 120
+  },
+  "m17": {
+   "x": 240,
+   "y": 320,
+   "w": 200,
+   "h": 120
+  },
+  "m18": {
+   "x": 480,
+   "y": 320,
+   "w": 200,
+   "h": 120
+  },
+  "m19": {
+   "x": 720,
+   "y": 320,
+   "w": 200,
+   "h": 120
+  },
+  "m20": {
+   "x": 960,
+   "y": 320,
+   "w": 200,
+   "h": 120
+  },
+  "m21": {
+   "x": 1200,
+   "y": 320,
+   "w": 200,
+   "h": 120
+  },
+  "m22": {
+   "x": 1440,
+   "y": 320,
+   "w": 200,
+   "h": 120
+  },
+  "m23": {
+   "x": 1680,
+   "y": 320,
+   "w": 200,
+   "h": 120
+  },
+  "m24": {
+   "x": 0,
+   "y": 480,
+   "w": 200,
+   "h": 120
+  },
+  "m25": {
+   "x": 240,
+   "y": 480,
+   "w": 200,
+   "h": 120
+  },
+  "m26": {
+   "x": 480,
+   "y": 480,
+   "w": 200,
+   "h": 120
+  },
+  "m27": {
+   "x": 720,
+   "y": 480,
+   "w": 200,
+   "h": 120
+  },
+  "m28": {
+   "x": 960,
+   "y": 480,
+   "w": 200,
+   "h": 120
+  },
+  "m29": {
+   "x": 1200,
+   "y": 480,
+   "w": 200,
+   "h": 120
+  },
+  "m30": {
+   "x": 1440,
+   "y": 480,
+   "w": 200,
+   "h": 120
+  },
+  "m31": {
+   "x": 1680,
+   "y": 480,
+   "w": 200,
+   "h": 120
+  },
+  "m32": {
+   "x": 0,
+   "y": 640,
+   "w": 200,
+   "h": 120
+  },
+  "m33": {
+   "x": 240,
+   "y": 640,
+   "w": 200,
+   "h": 120
+  },
+  "m34": {
+   "x": 480,
+   "y": 640,
+   "w": 200,
+   "h": 120
+  },
+  "m35": {
+   "x": 720,
+   "y": 640,
+   "w": 200,
+   "h": 120
+  },
+  "m36": {
+   "x": 960,
+   "y": 640,
+   "w": 200,
+   "h": 120
+  },
+  "m37": {
+   "x": 1200,
+   "y": 640,
+   "w": 200,
+   "h": 120
+  },
+  "m38": {
+   "x": 1440,
+   "y": 640,
+   "w": 200,
+   "h": 120
+  },
+  "m39": {
+   "x": 1680,
+   "y": 640,
+   "w": 200,
+   "h": 120
+  },
+  "m40": {
+   "x": 0,
+   "y": 800,
+   "w": 200,
+   "h": 120
+  },
+  "m41": {
+   "x": 240,
+   "y": 800,
+   "w": 200,
+   "h": 120
+  },
+  "m42": {
+   "x": 480,
+   "y": 800,
+   "w": 200,
+   "h": 120
+  },
+  "m43": {
+   "x": 720,
+   "y": 800,
+   "w": 200,
+   "h": 120
+  },
+  "m44": {
+   "x": 960,
+   "y": 800,
+   "w": 200,
+   "h": 120
+  },
+  "m45": {
+   "x": 1200,
+   "y": 800,
+   "w": 200,
+   "h": 120
+  },
+  "m46": {
+   "x": 1440,
+   "y": 800,
+   "w": 200,
+   "h": 120
+  },
+  "m47": {
+   "x": 1680,
+   "y": 800,
+   "w": 200,
+   "h": 120
+  }
+ },
+ "links": [],
+ "sections": [],
+ "stickers": [],
+ "sidenotes": []
+}

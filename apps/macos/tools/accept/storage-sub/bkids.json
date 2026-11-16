@@ -1,0 +1,73 @@
+{
+ "version": 15,
+ "id": "bkids",
+ "name": "Kids",
+ "cards": [
+  {
+   "id": "kalpha",
+   "kind": "note",
+   "look": "note",
+   "md": "# Alpha\nThe alpha card of the sub-board, with a few words to show in its preview."
+  },
+  {
+   "id": "kbeta",
+   "kind": "note",
+   "look": "note",
+   "md": "# Beta\nThe beta card of the sub-board, with a few words to show in its preview."
+  },
+  {
+   "id": "kgamma",
+   "kind": "note",
+   "look": "note",
+   "md": "# Gamma\nThe gamma card of the sub-board, with a few words to show in its preview."
+  },
+  {
+   "id": "kdelta",
+   "kind": "note",
+   "look": "note",
+   "md": "# Delta\nThe delta card of the sub-board, with a few words to show in its preview."
+  },
+  {
+   "id": "kepsilon",
+   "kind": "note",
+   "look": "note",
+   "md": "# Epsilon\nThe epsilon card of the sub-board, with a few words to show in its preview."
+  }
+ ],
+ "place": {
+  "kalpha": {
+   "x": 0,
+   "y": 0,
+   "w": 300,
+   "h": 200
+  },
+  "kbeta": {
+   "x": 400,
+   "y": 0,
+   "w": 300,
+   "h": 200
+  },
+  "kgamma": {
+   "x": 0,
+   "y": 300,
+   "w": 300,
+   "h": 200
+  },
+  "kdelta": {
+   "x": 400,
+   "y": 300,
+   "w": 300,
+   "h": 200
+  },
+  "kepsilon": {
+   "x": 800,
+   "y": 0,
+   "w": 300,
+   "h": 500
+  }
+ },
+ "links": [],
+ "sections": [],
+ "stickers": [],
+ "sidenotes": []
+}
