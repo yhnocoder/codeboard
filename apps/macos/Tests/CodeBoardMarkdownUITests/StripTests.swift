@@ -115,4 +115,30 @@ private final class Flipped: NSView {
       #expect((s.layer.animationKeys() ?? []).isEmpty, "strip \(i): \(s.layer.animationKeys() ?? [])")
     }
   }
+
+  /// Moved out of its window and back (its frame set, as the canvas places it), the editor shows its text again
+  @Test func anEditorMovedOutOfItsWindowAndBackShowsItsText() {
+    let r = StripRig()
+    defer { r.close() }
+    r.view.frame.origin.y = 3000
+    r.show()
+    #expect(r.view.strips.isEmpty, "out of the window: none kept")
+    r.view.frame.origin.y = -300
+    r.show()
+    #expect(!r.view.strips.isEmpty && Set(r.view.strips.keys) == r.wanted(), "\(r.view.strips.keys.sorted())")
+    #expect(r.wrong().isEmpty, "\(r.wrong())")
+  }
+
+  /// What holds the editor moved (a tray scrolled), the editor's own frame the same: the bands come into view drawn
+  @Test func theBandsAScrollBringsInAreDrawn() {
+    let r = StripRig()
+    defer { r.close() }
+    r.inner.frame.origin.y = -900
+    r.show()
+    #expect(!r.view.strips.isEmpty && Set(r.view.strips.keys) == r.wanted(), "\(r.view.strips.keys.sorted())")
+    #expect(r.wrong().isEmpty, "\(r.wrong())")
+    r.window.setContentSize(CGSize(width: 400, height: 900))
+    r.show()
+    #expect(Set(r.view.strips.keys) == r.wanted() && r.wrong().isEmpty, "a taller window")
+  }
 }

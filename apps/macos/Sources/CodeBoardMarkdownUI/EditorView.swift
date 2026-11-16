@@ -604,9 +604,42 @@ public final class MarkdownEditorView: NSView {
 
   public override func setFrameOrigin(_ p: NSPoint) {
     super.setFrameOrigin(p)
-    // moved in its window: the strips now in view
-    if !strips.isEmpty { paintStrips() }
+    placeStrips()
   }
+
+  /// What shows of it in its window changed without a display pass: it moved (its frame set, also out of the window and
+  /// back, when it had no strips left), or what holds it moved or was resized (a tray scrolled, the window grew): the
+  /// bands now in view are made and those out of it let go
+  private func placeStrips() {
+    guard stripsMadeAt != nil else { return }
+    paintStrips()
+  }
+
+  public override func viewDidMoveToWindow() {
+    super.viewDidMoveToWindow()
+    watchAncestors()
+  }
+
+  public override func viewDidMoveToSuperview() {
+    super.viewDidMoveToSuperview()
+    watchAncestors()
+  }
+
+  /// Every view holding it, watched for moves and resizes and its bounds scrolled (placeStrips)
+  private func watchAncestors() {
+    let center = NotificationCenter.default
+    center.removeObserver(self, name: NSView.frameDidChangeNotification, object: nil)
+    center.removeObserver(self, name: NSView.boundsDidChangeNotification, object: nil)
+    guard window != nil else { return }
+    var v = superview
+    while let a = v {
+      center.addObserver(self, selector: #selector(ancestorMoved), name: NSView.frameDidChangeNotification, object: a)
+      center.addObserver(self, selector: #selector(ancestorMoved), name: NSView.boundsDidChangeNotification, object: a)
+      v = a.superview
+    }
+  }
+
+  @objc private func ancestorMoved(_ n: Notification) { placeStrips() }
 
   /// The strips in view made (drawn whole), those out of it let go, and what changed drawn into the others
   private func paintStrips() {
