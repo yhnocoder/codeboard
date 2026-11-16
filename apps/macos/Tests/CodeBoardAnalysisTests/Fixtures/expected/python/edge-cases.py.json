@@ -1,0 +1,373 @@
+{
+  "calls": [
+    {
+      "args": [
+        {
+          "kw": "x",
+          "text": "f(1)"
+        }
+      ],
+      "col": 1,
+      "end": 10,
+      "line": 8,
+      "loop": false,
+      "name": "decorator"
+    },
+    {
+      "args": [
+        {
+          "text": "1"
+        }
+      ],
+      "col": 13,
+      "end": 14,
+      "line": 8,
+      "loop": false,
+      "name": "f"
+    },
+    {
+      "args": [
+        {
+          "name": "i",
+          "text": "i"
+        }
+      ],
+      "col": 9,
+      "end": 10,
+      "line": 11,
+      "loop": true,
+      "name": "g"
+    },
+    {
+      "args": [
+        {
+          "name": "j",
+          "text": "j"
+        }
+      ],
+      "col": 20,
+      "end": 21,
+      "line": 14,
+      "loop": true,
+      "name": "h"
+    },
+    {
+      "args": [
+        {
+          "name": "q",
+          "text": "q"
+        }
+      ],
+      "col": 32,
+      "end": 37,
+      "line": 16,
+      "loop": false,
+      "name": "inner"
+    },
+    {
+      "args": [
+        {
+          "name": "y",
+          "text": "y"
+        }
+      ],
+      "col": 13,
+      "end": 15,
+      "line": 20,
+      "loop": false,
+      "name": "it"
+    },
+    {
+      "args": [
+        {
+          "text": "'run'"
+        },
+        {
+          "name": "x",
+          "text": "x"
+        }
+      ],
+      "assigned": [
+        "r"
+      ],
+      "col": 12,
+      "dispatch": "run",
+      "end": 16,
+      "line": 21,
+      "loop": true,
+      "name": "call"
+    },
+    {
+      "args": [],
+      "assigned": [
+        "a",
+        "b"
+      ],
+      "col": 26,
+      "end": 32,
+      "line": 22,
+      "loop": true,
+      "name": "tolist",
+      "recv": "self.do(x)"
+    },
+    {
+      "args": [
+        {
+          "name": "x",
+          "text": "x"
+        }
+      ],
+      "assigned": [
+        "a",
+        "b"
+      ],
+      "col": 20,
+      "end": 22,
+      "line": 22,
+      "loop": true,
+      "name": "do",
+      "recv": "self"
+    },
+    {
+      "args": [],
+      "col": 8,
+      "end": 9,
+      "line": 24,
+      "loop": false,
+      "name": "z"
+    },
+    {
+      "args": [],
+      "col": 10,
+      "end": 11,
+      "line": 25,
+      "loop": true,
+      "name": "w"
+    },
+    {
+      "args": [],
+      "col": 15,
+      "end": 16,
+      "line": 25,
+      "loop": true,
+      "name": "v"
+    },
+    {
+      "args": [],
+      "col": 18,
+      "end": 19,
+      "line": 26,
+      "loop": true,
+      "name": "k"
+    },
+    {
+      "args": [],
+      "col": 9,
+      "end": 10,
+      "line": 27,
+      "loop": false,
+      "name": "q"
+    },
+    {
+      "args": [],
+      "col": 12,
+      "end": 13,
+      "line": 28,
+      "loop": false,
+      "name": "p"
+    },
+    {
+      "args": [],
+      "col": 17,
+      "end": 18,
+      "line": 29,
+      "loop": true,
+      "name": "t"
+    },
+    {
+      "args": [],
+      "col": 13,
+      "end": 14,
+      "line": 30,
+      "loop": false,
+      "name": "e"
+    },
+    {
+      "args": [],
+      "col": 4,
+      "end": 8,
+      "line": 32,
+      "loop": false,
+      "name": "main"
+    }
+  ],
+  "doc": "Module doc.",
+  "flags": [
+    4,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    4,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    2,
+    0
+  ],
+  "imports": [
+    {
+      "line": 2,
+      "module": "os",
+      "name": "os"
+    },
+    {
+      "line": 2,
+      "module": "torch.nn",
+      "name": "nn"
+    },
+    {
+      "from": true,
+      "line": 3,
+      "module": ".a",
+      "name": "c"
+    },
+    {
+      "from": true,
+      "line": 3,
+      "module": ".a",
+      "name": "d"
+    },
+    {
+      "line": 5,
+      "module": "numpy",
+      "name": "np"
+    }
+  ],
+  "lang": "python",
+  "mainBlocks": [
+    {
+      "end": 32,
+      "start": 31
+    }
+  ],
+  "symbols": [
+    {
+      "defLine": 9,
+      "doc": "A doc.",
+      "end": 16,
+      "kind": "class",
+      "name": "A",
+      "params": [],
+      "qual": "A",
+      "sig": "class A(Base)",
+      "start": 8
+    },
+    {
+      "defLine": 13,
+      "end": 14,
+      "kind": "def",
+      "name": "m",
+      "params": [
+        {
+          "kind": "self",
+          "name": "self"
+        },
+        {
+          "kind": "pos",
+          "name": "a"
+        },
+        {
+          "kind": "star",
+          "name": "args"
+        },
+        {
+          "kind": "kw",
+          "name": "k"
+        },
+        {
+          "kind": "dstar",
+          "name": "kw"
+        }
+      ],
+      "parent": "A",
+      "qual": "A.m",
+      "sig": "def m(self, a, *args, k=1, **kw)",
+      "start": 13
+    },
+    {
+      "defLine": 16,
+      "end": 16,
+      "kind": "def",
+      "name": "s",
+      "params": [
+        {
+          "kind": "kw",
+          "name": "q"
+        }
+      ],
+      "parent": "A",
+      "qual": "A.s",
+      "sig": "def s(*, q)",
+      "start": 15
+    },
+    {
+      "defLine": 17,
+      "end": 26,
+      "kind": "def",
+      "name": "outer",
+      "params": [],
+      "qual": "outer",
+      "sig": "def outer()",
+      "start": 17
+    },
+    {
+      "defLine": 19,
+      "end": 19,
+      "kind": "def",
+      "name": "inner2",
+      "params": [],
+      "qual": "outer.inner2",
+      "sig": "def inner2()",
+      "start": 19
+    },
+    {
+      "defLine": 30,
+      "end": 30,
+      "kind": "def",
+      "name": "d",
+      "params": [],
+      "qual": "d",
+      "sig": "def d()",
+      "start": 30
+    }
+  ],
+  "trailing": {
+    "32": 12,
+    "33": 10
+  }
+}

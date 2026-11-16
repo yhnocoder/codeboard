@@ -1,0 +1,212 @@
+{
+  "calls": [
+    {
+      "args": [
+        {
+          "text": "\"~/huggingface/Qwen3-0.6B/\""
+        }
+      ],
+      "assigned": [
+        "path"
+      ],
+      "col": 19,
+      "end": 29,
+      "line": 7,
+      "loop": false,
+      "name": "expanduser",
+      "recv": "os.path"
+    },
+    {
+      "args": [
+        {
+          "name": "path",
+          "text": "path"
+        }
+      ],
+      "assigned": [
+        "tokenizer"
+      ],
+      "col": 30,
+      "end": 45,
+      "line": 8,
+      "loop": false,
+      "name": "from_pretrained",
+      "recv": "AutoTokenizer"
+    },
+    {
+      "args": [
+        {
+          "name": "path",
+          "text": "path"
+        },
+        {
+          "kw": "enforce_eager",
+          "text": "True"
+        },
+        {
+          "kw": "tensor_parallel_size",
+          "text": "1"
+        }
+      ],
+      "assigned": [
+        "llm"
+      ],
+      "col": 10,
+      "end": 13,
+      "line": 9,
+      "loop": false,
+      "name": "LLM"
+    },
+    {
+      "args": [
+        {
+          "kw": "temperature",
+          "text": "0.6"
+        },
+        {
+          "kw": "max_tokens",
+          "text": "256"
+        }
+      ],
+      "assigned": [
+        "sampling_params"
+      ],
+      "col": 22,
+      "end": 36,
+      "line": 11,
+      "loop": false,
+      "name": "SamplingParams"
+    },
+    {
+      "args": [
+        {
+          "text": "[{\"role\": \"user\", \"content\": prompt}]"
+        },
+        {
+          "kw": "tokenize",
+          "text": "False"
+        },
+        {
+          "kw": "add_generation_prompt",
+          "text": "True"
+        }
+      ],
+      "col": 18,
+      "end": 37,
+      "line": 17,
+      "loop": true,
+      "name": "apply_chat_template",
+      "recv": "tokenizer"
+    },
+    {
+      "args": [
+        {
+          "name": "prompts",
+          "text": "prompts"
+        },
+        {
+          "name": "sampling_params",
+          "text": "sampling_params"
+        }
+      ],
+      "assigned": [
+        "outputs"
+      ],
+      "col": 18,
+      "end": 26,
+      "line": 24,
+      "loop": false,
+      "name": "generate",
+      "recv": "llm"
+    },
+    {
+      "args": [],
+      "col": 4,
+      "end": 8,
+      "line": 33,
+      "loop": false,
+      "name": "main"
+    }
+  ],
+  "flags": [
+    0,
+    0,
+    0,
+    1,
+    1,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    1,
+    1,
+    0,
+    0,
+    1
+  ],
+  "imports": [
+    {
+      "line": 1,
+      "module": "os",
+      "name": "os"
+    },
+    {
+      "from": true,
+      "line": 2,
+      "module": "nanovllm",
+      "name": "LLM"
+    },
+    {
+      "from": true,
+      "line": 2,
+      "module": "nanovllm",
+      "name": "SamplingParams"
+    },
+    {
+      "from": true,
+      "line": 3,
+      "module": "transformers",
+      "name": "AutoTokenizer"
+    }
+  ],
+  "lang": "python",
+  "mainBlocks": [
+    {
+      "end": 33,
+      "start": 32
+    }
+  ],
+  "symbols": [
+    {
+      "defLine": 6,
+      "end": 29,
+      "kind": "def",
+      "name": "main",
+      "params": [],
+      "qual": "main",
+      "sig": "def main()",
+      "start": 6
+    }
+  ],
+  "trailing": {}
+}

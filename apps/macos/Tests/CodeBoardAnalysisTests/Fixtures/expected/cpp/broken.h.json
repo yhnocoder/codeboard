@@ -1,0 +1,65 @@
+{
+  "calls": [
+    {
+      "args": [],
+      "col": 10,
+      "end": 11,
+      "line": 2,
+      "loop": false,
+      "name": "g"
+    },
+    {
+      "args": [
+        {
+          "text": "k()"
+        }
+      ],
+      "col": 21,
+      "end": 22,
+      "line": 4,
+      "loop": false,
+      "name": "M"
+    },
+    {
+      "args": [],
+      "col": 23,
+      "end": 24,
+      "line": 4,
+      "loop": false,
+      "name": "k"
+    }
+  ],
+  "flags": [
+    0,
+    0,
+    0,
+    0,
+    1
+  ],
+  "imports": [],
+  "lang": "c",
+  "mainBlocks": [],
+  "symbols": [
+    {
+      "defLine": 2,
+      "end": 2,
+      "kind": "def",
+      "name": "f",
+      "params": [],
+      "qual": "f",
+      "sig": "void f(",
+      "start": 2
+    },
+    {
+      "defLine": 4,
+      "end": 4,
+      "kind": "def",
+      "name": "h",
+      "params": [],
+      "qual": "h",
+      "sig": "int h(void)",
+      "start": 4
+    }
+  ],
+  "trailing": {}
+}
