@@ -52,7 +52,7 @@ struct TabStrip<Source: TabSource>: View {
             .gesture(reorder(tab.id))
           }
         }
-        .padding(.horizontal, 2)
+        .padding(.horizontal, ShellTheme.stripPadding)
         .frame(maxHeight: .infinity)
         .coordinateSpace(.named(tabSpace))
       }
@@ -140,7 +140,8 @@ private struct TabItem: View {
         }
         .background {
           if hovered && !selected {
-            RoundedRectangle(cornerRadius: ShellTheme.rowRadius).fill(ShellTheme.shade.opacity(0.05))
+            RoundedRectangle(cornerRadius: ShellTheme.rowRadius, style: .continuous)
+              .fill(ShellTheme.shade.opacity(0.05))
           }
         }
         .capsule(selected)
