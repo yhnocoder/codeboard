@@ -95,12 +95,19 @@ public struct Paper: Sendable {
   /// The author's macro definitions from the TeX file's preamble, one a line; nil when there are none
   public let mathPreamble: String?
   private let byID: [String: Int]
+  /// Each page's blocks that have rects there (not the title area's), as indices into the list in its order
+  private let onPage: [Int: [Int]]
 
   public init(list: BlockList, source: String?) {
     self.list = list
     let lines = source.map { $0.components(separatedBy: "\n") }
     self.lines = lines
     byID = Dictionary(list.blocks.enumerated().map { ($1.id, $0) }, uniquingKeysWith: { a, _ in a })
+    var onPage: [Int: [Int]] = [:]
+    for (i, b) in list.blocks.enumerated() where b.kind != "metadata" {
+      for n in Set(b.rects.map(\.page)) { onPage[n, default: []].append(i) }
+    }
+    self.onPage = onPage
     mathPreamble = source.flatMap(Tex.macros)
     labels = Numbering.labels(list.blocks, text: { Self.text($0, lines: lines) }, source: source)
   }
@@ -134,8 +141,8 @@ public struct Paper: Sendable {
   /// The block at `point` of page `page` (from 1, its MediaBox's points): the object there, the outermost when they
   /// nest, else the smallest other block whose rects hold it
   public func block(at point: CGPoint, page: Int) -> BlockList.Block? {
-    let holding = list.blocks.filter { b in
-      b.kind != "metadata" && b.rects.contains { $0.page == page && $0.rect.insetBy(dx: -1, dy: -1).contains(point) }
+    let holding = blocks(on: page).filter { b in
+      b.rects.contains { $0.page == page && $0.rect.insetBy(dx: -1, dy: -1).contains(point) }
     }
     func area(_ b: BlockList.Block) -> Double {
       b.rects.filter { $0.page == page }.reduce(0) { $0 + $1.rect.width * $1.rect.height }
@@ -148,11 +155,14 @@ public struct Paper: Sendable {
   /// Where a link to `point` of page `page` goes: the block that holds it, else the nearest below it on the page
   public func target(of point: CGPoint, page: Int) -> BlockList.Block? {
     if let b = block(at: point, page: page) { return b }
-    let below = list.blocks.flatMap { b in
-      b.rects.filter { $0.page == page && $0.y1 <= point.y + 2 && b.kind != "metadata" }.map { (b, $0) }
+    let below = blocks(on: page).flatMap { b in
+      b.rects.filter { $0.page == page && $0.y1 <= point.y + 2 }.map { (b, $0) }
     }
     return below.max { $0.1.y1 < $1.1.y1 }.map { owner($0.0) }
   }
+
+  /// The blocks with rects on page `page`, in the list's order (not the title area's)
+  func blocks(on page: Int) -> [BlockList.Block] { (onPage[page] ?? []).map { list.blocks[$0] } }
 
   /// A display formula's LaTeX for KaTeX; nil when the block is no formula or has no text
   public func formula(_ b: BlockList.Block) -> String? {

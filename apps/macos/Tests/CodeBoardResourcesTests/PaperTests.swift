@@ -173,6 +173,22 @@ func samplePaper(source: String? = paperTeX) throws -> Paper {
     #expect(Tex.macros("\\newcommand\\x[1][a]{#1}") == "\\newcommand\\x[1][a]{#1}")
   }
 
+  @Test func aPointsBlockIsFoundAmongItsPagesOnly() {
+    // 30 pages of 12 blocks each, a rect a block
+    let blocks = (1...30).flatMap { page in
+      (0..<12).map { k in
+        BlockList.Block(
+          id: "B\(page)-\(k)", kind: "text", firstLine: 1, lastLine: 1,
+          rects: [BlockList.Rect(page: page, x0: 20, y0: Double(30 * k), x1: 280, y1: Double(30 * k + 20))])
+      }
+    }
+    let p = Paper(list: BlockList(blocks: blocks), source: nil)
+    #expect(
+      blocks.allSatisfy { b in p.block(at: CGPoint(x: 100, y: b.rects[0].y0 + 10), page: b.rects[0].page)?.id == b.id })
+    #expect(p.block(at: CGPoint(x: 100, y: 25), page: 31) == nil)
+    #expect(p.target(of: CGPoint(x: 100, y: 55), page: 7)?.id == "B7-1")
+  }
+
   @Test func aSourceLinesTitleIsCutAtAColonWhenThatKeepsThreeWords() {
     #expect(Paper.shortTitle("Attention Is All You Need") == "Attention Is All You Need")
     #expect(Paper.shortTitle("Deep Residual Learning: For Image Recognition") == "Deep Residual Learning")
