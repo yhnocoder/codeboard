@@ -26,8 +26,6 @@ public final class SearchPanel: NSObject {
   public struct Pick: Equatable, Sendable {
     public var board: BoardID
     public var card: CardID
-    /// On the Shelf of the board it was searched from: the entry to put back
-    public var shelf: String?
   }
 
   /// Related by Meaning's answer (protocol.ts MeaningResult)
@@ -134,7 +132,7 @@ public final class SearchPanel: NSObject {
       }
     case "ppick":
       guard let b = m["board"] as? String, let c = m["card"] as? String else { return }
-      onPick?(Pick(board: BoardID(rawValue: b), card: CardID(rawValue: c), shelf: m["shelf"] as? String))
+      onPick?(Pick(board: BoardID(rawValue: b), card: CardID(rawValue: c)))
     case "pclose": onClose?()
     default: break
     }

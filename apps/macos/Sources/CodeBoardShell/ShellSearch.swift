@@ -5,8 +5,8 @@ import CodeBoardNotes
 
 // ⌘K and ⌘F (keymap.ts search, searchBoard; ui/Palette.tsx): the search palette over the board in front, on all boards
 // or this board's. The boards open in a tab are searched as they are now, the rest as their files are. A card picked
-// on this board is brought into view and selected (one on the Shelf put back first); one on another board opens that
-// board in the tab, at the card. Esc or a click outside closes it, the camera where it was. Related by Meaning (host
+// on this board is brought into view and selected; one on another board opens that board in the tab, at the card; one
+// on a Shelf is shown large beside the opened Shelf and left there, the board not edited. Esc or a click outside closes it, the camera where it was. Related by Meaning (host
 // meaning.ts) asks box, the index service VS Code's windows share: the boards handed to it when the palette opens, then
 // each query searched and, its answer whole, read again by the reranker. With no embedding address it is off and box is
 // never asked.
@@ -156,11 +156,6 @@ extension BoardPanes {
       pane.canvas.onOpenBoard?(p.board, .card(p.card))
       return
     }
-    if let entry = p.shelf {
-      pane.canvas.putBack(entry)
-      pane.document?.select([.card(p.card)])
-    } else {
-      pane.canvas.arrive(at: p.card)
-    }
+    pane.canvas.arrive(at: p.card)
   }
 }

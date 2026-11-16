@@ -79,7 +79,9 @@ final class FakeMeaning: MeaningIndex {
         shelf: [ShelfEntry(id: "e1", at: 0, cards: [note("put", "# Waiting room", x: 300)])]))
     try vault.newBoard(
       in: "", title: "Other",
-      board: Board(id: other, cards: [note("on", "# Waiting elsewhere"), note("q", "# Queue theory", x: 400)]))
+      board: Board(
+        id: other, cards: [note("on", "# Waiting elsewhere"), note("q", "# Queue theory", x: 400)],
+        shelf: [ShelfEntry(id: "e2", at: 0, cards: [note("stow", "# Stowed sketch", x: 800)])]))
     return vault
   }
 
@@ -197,17 +199,32 @@ final class FakeMeaning: MeaningIndex {
     #expect(w.window.firstResponder === w.canvas, "the keys back on the board")
   }
 
-  @Test func aShelvedCardPickedIsPutBack() async throws {
+  /// A shelved card picked is shown as a click on its thumbnail shows it: the Shelf open, the entry large beside it, its
+  /// thumbnail ringed; the board not edited (no undo step, nothing to save), the card still on the Shelf; Esc lets it go
+  func shownOnTheShelf(_ w: FullWindowEditTests.Window, _ entry: String, _ card: String) async throws {
+    await until("shown on the Shelf", in: w) {
+      w.pane?.previewing == entry && w.pane?.shelfPreview != nil && w.pane?.shelfPanel?.lit == entry
+    }
+    let doc = try #require(w.pane?.document)
+    #expect(doc.board.card(CardID(rawValue: card)) == nil && doc.board.shelf.map(\.id) == [entry])
+    #expect(!doc.history.canUndo && !doc.isDirty && doc.selection.isEmpty)
+    #expect(w.window.firstResponder === w.canvas, "the keys back on the board")
+    let esc = NSEvent.keyEvent(
+      with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: w.window.windowNumber,
+      context: nil, characters: "\u{1b}", charactersIgnoringModifiers: "\u{1b}", isARepeat: false, keyCode: 53)!
+    w.canvas.keyDown(with: esc)
+    #expect(w.canvas.previewing == nil && w.canvas.shelfPreview == nil, "Esc closes it")
+    #expect(doc.board.shelf.map(\.id) == [entry] && !doc.history.canUndo && !doc.isDirty)
+  }
+
+  @Test func aShelvedCardPickedIsShownOnTheShelfAndLeftThere() async throws {
     let w = try await opened()
     defer { w.close() }
     try await open(w, "k")
     _ = await type(w, "waiting room", rows: 1)
     await press("Enter")
-    let put = CardID(rawValue: "put")
-    await until("back on the board, selected", in: w) {
-      w.pane?.document?.board.card(put) != nil && w.pane?.document?.selection == [.card(put)]
-    }
-    #expect(w.pane?.document?.board.shelf.isEmpty == true)
+    try await shownOnTheShelf(w, "e1", "put")
+    #expect(w.shows(board))
   }
 
   @Test func commandFSearchesThisBoardTabSwitchesAndEscClosesWithTheCameraWhereItWas() async throws {
@@ -304,7 +321,10 @@ final class FakeMeaning: MeaningIndex {
       // every board's items handed to box when ⌘K opened (the shelved card too), the key with them
       let sync = try #require(index.log.withLock { $0.syncs.first })
       #expect(sync.embedder == BoxEmbedder(base: "http://127.0.0.1:11001/v1", key: "ek-1"))
-      #expect(Set(sync.items.map(\.id)) == ["card:n", "card:far", "card:put", "sidenote:sn", "card:on", "card:q"])
+      #expect(
+        Set(sync.items.map(\.id)) == [
+          "card:n", "card:far", "card:put", "sidenote:sn", "card:on", "card:q", "card:stow",
+        ])
       #expect(index.log.withLock { $0.searches.map(\.q) } == ["waiting"])
     }
   }
@@ -388,7 +408,7 @@ final class FakeMeaning: MeaningIndex {
     }
   }
 
-  @Test func aShelvedCardPickedIsPutBackAsTheWordsDo() async throws {
+  @Test func aShelvedCardPickedIsShownOnTheShelfAsTheWordsDo() async throws {
     let index = FakeMeaning { _ in Self.hits([BoxHit(id: "card:put", score: 0.7)]) }
     try await withMeaning(index) {
       let w = try await opened()
@@ -396,11 +416,22 @@ final class FakeMeaning: MeaningIndex {
       try await open(w, "k")
       #expect(await type(w, "lobby", rows: 1)?.rows == ["Waiting room"])
       await press("Enter")
-      let put = CardID(rawValue: "put")
-      await until("back on the board, selected", in: w) {
-        w.pane?.document?.board.card(put) != nil && w.pane?.document?.selection == [.card(put)]
-      }
-      #expect(w.pane?.document?.board.shelf.isEmpty == true)
+      try await shownOnTheShelf(w, "e1", "put")
+    }
+  }
+
+  /// Words find another board's shelved cards not at all (Search.swift: only from their own board); meaning does
+  @Test func aCardShelvedOnAnotherBoardPickedOpensThatBoardAndShowsItOnItsShelf() async throws {
+    let index = FakeMeaning { _ in Self.hits([BoxHit(id: "card:stow", score: 0.7)]) }
+    try await withMeaning(index) {
+      let w = try await opened()
+      defer { w.close() }
+      try await open(w, "k")
+      #expect(await type(w, "lobby", rows: 1)?.details == ["Other"])
+      await press("Enter")
+      await until("the other board shown", in: w) { w.shows(other) }
+      try await shownOnTheShelf(w, "e2", "stow")
+      #expect(w.shows(other))
     }
   }
 
