@@ -15,6 +15,7 @@ extension Collected {
     switch body {
     case .note(let markdown): markdown
     case .image(let alt, _, _), .picture(_, let alt, _, _): alt ?? ""
+    case .code(let s): s.lines.joined(separator: "\n")
     }
   }
 

@@ -33,6 +33,10 @@ import UniformTypeIdentifiers
         CodeFile(repository: r.path, name: RepositoriesModel.name(r), path: rel), preview: preview)
     }
     shell.reading.commitOf = { [weak repositories] in await repositories?.head(of: $0) }
+    // code taken to this window's board, ⌘-click's definitions
+    shell.reading.codeHost = repositories.git.map {
+      ShellCode(git: $0, board: { [weak root] in root?.panes.frontBoard })
+    }
     track { [weak shell, weak repositories] in
       let f = shell?.reading.currentCode
       repositories?.follow(repository: f?.repository, path: f?.path)

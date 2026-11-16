@@ -36,14 +36,52 @@ public enum CodeReading {
 
   // MARK: Reading a file
 
-  /// A file as its tab shows it: its text, its classes and functions, and each line's colours
+  /// A file as its tab shows it: its text, its analysis (classes and functions, blank lines, calls), and each line's
+  /// colours
   struct Text: Sendable {
     var text: String
     var lineCount: Int
     /// The longest line, tabs counted to their stops
     var columns: Int
-    var symbols: [Sym]
+    var analysis: FileAnalysis
     var runs: [[CodeRun]]
+    /// Where each line starts in the text, in UTF-16 units (the code component's offsets)
+    var starts: [Int]
+
+    var symbols: [Sym] { analysis.symbols }
+
+    init(text: String, analysis: FileAnalysis, runs: [[CodeRun]] = []) {
+      self.text = text
+      self.analysis = analysis
+      self.runs = runs
+      let lines = text.components(separatedBy: "\n")
+      lineCount = lines.count
+      columns = lines.map(CodeReading.columns).max() ?? 0
+      var at = 0
+      starts = lines.map { l in
+        defer { at += l.utf16.count + 1 }
+        return at
+      }
+    }
+
+    /// The line (1-based) an offset is on, and its column in UTF-16 units
+    func place(_ q: Int) -> (line: Int, col: Int) {
+      var lo = 0
+      var hi = starts.count - 1
+      while lo < hi {
+        let mid = (lo + hi + 1) / 2
+        if starts[mid] <= q { lo = mid } else { hi = mid - 1 }
+      }
+      return (lo + 1, q - starts[lo])
+    }
+
+    /// A line's text (1-based)
+    func line(_ n: Int) -> Substring {
+      let u = text.utf16
+      let a = u.index(u.startIndex, offsetBy: starts[n - 1])
+      let b = n < starts.count ? u.index(u.startIndex, offsetBy: starts[n] - 1) : u.endIndex
+      return text[a..<b]
+    }
   }
 
   enum Loaded: Sendable {
@@ -72,10 +110,10 @@ public enum CodeReading {
     let lines = text.components(separatedBy: "\n")
     let lang = langOfExt(path)?.id
     let tokens = lang.map { highlighter.tokens(lines: lines, language: $0) } ?? []
+    // a language without a grammar is analysed too: its blank lines, which a selection leaves out at its ends
     return .text(
       Text(
-        text: text, lineCount: lines.count, columns: lines.map(columns).max() ?? 0,
-        symbols: lang.map { analyze($0, text).symbols } ?? [],
+        text: text, analysis: analyze(lang ?? "plaintext", text),
         runs: tokens.map { $0.map { CodeRun(columns: $0.columns, style: $0.kind.rawValue) } }))
   }
 
