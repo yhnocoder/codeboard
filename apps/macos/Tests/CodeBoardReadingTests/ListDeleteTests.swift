@@ -7,7 +7,7 @@ import Testing
 @testable import CodeBoardReading
 
 /// A trash of the test's own: what went there, moved into a temporary folder
-private final class TestTrash: Sendable {
+final class TestTrash: Sendable {
   let dir = FileManager.default.temporaryDirectory.appending(path: "trash-\(UUID().uuidString)")
 
   init() throws { try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true) }

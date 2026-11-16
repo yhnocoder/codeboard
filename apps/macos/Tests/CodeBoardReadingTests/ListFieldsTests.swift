@@ -119,7 +119,7 @@ private func resource(_ fields: String) throws -> Resource {
     #expect(!list.addOption("Done", to: s.id, at: v.paperPath))
     #expect(try v.vault.resource(at: v.resource.path).fields[0].options?.map(\.name) == ["Done", "done"])
     // a change the reader would refuse: a beep, the file as it was
-    #expect(!list.changeResource { $0.fields.append($0.fields[0]) })
+    #expect(!list.changeResource("Add Field") { $0.fields.append($0.fields[0]) })
     #expect(try v.vault.resource(at: v.resource.path).fields.count == 1)
   }
 
@@ -307,7 +307,7 @@ private func resource(_ fields: String) throws -> Resource {
     #expect(list.renameOption(options[0].id, of: s.id, to: "Final"))
     #expect(try cell(list, s, try row(list, "Tidal mills")).line.stringValue == "Final")
     #expect(try v.vault.entry(at: k).fields[s.id] == .text(options[0].id))
-    list.changeResource { $0.fields[0].options = [options[1]] }
+    list.changeResource("Delete Option") { $0.fields[0].options = [options[1]] }
     let gone = try cell(list, s, try row(list, "Tidal mills"))
     #expect(gone.line.stringValue == "deleted option" && gone.pill.isHidden)
     #expect(try v.vault.entry(at: k).fields[s.id] == .text(options[0].id))

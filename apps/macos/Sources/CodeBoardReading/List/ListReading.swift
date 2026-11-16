@@ -302,6 +302,13 @@ final class ListTabView: NSView, ReadingLookFollower, NSTableViewDataSource, NST
     show(r, tree: tree)
   }
 
+  /// Leaving its window (its tab closed, or moved to another window): its steps go from that window's Undo, which
+  /// keeps no strong hold on it
+  override func viewWillMove(toWindow newWindow: NSWindow?) {
+    super.viewWillMove(toWindow: newWindow)
+    undoManager?.removeAllActions(withTarget: self)
+  }
+
   /// Whether rows have a second line under the title
   var twoLines: Bool { columns.first?.detail != nil }
 
