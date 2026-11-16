@@ -1,6 +1,7 @@
 import AppKit
 import CodeBoardCanvas
 import CodeBoardModel
+import CodeBoardReading
 import Observation
 import TestGuard
 
@@ -76,6 +77,8 @@ public struct ShellState: Codable, Equatable, Sendable {
   public var sidebarShown: Bool
   /// nil in what was saved before the sidebar could be resized
   public var sidebarWidth: Double?
+  /// nil in what was saved before the reading pane
+  public var reading: ReadingPane.State?
 }
 
 /// The app's state: the open vault and its tree, the tabs, the sidebar. Views derive from it; disk access happens outside
@@ -93,6 +96,8 @@ public struct ShellState: Codable, Equatable, Sendable {
   /// Dragged at its edge, kept with the state
   public var sidebarWidth: CGFloat = 244
   public static let sidebarWidths: ClosedRange<CGFloat> = 180...480
+  /// The pane beside the board: hidden until it is first used
+  public let reading = ReadingPane()
   public var importing = false
   /// The look every board is drawn in; app-wide, kept by the app delegate
   public var theme: Theme.ID = .warmInk
@@ -164,10 +169,12 @@ public struct ShellState: Codable, Equatable, Sendable {
       selected = state.selected.flatMap { id in tabs.contains { $0.id == id } ? id : nil } ?? tabs.first?.id
       expanded = state.expanded
       sidebarShown = state.sidebarShown
+      if let r = state.reading { reading.restore(r) }
     } else {
       tabs = []
       selected = nil
       expanded = []
+      reading.closeAll()
     }
   }
 
@@ -175,7 +182,7 @@ public struct ShellState: Codable, Equatable, Sendable {
     vault.map {
       ShellState(
         vault: $0.root.path, tabs: tabs, selected: selected, expanded: expanded, sidebarShown: sidebarShown,
-        sidebarWidth: Double(sidebarWidth))
+        sidebarWidth: Double(sidebarWidth), reading: reading.state)
     }
   }
 
@@ -270,6 +277,12 @@ public struct ShellState: Codable, Equatable, Sendable {
   public func move(_ tab: Tab.ID, to index: Int) {
     guard let i = tabs.firstIndex(where: { $0.id == tab }) else { return }
     tabs.insert(tabs.remove(at: i), at: max(0, min(index, tabs.count)))
+  }
+
+  /// A tab in the reading pane titled `title` (a resource's name), the pane shown; the tab opened for the same `key`
+  /// is gone to instead of a second
+  public func openReadingTab(title: String, key: String) {
+    reading.open(title, key: key)
   }
 
   public var canGoBack: Bool { current?.back.isEmpty == false }

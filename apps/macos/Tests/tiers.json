@@ -392,7 +392,8 @@
         "FullWindowEditTests/whatIsTypedInOutsideTheBoardsKeepsTheKeys",
         "WritingWhenClosingTests/closingTheTabWritesWhatIsBeingTyped",
         "FullWindowSheetTests/quittingWithUnsavedChangesAsksInASheet",
-        "ParityMenuKeysTests/orderKeysAreTheAppsOwnAndBracketsSwitchTabs"
+        "ParityMenuKeysTests/orderKeysAreTheAppsOwnAndBracketsSwitchTabs",
+        "FullWindowReadingTests/thePaneIsHiddenAtFirstAndItsSwitchShowsAndHidesIt"
       ],
       "broad": [
         "CodeBoardShell/AppDelegate.swift",
@@ -468,6 +469,10 @@
         "sheets": {
           "sources": ["CodeBoardShell/ImportAlert.swift", "CodeBoardCanvas/CanvasDiagnostics.swift"],
           "tests": ["FullWindowSheetTests"]
+        },
+        "reading pane": {
+          "sources": ["CodeBoardShell/MainWindow.swift", "CodeBoardShell/TabStrip.swift", "CodeBoardReading/Frame"],
+          "tests": ["FullWindowReadingTests", "ShellTests/theReadingPaneRoundTripsThroughRelaunch"]
         }
       }
     },

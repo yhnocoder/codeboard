@@ -347,6 +347,11 @@ import CodeBoardNotes
     panes = [:]
   }
 
+  /// The board in front takes the keys (the reading pane had them and is hidden)
+  func takeKeys() {
+    if let id = front { panes[id]?.takeKeys() }
+  }
+
   private func reveal() {
     guard let selected = shell.selected, let pane = panes[selected] else { return place(nil) }
     if pane.ready || front.flatMap({ panes[$0] }) == nil { place(selected) }
