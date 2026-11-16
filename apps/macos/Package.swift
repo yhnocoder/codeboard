@@ -121,6 +121,10 @@ let package = Package(
       dependencies: [
         "MarkdownDemoKit", "CodeBoardModel", .product(name: "TestGuard", package: "better-swift-markdown"),
       ]),
+    // a resource's files (FORMAT.md, Resources): resource.json and its entries read and written; Foundation and the
+    // model only
+    .target(name: "CodeBoardResources", dependencies: ["CodeBoardModel"]),
+    .testTarget(name: "CodeBoardResourcesTests", dependencies: ["CodeBoardResources"]),
   ]
 )
 

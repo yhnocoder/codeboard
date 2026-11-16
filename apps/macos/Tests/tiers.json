@@ -470,6 +470,10 @@
           "tests": ["FullWindowSheetTests"]
         }
       }
+    },
+    "CodeBoardResourcesTests": {
+      "changed": "whole",
+      "important": "whole"
     }
   }
 }
