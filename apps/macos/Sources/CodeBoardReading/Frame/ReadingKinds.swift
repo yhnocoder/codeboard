@@ -27,6 +27,7 @@ import CodeBoardModel
   public static func registerBuiltIn() {
     PDFReading.register()
     ListReading.register()
+    CodeReading.register()
   }
 
   static func icon(of kind: String) -> String? { kinds[kind]?.icon }

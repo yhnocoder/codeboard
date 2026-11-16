@@ -1,6 +1,7 @@
 import AppKit
 import CodeBoardModel
 import CodeBoardResources
+import CodeUI
 import Observation
 
 /// A tab of the reading pane: what it shows and the name on its tab. `key` is what it was opened for (a resource, a
@@ -13,20 +14,25 @@ public struct ReadingTab: Codable, Equatable, Identifiable, Sendable {
   public var kind: String
   /// What its kind needs to show it again, saved with the tab
   public var payload: [String: String]
+  /// Opened by a single click: its title in italic, and the next preview opened takes its place
+  public var preview: Bool
 
-  public init(title: String, key: String? = nil, kind: String = "", payload: [String: String] = [:]) {
+  public init(
+    title: String, key: String? = nil, kind: String = "", payload: [String: String] = [:], preview: Bool = false
+  ) {
     id = UUID()
     self.key = key
     self.title = title
     self.kind = kind
     self.payload = payload
+    self.preview = preview
   }
 
   /// The SF Symbol before its title; nil: none
   @MainActor public var icon: String? { ReadingKinds.icon(of: kind) }
 
   private enum CodingKeys: String, CodingKey {
-    case id, key, title, kind, payload
+    case id, key, title, kind, payload, preview
   }
 
   // a tab saved before tabs had kinds is a blank page, a resource's a list
@@ -38,6 +44,7 @@ public struct ReadingTab: Codable, Equatable, Identifiable, Sendable {
     let resource = key?.hasPrefix("resource:") == true ? key.map { String($0.dropFirst(9)) } : nil
     kind = try c.decodeIfPresent(String.self, forKey: .kind) ?? (resource == nil ? "" : "list")
     payload = try c.decodeIfPresent([String: String].self, forKey: .payload) ?? resource.map { ["resource": $0] } ?? [:]
+    preview = try c.decodeIfPresent(Bool.self, forKey: .preview) ?? false
   }
 }
 
@@ -94,6 +101,12 @@ public struct ReadingTab: Codable, Equatable, Identifiable, Sendable {
     )?
   /// The board's bar look in its theme now (the shell sets it); tabs' views follow it
   public var barLook = ReadingBarLook.warmInk(dark: false)
+  /// How code tabs draw code: the board's code cards' look in its theme now. The shell sets it before `barLook`, whose
+  /// change tells the tabs' views
+  @ObservationIgnored public var codeLook = CodeReading.plainLook
+  /// The commit a repository's files are read at, short (its HEAD), by the repository's folder; nil when it is none
+  /// or unknown. The shell gives the repositories' own
+  @ObservationIgnored public var commitOf: @Sendable (String) async -> String? = { _ in nil }
 
   public init() {}
 
@@ -124,17 +137,23 @@ public struct ReadingTab: Codable, Equatable, Identifiable, Sendable {
   }
 
   /// A tab titled `title` showing `kind` (its view made from `payload`) after the current one, selected, the pane
-  /// shown; one opened for the same `key` is gone to instead
+  /// shown; one opened for the same `key` is gone to instead, and kept when this is no `preview`. A preview takes the
+  /// place of the one there is
   @discardableResult public func open(
-    _ title: String, key: String? = nil, kind: String = "", payload: [String: String] = [:]
+    _ title: String, key: String? = nil, kind: String = "", payload: [String: String] = [:], preview: Bool = false
   ) -> ReadingTab.ID {
     shown = true
-    if let key, let tab = tabs.first(where: { $0.key == key }) {
-      selected = tab.id
-      return tab.id
+    if let key, let i = tabs.firstIndex(where: { $0.key == key }) {
+      if !preview, tabs[i].preview { tabs[i].preview = false }
+      selected = tabs[i].id
+      return tabs[i].id
     }
-    let tab = ReadingTab(title: title, key: key, kind: kind, payload: payload)
-    tabs.insert(tab, at: currentIndex.map { $0 + 1 } ?? tabs.count)
+    let tab = ReadingTab(title: title, key: key, kind: kind, payload: payload, preview: preview)
+    if preview, let i = tabs.firstIndex(where: \.preview) {
+      tabs[i] = tab
+    } else {
+      tabs.insert(tab, at: currentIndex.map { $0 + 1 } ?? tabs.count)
+    }
     selected = tab.id
     return tab.id
   }
