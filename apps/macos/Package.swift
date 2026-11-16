@@ -87,7 +87,7 @@ let package = Package(
     .executableTarget(name: "MarkdownDemo", dependencies: ["MarkdownDemoKit"]),
     // Code analysis for reading code (symbols, calls, selections, peek, cross-language boundaries), a port of
     // packages/analysis with its tests as the specification. Foundation and the package's TreeSitterCore only, whose
-    // trees the highlighter colours too; no target depends on it yet
+    // trees the highlighter colours too; the reading pane's code tabs take a file's classes and functions from it
     .target(
       name: "CodeBoardAnalysis",
       dependencies: [.product(name: "TreeSitterCore", package: "better-swift-markdown")]),
@@ -121,9 +121,15 @@ let package = Package(
         "CodeBoardShell", "CodeBoardCanvas", "CodeBoardNotes", "CodeBoardWorkspace",
         .product(name: "TestGuard", package: "better-swift-markdown"),
       ]),
-    // the reading pane beside the board and what its tabs show (PDF/, Web/, List/, Shared/); AppKit, PDFKit, the model
-    // and a resource's files, below the shell
-    .target(name: "CodeBoardReading", dependencies: ["CodeBoardModel", "CodeBoardResources"]),
+    // the reading pane beside the board and what its tabs show (PDF/, Web/, List/, Code/, Shared/); AppKit, PDFKit, the
+    // model and a resource's files, the code component and the code analysis, below the shell
+    .target(
+      name: "CodeBoardReading",
+      dependencies: [
+        "CodeBoardModel", "CodeBoardResources", "CodeBoardAnalysis",
+        .product(name: "CodeUI", package: "better-swift-markdown"),
+        .product(name: "TreeSitterHighlight", package: "better-swift-markdown"),
+      ]),
     .testTarget(
       name: "CodeBoardReadingTests", dependencies: ["CodeBoardReading", "CodeBoardModel", "CodeBoardResources"]),
     .testTarget(
