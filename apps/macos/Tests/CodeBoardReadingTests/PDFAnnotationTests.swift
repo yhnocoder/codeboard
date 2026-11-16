@@ -96,6 +96,20 @@ import Testing
     #expect(try #require(doc.page(at: 1)).annotations.isEmpty)
   }
 
+  @Test func theMarkOfAHighlightEndingInAWordSitsAboveTheLineAtItsEnd() throws {
+    let v = try PDFVault()
+    defer { v.remove() }
+    let w = try PDFWindow(v)
+    defer { w.close() }
+    let t = try w.tab(try #require(w.pane.openPDF(.file(v.file))))
+    try highlighted(w, t, "runs nor")
+    let page = try #require(t.pdf.document?.page(at: 0))
+    let lit = try #require(page.annotations.first { $0.type == "Highlight" }).bounds
+    let mark = PDFPlaces.mark(after: lit, on: page, .yellow, id: "h")
+    let next = try #require(PDFPlaces.nextGlyph(after: lit, on: page))
+    #expect(mark.bounds.maxX > next.minX && mark.bounds.minY >= lit.maxY && abs(mark.bounds.midX - lit.maxX) < 0.5)
+  }
+
   @Test func anAnnotationIsWrittenAtTheHighlightMarksItsEndAndShowsWhenItIsClickedAgain() throws {
     let v = try PDFVault()
     defer { v.remove() }
@@ -123,7 +137,10 @@ import Testing
     #expect(pop.notes.map(\.text) == ["Which mill?", "Look at the map"] && pop.notes.map(\.question) == [true, false])
     let page = try #require(t.pdf.document?.page(at: 0))
     let mark = try #require(page.annotations.first { $0.type == "Circle" })
-    #expect(mark.bounds.minX >= (page.annotations.first { $0.type == "Highlight" }?.bounds.maxX ?? .infinity))
+    let lit = try #require(page.annotations.first { $0.type == "Highlight" }).bounds
+    // raised like a superscript in the gap after the last glyph, clear of the next word
+    #expect(mark.bounds.minX >= lit.maxX && abs(mark.bounds.maxY - lit.maxY) < 0.5 && mark.bounds.width <= 3)
+    #expect(mark.bounds.maxX < (try #require(PDFPlaces.nextGlyph(after: lit, on: page))).minX)
 
     // clicked again: the bar and, under it, the annotations
     t.dismiss()

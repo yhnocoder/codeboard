@@ -43,7 +43,7 @@ extension PDFTabView {
         }
       }
       if let (page, a) = last, !notes(of: group, in: entry).isEmpty {
-        let m = PDFPlaces.mark(after: a.bounds, group[0].color, id: group[0].id)
+        let m = PDFPlaces.mark(after: a.bounds, on: page, group[0].color, id: group[0].id)
         page.addAnnotation(m)
         drawn.append((page, m))
       }
