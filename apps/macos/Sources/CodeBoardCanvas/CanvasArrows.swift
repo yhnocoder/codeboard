@@ -72,6 +72,9 @@ extension CanvasView {
 
   func arrowIndex(_ id: ArrowID) -> Int? { scene?.arrows.firstIndex { $0.id == id } }
 
+  /// The curve [start, c1, c2, end] an arrow is drawn on now (re-routed while its cards move); nil when it is not drawn
+  func livePts(_ id: ArrowID) -> [CGPoint]? { arrowIndex(id).flatMap(liveArrow)?.pts }
+
   /// Where an arrow is drawn: its start, the middle of its line and its end (LookCompare)
   package func arrowPoints(_ id: ArrowID) -> (start: CGPoint, mid: CGPoint, end: CGPoint)? {
     guard let i = arrowIndex(id), let a = liveArrow(i) else { return nil }

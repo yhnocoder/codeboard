@@ -449,3 +449,94 @@ extension CanvasStickerTests {
     r.canvas.cancelPlacing()
   }
 }
+
+/// Two Notes with an arrow between them, a third Note 40 under the middle of the arrow's line, and a sticker on the
+/// arrow at its middle, 40 above it (the web board's on: {link, t})
+func arrowStickerBoard(folded: Bool = false) -> Board {
+  func note(_ id: String, _ x: Double, _ y: Double, section: SectionID? = nil) -> Card {
+    Card(
+      id: cid(id), x: x, y: y, width: 200, height: 100, section: section,
+      content: .own(CardContent(body: .note(Note(text: "# \(id)\n\nA step.")))))
+  }
+  let g = SectionID(rawValue: "g1")
+  return Board(
+    id: BoardID(rawValue: "arrow-stickers"),
+    cards: [
+      note("a", 0, 0, section: folded ? g : nil), note("b", 600, 0, section: folded ? g : nil), note("c", 300, 56),
+    ],
+    arrows: [Arrow(id: ArrowID(rawValue: "ab"), from: Endpoint(card: cid("a")), to: Endpoint(card: cid("b")))],
+    sections: folded ? [Section(id: g, title: "Steps", x: -40, y: -60, width: 900, height: 240, collapsed: true)] : [],
+    stickers: [
+      Sticker(
+        id: StickerID(rawValue: "k1"), glyph: .builtin(.zap),
+        anchor: .arrow(ArrowID(rawValue: "ab"), position: 0.5, x: -16, y: -40, size: nil))
+    ])
+}
+
+extension CanvasStickerTests {
+  var ab: ArrowID { ArrowID(rawValue: "ab") }
+
+  func pts(_ c: CanvasView) throws -> [CGPoint] { try #require(c.livePts(ab)) }
+
+  func on(_ pts: [CGPoint], _ t: CGFloat, dx: CGFloat = 0, dy: CGFloat = 0) -> CGPoint {
+    let q = ArrowRoute.bezAt(pts, t)
+    return CGPoint(x: q.x + dx, y: q.y + dy)
+  }
+
+  /// The arrow's line is level (its two cards side by side): a point beside it is that far from it
+  func level(_ c: CanvasView) throws -> CGFloat {
+    let p = try pts(c)
+    try #require(p.allSatisfy { abs($0.y - p[0].y) < 0.01 }, "a level line: \(p)")
+    return p[0].y
+  }
+
+  @Test(arguments: [0.5, 1, 2] as [CGFloat])
+  func aStickerOnAnArrowIsDrawnAtItsPlaceAlongTheCurvePlusItsOffset(zoom: CGFloat) async throws {
+    let r = try await Rig(arrowStickerBoard(), zoom: zoom)
+    defer { r.close() }
+    let c = r.canvas
+    let k1 = try spot(c, "k1")
+    let q = on(try pts(c), 0.5)
+    #expect(k1.board == CGRect(x: q.x - 16, y: q.y - 40, width: 32, height: 32) && k1.owner == nil)
+    // over the cards, as the web board's .lw layer is
+    let i = try #require(c.stickerSpots.firstIndex { $0.id == kid("k1") })
+    #expect(c.stickerLayers[i].superlayer === c.freeStickers && c.stickerLayers[i].position == k1.board.origin)
+    #expect(c.stickerAt(centre(k1)) == i)
+  }
+
+  @Test func aStickerOnAnArrowIsNotDrawnWhileItsArrowIsNot() async throws {
+    let r = try await Rig(arrowStickerBoard(folded: true), zoom: 1)
+    defer { r.close() }
+    #expect(r.canvas.livePts(ab) == nil, "both ends folded into one Section: no arrow")
+    #expect(r.canvas.stickerSpots.isEmpty && r.canvas.stickerLayers.isEmpty)
+  }
+
+  /// A card at an end dragged: the arrow is routed again each frame and the sticker's layer moves with it, nothing
+  /// else drawn again
+  @Test(arguments: [0.5, 1, 2] as [CGFloat])
+  func aStickerOnAnArrowFollowsItWhileAnEndCardMoves(zoom: CGFloat) async throws {
+    let r = try await Rig(arrowStickerBoard(), zoom: zoom)
+    defer { r.close() }
+    let c = r.canvas
+    let i = try #require(c.stickerSpots.firstIndex { $0.id == kid("k1") })
+    let layer = c.stickerLayers[i]
+    let was = layer.position
+    let breaks = r.breaks
+    let from = r.centre("b")
+    var steps = 0
+    r.drag(from, CGPoint(x: from.x + 40, y: from.y + 300)) {
+      r.tick()
+      let now = on(try! pts(c), 0.5, dx: -16, dy: -40)
+      #expect(c.stickerLayers[i] === layer, "the same layer, moved")
+      #expect(abs(layer.position.x - now.x) < 0.01 && abs(layer.position.y - now.y) < 0.01)
+      #expect(layer.position.y > was.y + 50, "it went down with the line")
+      #expect(r.breaks == breaks)
+      steps += 1
+    }
+    #expect(steps == 1)
+    await r.settle()
+    let k1 = try spot(c, "k1")
+    #expect(k1.board.origin == on(try pts(c), 0.5, dx: -16, dy: -40))
+    #expect(sticker(r, "k1")?.anchor == .arrow(ab, position: 0.5, x: -16, y: -40, size: nil), "it stays as it was")
+  }
+}

@@ -2,9 +2,11 @@ import AppKit
 import CodeBoardModel
 
 // Stickers on the canvas (the web board's stickers/Layer.tsx, Picker.tsx, actions/stickers.ts, styles.css .stk): a free
-// one over the cards, one on a card in the card's own layer (it moves with it, nothing redrawn), one on a code line as a
-// chip in the line numbers (a dot by a Highlight's count). Each is vector layers in its glyph's box (StickerArt), so a
-// move, a resize or a zoom never redraws a bitmap; an emoji's text is drawn again only at rest, as the markers are.
+// one over the cards, one on a card in the card's own layer (it moves with it, nothing redrawn), one on an arrow over the
+// cards at its place along the curve (Picker.tsx LinkStickers: moved with the arrow as it is routed again), one on a
+// code line as a chip in the line numbers (a dot by a Highlight's count). Each is vector layers in its glyph's box
+// (StickerArt), so a move, a resize or a zoom never redraws a bitmap; an emoji's text is drawn again only at rest, as
+// the markers are.
 //
 // The toolbar's Sticker opens the palette; a glyph picked follows the pointer with no button held and a click puts it
 // down, selected: on a code line's number, on a card, by one within 40 px, else free (⌥: free). Esc puts nothing down.
@@ -25,6 +27,9 @@ struct StickerSpot {
   var line: Bool
   /// Shrunk to a dot by a Highlight's count on its line
   var dot = false
+  /// The arrow it is on and where along it (0…1): `frame` is then its box from that place
+  var arrow: ArrowID? = nil
+  var t: CGFloat = 0
 }
 
 /// A sticker pressed: moved or resized from where it was, and where it is now (board units)
@@ -65,8 +70,15 @@ extension CanvasView {
           StickerSpot(
             id: k.id, glyph: k.glyph, color: k.color, owner: c, frame: f, board: f.offsetBy(dx: r.minX, dy: r.minY),
             line: false))
-      // one on an arrow is not drawn yet
-      case .arrow: continue
+      // not drawn while its arrow is not
+      case .arrow(let a, let t, let x, let y, let s):
+        guard let pts = livePts(a) else { continue }
+        let q = ArrowRoute.bezAt(pts, t)
+        let f = CGRect(origin: CGPoint(x: x, y: y), size: StickerArt.boxSize(k.glyph, size: s ?? Sticker.defaultSize))
+        out.append(
+          StickerSpot(
+            id: k.id, glyph: k.glyph, color: k.color, owner: nil, frame: f, board: f.offsetBy(dx: q.x, dy: q.y),
+            line: false, arrow: a, t: t))
       case .line(let c, let seg, let n):
         guard let r = rects[c], let p = scene.placed[c], !p.folded, let code = p.code,
           case .code(let card)? = scene.parts[c]?.content.body,
@@ -112,12 +124,26 @@ extension CanvasView {
     }
   }
 
+  /// The stickers on these arrows where they are drawn now (`pts`: re-routed, a card at an end moving): their layers
+  /// moved, nothing else
+  func followArrows(_ pts: [ArrowID: [CGPoint]]) {
+    withoutAnimation {
+      for (i, s) in stickerSpots.enumerated() where i < stickerLayers.count {
+        guard let p = s.arrow.flatMap({ pts[$0] }) else { continue }
+        let q = ArrowRoute.bezAt(p, s.t)
+        stickerSpots[i].board.origin = CGPoint(x: q.x + s.frame.minX, y: q.y + s.frame.minY)
+        stickerLayers[i].position = stickerSpots[i].board.origin
+      }
+    }
+  }
+
   /// A sticker's layer: its glyph at its frame, a soft shadow under one on the board or a card (.stk.canvas .glyph)
   func stickerLayer(_ s: StickerSpot) -> CALayer {
     let l = StickerArt.layer(
       s.glyph, color: s.color, size: s.frame.height, theme: theme, pixels: backing * camera.zoom)
     l.name = "sticker"
-    l.position = s.frame.origin
+    // one on an arrow is over the cards, as a free one: at its place on the board
+    l.position = s.owner == nil ? s.board.origin : s.frame.origin
     l.zPosition = 4
     if !s.line { StickerArt.shadow(l, s.glyph, size: s.frame.height, pixels: backing * camera.zoom) }
     return l
