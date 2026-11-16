@@ -174,7 +174,8 @@ extension CanvasView {
     }
   }
 
-  /// The camera to a question (what it is on in view, with room on its right for the popup), and its popup open there
+  /// The camera to a question when it is not in view (what it is on, with room on its right for the popup), and its
+  /// popup open there once the camera is at rest (actions/notes.ts goToQuestion)
   public func showQuestion(_ id: SidenoteID) {
     guard let scene, let n = scene.notes.first(where: { $0.id == id }) else { return }
     func rect(_ o: Scene.Owner) -> CGRect? { scene.items.first { $0.owner == o }?.rect }
@@ -187,11 +188,12 @@ extension CanvasView {
       }
     case .point(let x, let y): r = CGRect(x: x - 20, y: y - 20, width: 40, height: 40)
     }
+    // the sidenote popups open go first
+    openPop(nil)
     if let r {
       let z = camera.zoom
       let room = bounds.width < 700 ? 0 : 500 / z
-      let want = r.union(CGRect(x: r.maxX, y: r.minY, width: room, height: min(r.height, 320 / z)))
-      if !camera.visible(bounds.size).contains(want) { place(zoom: z, centre: CGPoint(x: want.midX, y: want.midY)) }
+      reveal(r, also: CGRect(x: r.maxX, y: r.minY, width: room, height: min(r.height, 320 / z)))
     }
     let at: PopAt
     if let l = n.anchor.lines {
@@ -201,9 +203,10 @@ extension CanvasView {
     } else {
       return
     }
-    // the sidenote popups open go first (actions/notes.ts goToQuestion)
-    openPop(nil)
-    openPop(at, focus: id)
+    Task {
+      await rest()
+      openPop(at, focus: id)
+    }
   }
 
   /// Zoom to 100 % (the toolbar's zoom figure), about the middle of the view

@@ -187,12 +187,13 @@ extension CanvasView {
     return dx < v.width && dy < v.height
   }
 
-  /// `r` into view, the zoom kept (lower when it is wider than the view); nothing moves when it is in view
-  func reveal(_ r: CGRect) {
+  /// `r` into view, the zoom kept (lower when it is wider than the view); nothing moves when it is in view. `also`:
+  /// brought into view with it when it moves (camera.ts ensureVisible)
+  func reveal(_ r: CGRect, also: CGRect = .null) {
     let v = safeView
     let top = CGRect(x: r.minX, y: r.minY, width: r.width, height: min(r.height, v.height))
     guard !v.contains(top) else { return }
-    motion.fly(to: fitTop(r, maxZoom: camera.zoom))
+    motion.fly(to: fitTop(r.union(also), maxZoom: camera.zoom))
     moved()
   }
 

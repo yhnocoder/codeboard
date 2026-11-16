@@ -672,6 +672,36 @@ extension CanvasSidenoteTests {
     #expect(try listed(current: "a") == ["m": [], "z": ["bq sched.py:11"]], "on this board, so on no other")
   }
 
+  /// Gone to from the list (actions/notes.ts goToQuestion, scenario questionOpensAfterFlight): a question out of view
+  /// is flown to, its card with room on its right for the popup, which opens only once the camera is at rest; one in
+  /// view opens where it is, the camera still
+  @Test func aQuestionOutOfViewIsFlownToAndItsPopupOpensOnceTheCameraIsAtRest() async throws {
+    let r = try await Rig(sidenoteBoard(question: true), zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    c.place(zoom: 1, centre: CGPoint(x: 6000, y: 4000))
+    c.showQuestion(nid("w1"))
+    #expect(!c.motion.isResting, "a flight, not a jump")
+    var frames = 0
+    while !c.motion.isResting && frames < 600 {
+      #expect(c.pops.isEmpty, "no popup while the camera moves")
+      r.tick()
+      frames += 1
+      await Task.yield()
+    }
+    #expect(frames > 2 && c.motion.isResting)
+    let there = c.camera
+    await opened(r, .spot(.card(cid("n1"))))
+    #expect(c.camera == there)
+    let card = r.rect("n1")
+    #expect(c.safeView.contains(card.union(CGRect(x: card.maxX, y: card.minY, width: 500, height: 1))))
+    // in view: no move
+    c.showQuestion(nid("w1"))
+    #expect(c.motion.isResting && c.camera == there)
+    await opened(r, .spot(.card(cid("n1"))))
+    #expect(c.camera == there)
+  }
+
   @Test func theInputOpenedAtOnceOffersTheReferenceListOnceItsCandidatesCome() async throws {
     let r = try await Rig(sidenoteBoard(), zoom: 1)
     defer { r.close() }
