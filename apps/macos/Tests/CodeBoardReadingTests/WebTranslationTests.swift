@@ -196,6 +196,43 @@ import WebKit
     }
   }
 
+  /// The translations' Versions in the entry
+  func listed() throws -> [Version] {
+    try vault.entry(at: entry).versions.filter { if case .translation = $0.content { true } else { false } }
+  }
+
+  /// The first translations kept are listed in the entry as a Version of the page, which the pane knows at once;
+  /// later ones add none; a file kept before it was listed gets its Version when the page is opened again
+  @Test func theTranslationsAreAVersionOfThePageListedOnce() async throws {
+    let v1 = VersionID(rawValue: "v1")
+    let (v, tabs) = try await tab(Self.page(), ai: AI())
+    try await ready(v)
+    choose(v, 1)
+    try await until("listed") { try listed().count == 1 }
+    let t = try listed()[0]
+    #expect(t.of == v1 && t.language == "zh" && t.label == "v1 中文" && t.content == .translation(file: "v1.zh.json"))
+    #expect(tabs.pane.entries.all.first?.entry.versions.contains(t) == true, "the pane knows it")
+    try await until("translated") { v.translating == nil && v.bar.translation == .ready }
+    tabs.close()
+
+    let (w, other) = try await tab(Self.page(second: "A changed paragraph."), ai: AI(), view: "both")
+    try await until("the changed block kept") {
+      try kept?.blocks.values.contains { $0.text == "zh: A changed paragraph." } == true
+    }
+    #expect(try listed() == [t], "no second one")
+    try await until("translated") { w.translating == nil && w.bar.translation == .ready }
+    other.close()
+
+    var e = try vault.entry(at: entry)
+    e.versions.removeAll { $0.id == t.id }
+    try vault.write(e, at: entry)
+    let (x, third) = try await tab(Self.page(second: "A changed paragraph."), ai: AI())
+    defer { done(third) }
+    try await ready(x)
+    try await until("listed on opening") { try listed().count == 1 }
+    #expect(try listed()[0].of == v1 && third.pane.entries.all.first?.entry.versions.count == 2)
+  }
+
   /// A batch that fails leaves its blocks untranslated and says so on the language buttons, the other batches shown
   /// and kept; the next choice of a translated view asks for those blocks again
   @Test func aFailedBatchLeavesTheRestAndIsAskedForAgainOnTheNextChoice() async throws {

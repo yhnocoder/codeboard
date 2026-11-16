@@ -482,6 +482,12 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
     let (entry, version) = found
     do {
       let file = try vault.translations(of: version, language: WebReading.translationLanguage, in: entry)
+      // a file written before translations were listed gets its Version now
+      if file != nil,
+        let e = try vault.listTranslations(of: version, language: WebReading.translationLanguage, in: entry)
+      {
+        context.pane.entries.update(e, at: entry)
+      }
       kept = Kept(
         vault: vault, entry: entry, version: version,
         file: file.flatMap { $0.scheme == blocks.scheme ? $0 : nil } ?? PageTranslations(scheme: blocks.scheme))
@@ -550,20 +556,28 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
     let before = writing
     writing = Task { [weak self] in
       await before?.value
-      guard let why = await Self.write(k) else { return }
-      self?.translationFailure = why
-      self?.showTranslation()
+      switch await Self.write(k) {
+      case .success(let listed?): self?.context.pane.entries.update(listed, at: k.entry)
+      case .success(nil): break
+      case .failure(let why):
+        self?.translationFailure = why.message
+        self?.showTranslation()
+      }
     }
   }
 
-  /// Off the main thread: a long page's file is written again after every batch
-  @concurrent private static func write(_ k: Kept) async -> String? {
+  /// Off the main thread: a long page's file is written again after every batch. The entry when the first write
+  /// listed the translations in it
+  @concurrent private static func write(_ k: Kept) async -> Result<Entry?, Unsaved> {
     do {
-      try k.vault.write(k.file, of: k.version, language: WebReading.translationLanguage, in: k.entry)
-      return nil
+      return .success(try k.vault.write(k.file, of: k.version, language: WebReading.translationLanguage, in: k.entry))
     } catch {
-      return "The translations could not be saved: \(error)"
+      return .failure(Unsaved(message: "The translations could not be saved: \(error)"))
     }
+  }
+
+  private struct Unsaved: Error {
+    var message: String
   }
 
   private func ran(_ outcome: WebTranslating.Outcome) {

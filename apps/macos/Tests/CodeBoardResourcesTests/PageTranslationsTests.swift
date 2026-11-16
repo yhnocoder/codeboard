@@ -4,17 +4,27 @@ import Foundation
 import Testing
 
 // A saved page's translations in its entry's folder: the file round trips, is written the same every time with its
-// keys sorted, is read strictly, and is nothing when it is not there.
+// keys sorted, is read strictly, and is nothing when it is not there; its first write lists it in the entry as a
+// Version of its own, once for each page version and language.
 
 @Suite struct PageTranslationsTests {
   let dir = FileManager.default.temporaryDirectory.appending(path: "codeboard-translations-\(UUID().uuidString)")
   let vault: Vault
-  let entry = "Web.resource/A page"
+  /// The folder of an entry with one saved page, v2 (a link's entry, then the page saved twice: v1 and v2)
+  let entry: String
   let v2 = VersionID(rawValue: "v2")
 
   init() throws {
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     vault = Vault(root: dir)
-    try FileManager.default.createDirectory(at: vault.url(of: entry), withIntermediateDirectories: true)
+    let resource = try vault.newResource(in: "", title: "Web", preset: .web).path
+    let saved = { (n: Int) in
+      SavedItem(
+        id: "p\(n)", kind: .page, url: "https://example.org/a", title: "A page", savedAt: 1_000,
+        pageHash: String(repeating: "\(n)", count: 64), bytes: 100)
+    }
+    try vault.save(saved(1), in: resource)
+    entry = try vault.save(saved(2), in: resource)
   }
 
   var file: URL { vault.url(of: entry).appending(path: "v2.zh.json") }
@@ -66,6 +76,43 @@ import Testing
     ] {
       try Data(bad.utf8).write(to: file)
       #expect(throws: VaultError.self, "\(bad)") { try vault.translations(of: v2, language: "zh", in: entry) }
+    }
+  }
+
+  @Test func theFirstWriteListsTheTranslationsAsAVersionOfThePageAndLaterOnesNone() throws {
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let listed = try #require(try vault.write(some, of: v2, language: "zh", in: entry))
+    let t = Version(
+      id: VersionID(rawValue: "v3"), label: "v2 中文", added: listed.versions[2].added, language: "zh", of: v2,
+      content: .translation(file: "v2.zh.json"))
+    #expect(listed.versions.map(\.id.rawValue) == ["v1", "v2", "v3"] && listed.versions[2] == t)
+    #expect(try vault.entry(at: entry) == listed, "written to entry.json")
+    #expect(try vault.write(some, of: v2, language: "zh", in: entry) == nil)
+    #expect(try vault.listTranslations(of: v2, language: "zh", in: entry) == nil)
+    #expect(try vault.entry(at: entry).versions.count == 3, "never a second one")
+    let en = try #require(try vault.write(some, of: v2, language: "en", in: entry))
+    #expect(en.versions.last?.label == "v2 en" && en.versions.last?.content == .translation(file: "v2.en.json"))
+    var e = try vault.entry(at: entry)
+    e.versions[0].label = "First"
+    try vault.write(e, at: entry)
+    let first = try #require(try vault.write(some, of: VersionID(rawValue: "v1"), language: "zh", in: entry))
+    #expect(first.versions.last?.label == "First 中文" && first.versions.last?.id.rawValue == "v5")
+  }
+
+  /// A file written before translations were listed gets its Version when asked, once
+  @Test func anUnlistedFileIsListedOnce() throws {
+    defer { try? FileManager.default.removeItem(at: dir) }
+    try Data(#"{"blocks": {}, "scheme": 1, "version": 1}"#.utf8).write(to: file)
+    #expect(try vault.entry(at: entry).versions.count == 2)
+    let listed = try #require(try vault.listTranslations(of: v2, language: "zh", in: entry))
+    #expect(listed.versions.last?.of == v2 && listed.versions.last?.language == "zh")
+    #expect(try vault.listTranslations(of: v2, language: "zh", in: entry) == nil)
+  }
+
+  @Test func onlyASavedPageIsTranslated() throws {
+    defer { try? FileManager.default.removeItem(at: dir) }
+    #expect(throws: VaultError.self) {
+      try vault.listTranslations(of: VersionID(rawValue: "v9"), language: "zh", in: entry)
     }
   }
 
