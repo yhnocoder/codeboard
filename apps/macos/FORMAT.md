@@ -19,17 +19,25 @@ A vault is a folder of its own. Its folder tree is the sidebar's tree: real fold
   Engine step.board/            a board package: the folder name without .board is the board's title
     board.json
     images/<file>               images the board shows
+  Papers.resource/              a resource package (Resources, below): the name without .resource is its title
+    resource.json
+    Attention Is All You Need/  an entry: a folder with entry.json and its files
+      entry.json
+      1706.03762v7.pdf
+    notes.pdf                   an entry that is only a file
   engine/                       a folder
     .folder.board/              the folder's own board (a folder board), titled "engine"
     Scheduler- prefill-decode.board/
   .codeboard/                   the app's own data (Vault.appDataFolder)
     shared/<card id>.json       shared cards
     shared/images/<file>        their images
+    site-rules/<domain>.json    the user's rules for reading saved pages of a site (web reading; not read yet)
 ```
 
 - Names starting with `.` are never listed (so `.codeboard/` is not a folder in the sidebar). A folder whose name ends in
-  `.board` is a package and is not looked into; any other folder is a folder. Files outside packages are ignored for now
-  (resources come later). Sidebar order is Finder's (`localizedStandardCompare`).
+  `.board` is a board package, one whose name ends in `.resource` a resource package (Resources, below); neither is
+  looked into as a folder, and any other folder is a folder. Files outside packages are ignored. Sidebar order is
+  Finder's (`localizedStandardCompare`): in a folder its boards, then its resources, then its subfolders.
 - The title lives only in the package name, so renaming in Finder renames the board; `board.json` has no title.
 - **Folder boards**: a folder (not the vault itself) may hold one board package named `.folder.board`
   (`Vault.folderBoardName`), hidden like every dot name and read as that folder's own board. Its title is always the
@@ -52,6 +60,8 @@ A vault is a folder of its own. Its folder tree is the sidebar's tree: real fold
 - Ids are opaque strings, kept from the old files so `[[title#^id]]` links in Markdown keep working.
 - A board id is unique in the vault; boards refer to each other by id only, so moving or renaming packages is safe.
 - Card, section and arrow ids are unique within a board; segment ids within a card.
+- A resource id and an entry id are unique in the vault, and a version, highlight or entry sidenote id within its entry.
+  Boards refer to an entry by id only, so an entry's folder, and its resource's package, can be renamed or moved.
 - A shared card's id is its file name, so it is limited to `[A-Za-z0-9_-]{1,80}` (no path tricks). The same id is the
   placed card's id on every board that shows it.
 
@@ -104,7 +114,10 @@ the cards of one board with the same `same` are one card placed several times on
 file where it is not is refused); each has its own id, place, tilt, arrows, sidenotes and stickers, and their segments
 the same ids. Absent: a card of its own.
 
-**CardContent**: `title?` (absent: the kind's default title), `description?` (Markdown under the body), and one of `code`,
+**CardContent**: `title?` (absent: the kind's default title), `description?` (Markdown under the body), `source?` (a
+SourceAnchor, Resources below: where in a resource entry the card was taken from, shown at its foot; the card's content
+is its own and stays as written whatever becomes of the entry; never on an image card whose picture is `resource`,
+which names the place already), and one of `code`,
 `note`, `text`, `image`, `web`, `links`, `board`.
 
 **code**: `segments: [Segment], hide: {comments, docstrings, blankLines}, wrap, framed`. `framed: false` draws the code on
@@ -125,7 +138,8 @@ may be); neither is on a segment with a source. `language` is a VS Code language
   remote URL from git; absent when `repository` is known.
 - `package: {name, version, path}`: an installed package (pip, conda), `path` inside its install folder.
 - `file: {path, hash?}`: a file in no git repository, `hash` a fingerprint of its content.
-- Later: `resource: {item, page, paragraph}` for code or text taken from a resource.
+
+What a card took from a resource is not a segment's source: it is the card's `source` (CardContent, a SourceAnchor).
 
 **note**: `text, layout?`: a card with a frame, a header and the board's Note text size. `text` is Markdown. `layout` is
 `{tables?: [{cols?, rows?} | null], wrap?: [Int]}`, the shape of `@yhnocoder/markdown`'s `MdLayout` (table sizes and
@@ -138,7 +152,9 @@ in px (the toolbar's 20, 24, 30, 40, or any size in 10–240 from dragging a cor
 with it. `wrap`: it wraps at the card's width (a side edge was dragged); otherwise it is as wide as its text. Never a height.
 The old Text, Mark and Free Text are Texts at the size they had (the extension's own upgrade, below).
 
-**image**: `source: {file: name} | {url: "https://…"}, alt?, framed, stillFrame?, loops`. `stillFrame` (from 1): the frame
+**image**: `source: {file: name} | {url: "https://…"} | {resource: SourceAnchor}, alt?, framed, stillFrame?, loops`.
+`resource`: one block of a resource entry (a figure, a table, a region of a PDF page), drawn from the entry's file when
+the card is drawn: a reference, nothing is copied into `images/`. `stillFrame` (from 1): the frame
 an animated image rests on; `loops`: it always plays.
 
 **web**: `url, meta?, style: automatic|banner|side|text|compact` (automatic: a wide picture above, a square one beside).
@@ -198,6 +214,65 @@ line it was on is gone from the code (drawn red at the card's header).
 
 **Section**: `id, title, x, y, width, height, parent?, color?, collapsed, locked, description?`. A folded section keeps its
 open frame (as the old one did).
+
+## Resources
+
+A resource (资料) is a list the user keeps: papers, saved web pages, files. It is a package `<title>.resource/` anywhere
+a board package can be, its title in the package name alone. Code: `Sources/CodeBoardResources` (reading and writing),
+`Vault.swift` (listing: a resource's id, preset and entry count, without reading its entries).
+
+```
+Papers.resource/
+  resource.json                 {"version": 1, "id": "…", "preset": "papers", "fields": [Field]}
+  <entry folder>/               an entry; the folder's name is the user's to change, the entry is known by its id
+    entry.json
+    <file>                      what its versions name: PDFs, a block list
+  <file>                        an entry that is only a file (no id, no metadata): its name is its title
+```
+
+Both files are written and read like `board.json` (deterministic, strict, the same rules for growing: Versions, above),
+each with its own `version`, now 1. Names starting with `.` are not entries. Opening a vault writes nothing.
+
+**resource.json**: `version, id, preset: papers|web|files, fields: [Field]`. The preset says which columns and actions
+the list starts with; it does not limit what an entry may be. **Field** (a column the user added): `id, name, type:
+text|number|date|checkbox`; an entry's value for it is in its `entry.json`.
+
+**entry.json**: `version, id, title, added, origin?, authors?: [String], year?, versions: [Version], highlights:
+[Highlight], sidenotes: [EntrySidenote], fields: {<field id>: String | Number | Bool}`. `added` and every time: ms since
+1970. `origin` (where it came from, one of): `arxiv: {id}` (without a version: `1706.03762`), `doi: {doi}`, `web: {url}`.
+A date field's value is a `YYYY-MM-DD` string. A value for a field the resource does not define is kept and not shown.
+An entry that is only a file gets a folder and an `entry.json` (the file moved into it, one rename) the first time
+something needs its id: a highlight, a sidenote, a card taken from it.
+
+**Version** (one readable form of the entry; a paper's v1, its v2, a translation of either, one saving of a web page):
+`id, label?, added, language?, of?, content`. `label`: what its tab says (`v2`, `v2 中文`). `of`: the version this one
+translates (blocks of the two correspond by order). `language`: BCP 47 (`zh`, `en`). `content` is one of:
+- `pdf: {file, blocks?}`: a PDF in the entry folder, and `blocks`, the file there listing its blocks (tongtu's
+  `<id>.zh.anchors.json` as written). Without `blocks` it is a plain PDF: text by page only.
+- `page: {hash, bytes}`: a web page saved whole, kept outside the vault by its content fingerprint (`hash`, as the
+  saving service names the file); `bytes` its size.
+
+An entry saved as a link alone has no versions. A new version of a paper is one more Version; the old ones stay, and
+every highlight, sidenote and card source keeps naming the version it was made on. Nothing is moved to the new one.
+File names are plain file names, as in `images/`.
+
+**Place** (where in an entry): `version, block, range?`.
+- `block` is one of `id: "<block id>"` (a block of the version's block list, or of a saved page: the id that list or
+  page gives it) or `page: {page, rect?}` (a plain PDF: a page from 1, and `rect: [x, y, width, height]` for a region
+  of it, in PDF points from the page's bottom left).
+- `range: [from, to]`: characters of the block's text (a block's source text as its list gives it; a page's text as
+  PDFKit gives it), in UTF-16 code units, `from` included, `to` not, `0 ≤ from < to`. Absent: the whole block, or with
+  `rect` the region.
+
+**SourceAnchor** (a Place from outside the entry: a card's `source`, an image card's `resource`): `entry, version,
+block, range?`, a Place with the entry's id. The board does not check that the entry is there: a card whose entry is
+gone keeps its anchor and is drawn as missing its source.
+
+**Highlight**: `id, place: Place, color: yellow|green|blue|pink|purple, at`. Stored in the entry, so it shows from
+whichever board the entry was opened. Never on a `rect`.
+
+**EntrySidenote** (an annotation): `id, place: Place, text, alwaysShow, question?`: a board's text sidenote (`text`
+Markdown, `question: {at, done, answers}` as there, so it is in the same question list), on a place of the entry.
 
 ## Shared card file
 
