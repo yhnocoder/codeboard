@@ -1,5 +1,6 @@
 import AppKit
 import CodeBoardModel
+import CodeBoardResources
 import Foundation
 import Synchronization
 import Testing
@@ -10,7 +11,8 @@ import Testing
 
 // ⌘K and ⌘F in the whole window (keymap.ts search, searchBoard; ui/Palette.tsx): the palette over the board, its
 // groups, ↑ ↓ and Return, Tab between all boards and this one, Esc; the toolbar's Search; both keys in the shortcut list;
-// Related by Meaning over a fake index (never box itself), with settings in a defaults suite and the key in memory
+// Related by Meaning over a fake index (never box itself), with settings in a defaults suite and the key in memory;
+// Resources, Return opening an entry and ⌥↵ putting its passage on the board
 
 /// A key in memory that counts how often it is read
 final class CountingKeyStore: KeyStore {
@@ -168,7 +170,9 @@ final class FakeMeaning: MeaningIndex {
     return await shown()
   }
 
-  func press(_ key: String) async { _ = await BoardPanes.search.run("palette.press(k)", ["k": key]) }
+  func press(_ key: String, alt: Bool = false) async {
+    _ = await BoardPanes.search.run("palette.press(k, a)", ["k": key, "a": alt])
+  }
 
   @Test func commandKSearchesEveryBoardAndReturnOpensTheCardsBoard() async throws {
     let w = try await opened()
@@ -446,6 +450,57 @@ final class FakeMeaning: MeaningIndex {
       try await shownOnTheShelf(w, "e2", "stow")
       #expect(w.shows(other))
     }
+  }
+
+  // MARK: Resources
+
+  /// The search vault with a resource of papers: Tidal mills, a plain PDF whose one page tells of the mill wheel
+  func withPapers() throws -> Vault {
+    let v = try vault()
+    let r = try v.newResource(in: "", title: "Papers", preset: .papers)
+    let pdf = try ShellPDFTests().outside("mills.pdf", "Every mill on the coast ran on the tide.")
+    defer { try? FileManager.default.removeItem(at: pdf.deletingLastPathComponent()) }
+    let e = Entry(
+      id: EntryID(rawValue: "e-mills"), title: "Tidal mills", added: 1, authors: ["Ana Ruíz"],
+      versions: [Version(id: VersionID(rawValue: "v1"), added: 1, content: .pdf(file: "v1.pdf"))])
+    _ = try v.newEntry(e, in: r.path, with: ["v1.pdf": try Data(contentsOf: pdf)])
+    return v
+  }
+
+  @Test func resourcesComeAfterSidenotesReturnOpensTheEntryAndOptionReturnPutsThePassageOnTheBoard() async throws {
+    let w = try await env.opened(try withPapers())
+    BoardPanes.search.drawOffScreen()
+    defer {
+      BoardPanes.search.close()
+      w.close()
+    }
+    try await open(w, "k")
+    let s = try #require(await type(w, "mill tide", rows: 1))
+    #expect(s.groups == ["Resources"] && s.rows == ["Tidal mills"])
+    let ctx = await BoardPanes.search.run("return palette.state().rows[0].context") as? String
+    #expect(ctx?.hasPrefix("p. 1 · ") == true && ctx?.contains("mill on the coast") == true, "\(ctx ?? "")")
+    #expect(await BoardPanes.search.run("return palette.state().foot") as? String == " Open | ⌥↵ Add to Board")
+    // the words marked in the row
+    await until("marked", in: w) { await shown()?.marked.contains("mill") == true }
+
+    // ⌥↵: the passage a Note on the board, its source the entry's page
+    await press("Enter", alt: true)
+    await until("closed", in: w) { !BoardPanes.search.isOpen }
+    let doc = try #require(w.pane?.document)
+    await until("a Note collected", in: w) { doc.board.cards.count == 3 }
+    let note = try #require(doc.board.cards.last)
+    guard case .own(let c) = note.content, case .note(let n) = c.body else {
+      Issue.record("not a Note: \(note.content)")
+      return
+    }
+    #expect(n.text.contains("mill on the coast ran on the tide"))
+    #expect(c.source?.entry == EntryID(rawValue: "e-mills") && c.source?.place?.block == .page(1))
+
+    // ↵: the entry opened in the reading pane
+    try await open(w, "k")
+    _ = await type(w, "tidal", rows: 1)
+    await press("Enter")
+    await until("its tab open", in: w) { w.shell.reading.tabs.map(\.title) == ["Tidal mills"] }
   }
 
   @Test func bothKeysAreInTheShortcutList() {
