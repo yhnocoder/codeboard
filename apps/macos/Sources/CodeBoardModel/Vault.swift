@@ -1,6 +1,7 @@
 import Foundation
 
-/// A vault is a folder whose folder tree is the sidebar's: real folders, nested, and board packages `<title>.board/`.
+/// A vault is a folder whose folder tree is the sidebar's: real folders, nested, board packages `<title>.board/` and
+/// resource packages `<title>.resource/`.
 public struct Vault: Sendable {
   /// The app's own data at the vault root (shared cards); hidden, so never listed as a folder
   public static let appDataFolder = ".codeboard"
@@ -11,6 +12,10 @@ public struct Vault: Sendable {
   public static let sharedFolder = "shared"
   /// A folder's own board, hidden in it: its title is always the folder's name
   public static let folderBoardName = ".folder.board"
+  public static let resourceExtension = "resource"
+  public static let resourceFileName = "resource.json"
+  /// In an entry's folder in a resource package
+  public static let entryFileName = "entry.json"
 
   public let root: URL
 
@@ -35,8 +40,9 @@ public struct Vault: Sendable {
     return u.hasPrefix(r + "/") ? String(u.dropFirst(r.count + 1)) : nil
   }
 
-  /// The whole tree; reads each board's id, not its content. A board of another format version is listed too, and opening
-  /// it says why it cannot be read
+  /// The whole tree; reads each board's id, not its content, and each resource's id and preset, counting its entries
+  /// without reading them. A board or resource of another format version is listed too, and opening it says why it
+  /// cannot be read
   public func tree() throws -> VaultFolder {
     try folder(at: "", name: root.lastPathComponent)
   }
@@ -78,7 +84,7 @@ public struct Vault: Sendable {
   }
 
   /// A file in an images folder: no folders, not hidden
-  static func isFileName(_ name: String) -> Bool {
+  package static func isFileName(_ name: String) -> Bool {
     name.wholeMatch(of: /[A-Za-z0-9_-][A-Za-z0-9_.-]*/) != nil
   }
 
@@ -108,8 +114,11 @@ public struct Vault: Sendable {
         }
       }
     }
-    // by the names shown, a package's without `.board` ("Plan" before "Plan copy"), as Finder lists them
-    func shown(_ n: String) -> String { n.hasSuffix(".\(Vault.packageExtension)") ? String(n.dropLast(6)) : n }
+    // by the names shown, a package's without `.board` or `.resource` ("Plan" before "Plan copy"), as Finder lists them
+    func shown(_ n: String) -> String {
+      let ext = (n as NSString).pathExtension
+      return [Vault.packageExtension, Vault.resourceExtension].contains(ext) ? String(n.dropLast(ext.count + 1)) : n
+    }
     for name in names.sorted(by: { shown($0).localizedStandardCompare(shown($1)) == .orderedAscending }) {
       let entry = dir.appending(path: name)
       var isDir: ObjCBool = false
@@ -124,6 +133,15 @@ public struct Vault: Sendable {
           out.boards.append(VaultBoard(id: id, title: title, path: child, seal: seal))
         } catch {
           out.unreadable.append(VaultUnreadable(title: title, path: child, reason: "\(error)"))
+        }
+      } else if entry.pathExtension == Vault.resourceExtension {
+        let title = entry.deletingPathExtension().lastPathComponent
+        do {
+          let (id, preset) = try resourceHead(in: entry.appending(path: Vault.resourceFileName))
+          out.resources.append(
+            VaultResource(id: id, title: title, path: child, preset: preset, entryCount: try entryCount(in: entry)))
+        } catch {
+          out.unreadableResources.append(VaultUnreadable(title: title, path: child, reason: "\(error)"))
         }
       } else {
         out.folders.append(try folder(at: child, name: entry.lastPathComponent))
@@ -149,6 +167,40 @@ public struct Vault: Sendable {
     return (head.id, head.seal)
   }
 
+  /// A resource's id and preset, all the tree reads of its file
+  private func resourceHead(in file: URL) throws -> (ResourceID, ResourcePreset) {
+    struct Head: Decodable {
+      var id: ResourceID
+      var preset: ResourcePreset
+    }
+    let head: Head
+    do {
+      head = try JSONDecoder().decode(Head.self, from: read(file))
+    } catch let e as VaultError {
+      throw e
+    } catch {
+      throw VaultError.malformed(file, "no resource id and preset")
+    }
+    return (head.id, head.preset)
+  }
+
+  /// A resource's entries, none of them read: its folders with an entry file, and its files (each an entry of its own)
+  private func entryCount(in package: URL) throws -> Int {
+    let names: [String]
+    do {
+      names = try FileManager.default.contentsOfDirectory(atPath: package.path)
+    } catch {
+      throw VaultError.unreadable(package, error.localizedDescription)
+    }
+    return names.filter { name in
+      guard !name.hasPrefix("."), name != Vault.resourceFileName else { return false }
+      let at = package.appending(path: name)
+      var isDir: ObjCBool = false
+      guard FileManager.default.fileExists(atPath: at.path, isDirectory: &isDir) else { return false }
+      return !isDir.boolValue || FileManager.default.fileExists(atPath: at.appending(path: Vault.entryFileName).path)
+    }.count
+  }
+
   private func read(_ file: URL) throws -> Data {
     do {
       return try Data(contentsOf: file)
@@ -168,6 +220,10 @@ public struct VaultFolder: Equatable, Sendable {
   public var folderBoard: VaultBoard?
   /// Its board packages whose file cannot be read, in the same order
   public var unreadable: [VaultUnreadable] = []
+  /// Its resource packages, by title
+  public var resources: [VaultResource] = []
+  /// Its resource packages whose file cannot be read, in the same order
+  public var unreadableResources: [VaultUnreadable] = []
 
   public init(
     name: String, path: String, folders: [VaultFolder], boards: [VaultBoard], folderBoard: VaultBoard? = nil
@@ -219,7 +275,37 @@ public enum FolderEntry: Hashable, Sendable {
   case folder(String)
 }
 
-/// A board package whose file cannot be read: what the sidebar lists instead of it
+/// What a resource's list starts with (its columns and actions); it does not limit what an entry may be
+public enum ResourcePreset: String, Codable, Sendable {
+  case papers, web, files
+}
+
+/// A resource package as the tree lists it, its entries not read
+public struct VaultResource: Equatable, Sendable {
+  public var id: ResourceID
+  /// The package's name without `.resource`
+  public var title: String
+  /// Of the package, relative to the vault
+  public var path: String
+  public var preset: ResourcePreset
+  /// Its entries: folders with an entry file, and files that are entries alone
+  public var entryCount: Int
+
+  public init(id: ResourceID, title: String, path: String, preset: ResourcePreset, entryCount: Int) {
+    self.id = id
+    self.title = title
+    self.path = path
+    self.preset = preset
+    self.entryCount = entryCount
+  }
+
+  /// The folder it is in, relative to the vault ("" for the vault itself)
+  public var folder: String {
+    path.split(separator: "/").dropLast().joined(separator: "/")
+  }
+}
+
+/// A board (or resource) package whose file cannot be read: what the sidebar lists instead of it
 public struct VaultUnreadable: Equatable, Sendable {
   public var title: String
   public var path: String

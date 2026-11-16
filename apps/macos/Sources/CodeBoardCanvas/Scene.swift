@@ -676,6 +676,8 @@ struct Scene: Sendable {
       switch img.source {
       case .file(let f): url = images.appending(path: f)
       case .url(let s): url = remote[s]
+      // drawing a resource's block is not in yet: a picture not there
+      case .resource: url = nil
       }
       let size = url.flatMap(DecodeCache.pixelSize)
       let h = c.height ?? size.map { c.width * $0.height / max($0.width, 1) } ?? c.width * 0.6

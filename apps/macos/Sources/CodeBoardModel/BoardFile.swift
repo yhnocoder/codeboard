@@ -207,18 +207,29 @@ extension CardContent {
       if !TextCard.fontSizes.contains(t.fontSize) { return "font size \(t.fontSize) is outside 10…240" }
     case .image(let image):
       if let f = image.stillFrame, f < 1 { return "still frame \(f)" }
+      if case .resource = image.source, source != nil { return "its picture is a resource's: it has no source besides" }
     case .links(let list):
       var ids = Set<String>()
       for item in list.items where !ids.insert(item.id).inserted { return "link \(item.id) is there twice" }
-    case .note, .web, .board: break
+      if list.items.contains(where: { $0.meta?.fromResource == true }) { return "a link's picture is not a resource's" }
+    case .web(let web):
+      if web.meta?.fromResource == true { return "a web card's picture is not a resource's" }
+    case .note, .board: break
     }
     return nil
   }
 }
 
+extension WebMeta {
+  /// Its picture or icon names a resource's block: never written (a page's pictures are files or addresses)
+  fileprivate var fromResource: Bool {
+    [image, icon].contains { if case .resource? = $0 { true } else { false } }
+  }
+}
+
 /// Sorted keys, two-space indent, one value per line; empty lists and objects and lists of numbers (line ranges, sizes)
 /// stay on one line. Foundation's pretty printing spreads `[]` over three lines and writes `"key" : value`
-func canonicalJSON(_ value: some Encodable) throws -> Data {
+package func canonicalJSON(_ value: some Encodable) throws -> Data {
   let encoder = JSONEncoder()
   encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
   let compact = Array(try encoder.encode(value))
@@ -268,7 +279,7 @@ func canonicalJSON(_ value: some Encodable) throws -> Data {
   return Data(out + [UInt8(ascii: "\n")])
 }
 
-func strictDecode<T: Codable>(_ type: T.Type, from data: Data, file: URL, version: Int) throws -> T {
+package func strictDecode<T: Codable>(_ type: T.Type, from data: Data, file: URL, version: Int) throws -> T {
   let raw: Any
   do {
     raw = try JSONSerialization.jsonObject(with: data)
@@ -298,7 +309,7 @@ func strictDecode<T: Codable>(_ type: T.Type, from data: Data, file: URL, versio
 }
 
 /// What an older build says of a field or kind a newer one added (FORMAT.md, Versions): it never drops it
-let newerField =
+package let newerField =
   "not in format \(Board.version) as this CodeBoard knows it; a newer CodeBoard may have written it. "
   + "Update CodeBoard to open the file (it is left as it is)"
 
@@ -333,7 +344,7 @@ private func firstDifference(_ a: Any, _ b: Any, at path: String) -> (String, St
 // MARK: Coding where the JSON shape is not the synthesized one
 
 /// An enum is one object with exactly one key, naming the case
-private func theCase<K: CodingKey>(of c: KeyedDecodingContainer<K>) throws -> K {
+package func theCase<K: CodingKey>(of c: KeyedDecodingContainer<K>) throws -> K {
   // a kind this build does not know is not in allKeys
   guard c.allKeys.count == 1, let key = c.allKeys.first else {
     let what = c.allKeys.isEmpty ? "no kind this CodeBoard knows: " + newerField : "more than one kind"
@@ -451,7 +462,7 @@ extension Card: Codable {
 
 extension CardContent: Codable {
   private enum Keys: String, CodingKey {
-    case title, description, code, note, text, image, web, links, board
+    case title, description, source, code, note, text, image, web, links, board
   }
   private enum Kind: String, CodingKey {
     case code, note, text, image, web, links, board
@@ -471,13 +482,15 @@ extension CardContent: Codable {
       }
     self.init(
       title: try c.decodeIfPresent(String.self, forKey: .title),
-      description: try c.decodeIfPresent(String.self, forKey: .description), body: body)
+      description: try c.decodeIfPresent(String.self, forKey: .description),
+      source: try c.decodeIfPresent(SourceAnchor.self, forKey: .source), body: body)
   }
 
   public func encode(to encoder: any Encoder) throws {
     var c = encoder.container(keyedBy: Keys.self)
     try c.encodeIfPresent(title, forKey: .title)
     try c.encodeIfPresent(description, forKey: .description)
+    try c.encodeIfPresent(source, forKey: .source)
     switch body {
     case .code(let code): try c.encode(code, forKey: .code)
     case .note(let note): try c.encode(note, forKey: .note)
@@ -726,7 +739,7 @@ extension CodeSource: Codable {
 
 extension ImageSource: Codable {
   private enum Keys: String, CodingKey {
-    case file, url
+    case file, url, resource
   }
 
   public init(from decoder: any Decoder) throws {
@@ -739,6 +752,7 @@ extension ImageSource: Codable {
       }
       self = .file(name)
     case .url: self = .url(try c.decode(String.self, forKey: .url))
+    case .resource: self = .resource(try c.decode(SourceAnchor.self, forKey: .resource))
     }
   }
 
@@ -747,6 +761,92 @@ extension ImageSource: Codable {
     switch self {
     case .file(let name): try c.encode(name, forKey: .file)
     case .url(let url): try c.encode(url, forKey: .url)
+    case .resource(let anchor): try c.encode(anchor, forKey: .resource)
     }
+  }
+}
+
+extension Place: Codable {
+  private enum Keys: String, CodingKey {
+    case version, block, range
+  }
+
+  public init(from decoder: any Decoder) throws {
+    let c = try decoder.container(keyedBy: Keys.self)
+    let range = try c.decodeIfPresent(Range<Int>.self, forKey: .range)
+    if let r = range, r.isEmpty || r.lowerBound < 0 {
+      throw DecodingError.dataCorruptedError(
+        forKey: .range, in: c, debugDescription: "[\(r.lowerBound), \(r.upperBound)]: not 0 ≤ from < to")
+    }
+    self.init(
+      version: try c.decode(VersionID.self, forKey: .version), block: try c.decode(Block.self, forKey: .block),
+      range: range)
+  }
+
+  public func encode(to encoder: any Encoder) throws {
+    var c = encoder.container(keyedBy: Keys.self)
+    try c.encode(version, forKey: .version)
+    try c.encode(block, forKey: .block)
+    try c.encodeIfPresent(range, forKey: .range)
+  }
+}
+
+extension Place.Block: Codable {
+  private enum Keys: String, CodingKey {
+    case id, page
+  }
+  private struct Page: Codable {
+    var page: Int
+    var rect: [Double]?
+  }
+
+  public init(from decoder: any Decoder) throws {
+    let c = try decoder.container(keyedBy: Keys.self)
+    switch try theCase(of: c) {
+    case .id: self = .id(try c.decode(String.self, forKey: .id))
+    case .page:
+      let p = try c.decode(Page.self, forKey: .page)
+      guard p.page >= 1 else {
+        throw DecodingError.dataCorruptedError(
+          forKey: .page, in: c, debugDescription: "page \(p.page): pages are from 1")
+      }
+      var rect: Place.Rect?
+      if let r = p.rect {
+        guard r.count == 4, r[2] > 0, r[3] > 0 else {
+          throw DecodingError.dataCorruptedError(
+            forKey: .page, in: c, debugDescription: "a rect is [x, y, width, height] with a width and height above 0")
+        }
+        rect = Place.Rect(x: r[0], y: r[1], width: r[2], height: r[3])
+      }
+      self = .page(p.page, rect: rect)
+    }
+  }
+
+  public func encode(to encoder: any Encoder) throws {
+    var c = encoder.container(keyedBy: Keys.self)
+    switch self {
+    case .id(let id): try c.encode(id, forKey: .id)
+    case .page(let page, let r):
+      try c.encode(Page(page: page, rect: r.map { [$0.x, $0.y, $0.width, $0.height] }), forKey: .page)
+    }
+  }
+}
+
+/// A Place with the entry's id beside its fields, in one object
+extension SourceAnchor: Codable {
+  private enum Keys: String, CodingKey {
+    case entry
+  }
+
+  public init(from decoder: any Decoder) throws {
+    self.init(
+      entry: try decoder.container(keyedBy: Keys.self).decode(EntryID.self, forKey: .entry),
+      place: try Place(from: decoder))
+  }
+
+  public func encode(to encoder: any Encoder) throws {
+    var c = encoder.container(keyedBy: Keys.self)
+    try c.encode(entry, forKey: .entry)
+    try place.encode(to: encoder)
   }
 }
