@@ -418,8 +418,8 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
     capture.cancel()
   }
 
-  /// The link in its entry in the vault, with what the metadata script read of the page when there is one; the
-  /// saving service, when there is one, keeps it too
+  /// The link in its entry in the vault, with what the metadata script read of the page when there is one. The
+  /// saving service, when there is one, is told afterwards: it may have to start first, and the button answers now
   @objc func saveLink(_ sender: Any?) {
     guard context.pane.vault != nil, let url = web.url, ["http", "https"].contains(url.scheme) else { return }
     let title = web.title ?? ""
@@ -432,13 +432,12 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
       let meta = WebMeta(script: script, title: title)
       let name = meta.title ?? WebAddress.shown(url)
       do {
-        let item =
-          try await store?.saveLink(PageLink(url: url.absoluteString, title: name))
-          ?? SavedItem(
-            id: "", kind: .link, url: url.absoluteString, title: name, savedAt: Int64(meta.fetchedAt ?? 0))
+        let item = SavedItem(
+          id: "", kind: .link, url: url.absoluteString, title: name, savedAt: Int64(meta.fetchedAt ?? 0))
         try context.pane.saveWeb(item, meta: meta)
         if web.url == url, saved == .unsaved { saved = .link }
         if capture == nil { showSaved() }
+        if let store { Task { _ = try? await store.saveLink(PageLink(url: item.url, title: name)) } }
       } catch {
         showSave(.failed("The link could not be saved: \(error.localizedDescription)"))
       }

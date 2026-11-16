@@ -135,8 +135,8 @@ import WebKit
     #expect(tabs.tab(v)?.title == "Page A" && v.web.url == url("/a"))
   }
 
-  /// With the scripts, a link takes what the metadata script read, its pictures by address; the service keeps the
-  /// link too; the hooks ran in the page's own world
+  /// With the scripts, a link takes what the metadata script read, its pictures by address; the service is told of the
+  /// link after; the hooks ran in the page's own world
   @Test func aLinkTakesTheMetadataTheScriptRead() async throws {
     let store = TestStore()
     let (v, tabs) = try tab("/a", store: store)
@@ -145,12 +145,14 @@ import WebKit
     #expect(try await v.web.evaluateJavaScript("window.hooked === true") as? Bool == true)
     v.saveMenu().performActionForItem(at: 0)
     try await until("the link saved") { v.saveState == .saved(.link) }
-    #expect(await store.links == [PageLink(url: url("/a").absoluteString, title: "Page A")])
+    try await until("the service told") {
+      await store.links == [PageLink(url: url("/a").absoluteString, title: "Page A")]
+    }
     let entry = try #require(try web().first?.1.first)
     let meta = try #require(entry.meta)
     #expect(meta.title == "Page A" && meta.description == "A made-up page" && meta.site == "Loopback")
     #expect(meta.icon == .url(url("/icon.png").absoluteString) && meta.image == .url(url("/cover.png").absoluteString))
-    #expect(entry.added == 1_000, "when the service saved it")
+    #expect(entry.added == meta.fetchedAt, "when the page was read, not when the service answers")
   }
 
   /// Saving a page whole: the script's fetch is answered with the tab's cookie, its two chunks written in order, the
