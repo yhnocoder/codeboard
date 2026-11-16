@@ -137,13 +137,15 @@ extension CanvasView {
     let below = pops.prefix { $0 !== p }.last { $0.pop.view.superview === host }?.pop.view ?? self
     host.addSubview(pop.view, positioned: .above, relativeTo: below)
     pop.pasteboard = pasteboard
-    pop.onAction = { [weak self] in self?.popAction($0, in: p) }
-    pop.menuOf = { [weak self] n in self?.sidenoteMenu(SidenoteID(rawValue: n), in: p) }
+    // the popup weakly, as the canvas: it holds its view, which holds these (a closed popup stayed, with its view and
+    // the code it searched)
+    pop.onAction = { [weak self, weak p] a in if let p { self?.popAction(a, in: p) } }
+    pop.menuOf = { [weak self, weak p] n in p.flatMap { self?.sidenoteMenu(SidenoteID(rawValue: n), in: $0) } }
     pop.findCode = { [weak self, weak p] q in p.map { self?.codeFound(q, for: $0) ?? [] } ?? [] }
     pop.view.escape = { [weak self] in self?.escapePeek() ?? false }
-    pop.onSize = { [weak self] _ in self?.positionPop(p) }
-    pop.onWriting = { [weak self] on in if !on { self?.refreshPop(p) } }
-    pop.onDrag = { [weak self] d, ended in self?.dragPop(p, d, ended: ended) }
+    pop.onSize = { [weak self, weak p] _ in if let p { self?.positionPop(p) } }
+    pop.onWriting = { [weak self, weak p] on in if !on, let p { self?.refreshPop(p) } }
+    pop.onDrag = { [weak self, weak p] d, ended in if let p { self?.dragPop(p, d, ended: ended) } }
     p.shown = true
     p.key = UUID().uuidString
     p.refList = nil

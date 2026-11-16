@@ -921,3 +921,23 @@ extension CanvasSidenoteTests {
     #expect(pop.order.count == 2, "what it shows kept: \(pop.order)")
   }
 }
+
+extension CanvasSidenoteTests {
+  /// A popup closed is let go, with its view and what it searched (each one opened stayed, held by its own closures)
+  @Test func aClosedPopupIsLetGo() async throws {
+    let r = try await Rig(sidenoteBoard(), zoom: 1)
+    defer { r.close() }
+    let at = PopAt.lines(Lines(card: cid("c1"), segment: s1, range: 12...13))
+    weak var popup: Popup?
+    weak var pop: SidenotePop?
+    do {
+      r.canvas.openPop(at, write: true)
+      await opened(r, at)
+      popup = r.canvas.pops.last
+      pop = r.canvas.sidenotePop
+      r.canvas.openPop(nil)
+      await r.canvas.popTask?.value
+    }
+    await r.until("the closed popup is let go") { popup == nil && pop == nil }
+  }
+}
