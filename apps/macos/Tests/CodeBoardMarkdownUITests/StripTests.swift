@@ -184,4 +184,20 @@ private final class Flipped: NSView {
     r.show()
     #expect(r.view.strips.isEmpty && !r.view.wantsUpdateLayer)
   }
+
+  /// A band drawn on a move (outside AppKit's display pass) takes the editor's own appearance, not the app's
+  @Test func aBandDrawnOnAMoveTakesTheEditorsAppearance() {
+    let r = StripRig(caretAt: "Paragraph 40 with")
+    defer { r.close() }
+    let app = NSApp.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+    r.window.appearance = NSAppearance(named: app ? .darkAqua : .aqua)
+    r.view.appearance = NSAppearance(named: app ? .aqua : .darkAqua)
+    r.view.alwaysShowsCaret = true
+    // the selection's colour is the system's, light or dark
+    let at = (r.view.source as NSString).range(of: "Paragraph 40 with").location
+    r.view.selection = MDSelection(anchor: at, head: at + 20)
+    r.show()
+    r.view.frame.origin.y = -900
+    #expect(r.wrong().isEmpty, "\(r.wrong())")
+  }
 }

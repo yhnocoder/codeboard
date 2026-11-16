@@ -721,7 +721,9 @@ public final class MarkdownEditorView: NSView {
       ctx.clear(r)
       NSGraphicsContext.saveGraphicsState()
       NSGraphicsContext.current = NSGraphicsContext(cgContext: ctx, flipped: true)
-      draw(r)
+      // in its own appearance: a band drawn on a move, outside AppKit's display pass, took the app's (a selection in
+      // a light Note on a dark board drew dark)
+      effectiveAppearance.performAsCurrentDrawingAppearance { draw(r) }
       NSGraphicsContext.restoreGraphicsState()
       ctx.restoreGState()
     }
