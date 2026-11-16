@@ -15,6 +15,8 @@ import Observation
   var pause: @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) }
   /// By repository folder, as tabs name it: what stops its watcher (a no-op while it is being started)
   private var watching: [String: () -> Void] = [:]
+  /// The folders whose watcher has started
+  private(set) var listening: Set<String> = []
   private var filesDue: Set<String> = []
   private var headsDue: Set<String> = []
   private var filesWait: Task<Void, Never>?
@@ -32,6 +34,7 @@ import Observation
     for (f, stop) in watching where !folders.contains(f) {
       stop()
       watching[f] = nil
+      listening.remove(f)
     }
     for f in folders where watching[f] == nil {
       watching[f] = {}
@@ -62,6 +65,10 @@ import Observation
       if heard.ignore { Task { await git.forgetIgnored() } }
       self?.heard(folder, heard)
     }
+    listening.insert(folder)
+    // The stream hears only what comes after it started: what changed while git was asked where to listen is read now
+    let open = code.pane?.codeFiles.filter { $0.repository == folder }.map { r.root + "/" + $0.path } ?? []
+    heard(folder, RepoWatcher.Heard(head: true, files: open))
   }
 
   func heard(_ folder: String, _ h: RepoWatcher.Heard) {

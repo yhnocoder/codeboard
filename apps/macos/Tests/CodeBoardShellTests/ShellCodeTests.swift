@@ -480,6 +480,8 @@ private let long = (1...60).map { "v\($0) = \($0)" }.joined(separator: "\n") + "
     view.sync()
     tab = try #require(view.views[pane.tabs[0].id] as? CodeTabView)
     try await until("read") { tab.code != nil && !tab.onBoards.isEmpty && !tab.bar.commit.stringValue.isEmpty }
+    // a file written before the watcher started is not heard of
+    try await until("watched") { code.files.listening.contains(r) }
     tab.layoutSubtreeIfNeeded()
   }
 
