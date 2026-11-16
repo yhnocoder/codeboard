@@ -1,18 +1,18 @@
-# sel：在正在编辑的 Note 正文上拖动选字，两边选中的字和范围（ProseMirror 的位置）一样
+# sel：在正在编辑的 Note 正文上拖动选字，两边选中的字和它前后的字一样（范围不比：网页是 ProseMirror 的位置，原生是 Markdown 里的偏移）
 zoom 1
 center @cnote+150,60
 expect sel = none
 dbl @cnote+150,90
 wait 600
-expect sel.range = 54-54
+expect sel.around = " number.[]"
 drag @cnote+30,60 @cnote+150,60 400
 wait 300
-expect sel = "e vocabulary maps " 14-32
+expect sel.around = "Th[e vocabulary maps ]each wor"
 key esc
 wait 300
 dbl @cnote+150,90
 wait 600
 drag @cnote+30,75 @cnote+150,75 400
 wait 300
-expect sel = "mber." 49-54
+expect sel.around = " to a nu[mber.]"
 key esc
