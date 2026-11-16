@@ -1,0 +1,582 @@
+{
+  "arrows": [
+    {
+      "dashed": false,
+      "endHead": true,
+      "from": {
+        "card": "c-step",
+        "line": 50,
+        "lost": false,
+        "segment": "seg-step"
+      },
+      "id": "a-1",
+      "label": "1  schedule",
+      "startHead": false,
+      "to": {
+        "card": "c-schedule",
+        "lost": false
+      },
+      "width": 2
+    },
+    {
+      "dashed": false,
+      "endHead": true,
+      "from": {
+        "card": "c-step",
+        "line": 53,
+        "lost": false,
+        "segment": "seg-step"
+      },
+      "id": "a-3",
+      "label": "3  postprocess",
+      "startHead": false,
+      "to": {
+        "card": "c-postprocess",
+        "lost": false
+      },
+      "width": 2
+    },
+    {
+      "color": "#b5523b",
+      "dashed": false,
+      "endHead": true,
+      "from": {
+        "card": "c-schedule",
+        "line": 62,
+        "lost": false,
+        "segment": "seg-schedule"
+      },
+      "id": "a-pre",
+      "label": "no free block",
+      "startHead": false,
+      "to": {
+        "card": "c-preempt",
+        "lost": false
+      },
+      "width": 2
+    },
+    {
+      "dashed": true,
+      "endHead": true,
+      "from": {
+        "card": "c-preempt",
+        "lost": false
+      },
+      "id": "a-note",
+      "startHead": false,
+      "to": {
+        "card": "c-preempt-note",
+        "lost": false
+      },
+      "width": 2
+    }
+  ],
+  "cards": [
+    {
+      "content": {
+        "code": {
+          "framed": true,
+          "hide": {
+            "blankLines": false,
+            "comments": false,
+            "docstrings": false
+          },
+          "segments": [
+            {
+              "annotations": [],
+              "firstLine": 49,
+              "hidden": [],
+              "highlights": [
+                [52, 52]
+              ],
+              "id": "seg-step",
+              "language": "python",
+              "lines": [
+                "    def step(self):",
+                "        seqs, is_prefill = self.scheduler.schedule()",
+                "        num_tokens = sum(seq.num_scheduled_tokens for seq in seqs) if is_prefill else -len(seqs)",
+                "        token_ids = self.model_runner.call(\"run\", seqs, is_prefill)",
+                "        self.scheduler.postprocess(seqs, token_ids, is_prefill)",
+                "        outputs = [(seq.seq_id, seq.completion_token_ids) for seq in seqs if seq.is_finished]",
+                "        return outputs, num_tokens"
+              ],
+              "source": {
+                "git": {
+                  "commit": "bb823b3e06983d71485a8e1f23715ebd87d98ef8",
+                  "path": "nanovllm/engine/llm_engine.py",
+                  "repository": "https://github.com/GeeeekExplorer/nano-vllm",
+                  "uncommitted": false
+                }
+              },
+              "symbol": {
+                "kind": "function",
+                "name": "LLMEngine.step"
+              }
+            }
+          ],
+          "wrap": false
+        },
+        "description": "`LLMEngine.step`: one turn of the engine."
+      },
+      "id": "c-step",
+      "locked": false,
+      "section": "s-step",
+      "tilted": false,
+      "width": 620,
+      "x": 80,
+      "y": 120
+    },
+    {
+      "content": {
+        "code": {
+          "framed": true,
+          "hide": {
+            "blankLines": false,
+            "comments": false,
+            "docstrings": false
+          },
+          "segments": [
+            {
+              "annotations": [],
+              "firstLine": 25,
+              "hidden": [],
+              "highlights": [
+                [42, 43],
+                [60, 65]
+              ],
+              "id": "seg-schedule",
+              "language": "python",
+              "lines": [
+                "    def schedule(self) -> tuple[list[Sequence], bool]:",
+                "        scheduled_seqs = []",
+                "        num_batched_tokens = 0",
+                "",
+                "        # prefill",
+                "        while self.waiting and len(scheduled_seqs) < self.max_num_seqs:",
+                "            seq = self.waiting[0]",
+                "            remaining = self.max_num_batched_tokens - num_batched_tokens",
+                "            if remaining == 0:",
+                "                break",
+                "            if not seq.block_table:",
+                "                num_cached_blocks = self.block_manager.can_allocate(seq)",
+                "                if num_cached_blocks == -1:",
+                "                    break",
+                "                num_tokens = seq.num_tokens - num_cached_blocks * self.block_size",
+                "            else:",
+                "                num_tokens = seq.num_tokens - seq.num_cached_tokens",
+                "            if remaining < num_tokens and scheduled_seqs:  # only allow chunked prefill for the first seq",
+                "                break",
+                "            if not seq.block_table:",
+                "                self.block_manager.allocate(seq, num_cached_blocks)",
+                "            seq.num_scheduled_tokens = min(num_tokens, remaining)",
+                "            num_batched_tokens += seq.num_scheduled_tokens",
+                "            if seq.num_cached_tokens + seq.num_scheduled_tokens == seq.num_tokens:",
+                "                seq.status = SequenceStatus.RUNNING",
+                "                self.waiting.popleft()",
+                "                self.running.append(seq)",
+                "            scheduled_seqs.append(seq)",
+                "",
+                "        if scheduled_seqs:",
+                "            return scheduled_seqs, True",
+                "",
+                "        # decode",
+                "        while self.running and len(scheduled_seqs) < self.max_num_seqs:",
+                "            seq = self.running.popleft()",
+                "            while not self.block_manager.can_append(seq):",
+                "                if self.running:",
+                "                    self.preempt(self.running.pop())",
+                "                else:",
+                "                    self.preempt(seq)",
+                "                    break",
+                "            else:",
+                "                seq.num_scheduled_tokens = 1",
+                "                seq.is_prefill = False",
+                "                self.block_manager.may_append(seq)",
+                "                scheduled_seqs.append(seq)",
+                "        assert scheduled_seqs",
+                "        self.running.extendleft(reversed(scheduled_seqs))",
+                "        return scheduled_seqs, False"
+              ],
+              "source": {
+                "git": {
+                  "commit": "bb823b3e06983d71485a8e1f23715ebd87d98ef8",
+                  "path": "nanovllm/engine/scheduler.py",
+                  "repository": "https://github.com/GeeeekExplorer/nano-vllm",
+                  "uncommitted": false
+                }
+              },
+              "symbol": {
+                "kind": "function",
+                "name": "Scheduler.schedule"
+              }
+            }
+          ],
+          "wrap": false
+        }
+      },
+      "height": 1040,
+      "id": "c-schedule",
+      "locked": false,
+      "section": "s-step",
+      "tilted": false,
+      "width": 680,
+      "x": 780,
+      "y": 120
+    },
+    {
+      "content": {
+        "code": {
+          "framed": true,
+          "hide": {
+            "blankLines": false,
+            "comments": false,
+            "docstrings": false
+          },
+          "segments": [
+            {
+              "annotations": [],
+              "firstLine": 81,
+              "hidden": [],
+              "highlights": [],
+              "id": "seg-post",
+              "language": "python",
+              "lines": [
+                "    def postprocess(self, seqs: list[Sequence], token_ids: list[int], is_prefill: bool):",
+                "        for seq, token_id in zip(seqs, token_ids):",
+                "            self.block_manager.hash_blocks(seq)",
+                "            seq.num_cached_tokens += seq.num_scheduled_tokens",
+                "            seq.num_scheduled_tokens = 0",
+                "            if is_prefill and seq.num_cached_tokens < seq.num_tokens:",
+                "                continue",
+                "            seq.append_token(token_id)",
+                "            if (not seq.ignore_eos and token_id == self.eos) or seq.num_completion_tokens == seq.max_tokens:",
+                "                seq.status = SequenceStatus.FINISHED",
+                "                self.block_manager.deallocate(seq)",
+                "                self.running.remove(seq)"
+              ],
+              "source": {
+                "git": {
+                  "commit": "bb823b3e06983d71485a8e1f23715ebd87d98ef8",
+                  "path": "nanovllm/engine/scheduler.py",
+                  "repository": "https://github.com/GeeeekExplorer/nano-vllm",
+                  "uncommitted": false
+                }
+              },
+              "symbol": {
+                "kind": "function",
+                "name": "Scheduler.postprocess"
+              }
+            }
+          ],
+          "wrap": false
+        }
+      },
+      "id": "c-postprocess",
+      "locked": false,
+      "section": "s-step",
+      "tilted": false,
+      "width": 620,
+      "x": 80,
+      "y": 520
+    },
+    {
+      "id": "c-shared",
+      "locked": false,
+      "section": "s-step",
+      "shared": true,
+      "tilted": false,
+      "width": 340,
+      "x": 80,
+      "y": 900
+    },
+    {
+      "content": {
+        "code": {
+          "framed": true,
+          "hide": {
+            "blankLines": false,
+            "comments": false,
+            "docstrings": false
+          },
+          "segments": [
+            {
+              "annotations": [],
+              "firstLine": 75,
+              "hidden": [],
+              "highlights": [],
+              "id": "seg-preempt",
+              "language": "python",
+              "lines": [
+                "    def preempt(self, seq: Sequence):",
+                "        seq.status = SequenceStatus.WAITING",
+                "        seq.is_prefill = True",
+                "        self.block_manager.deallocate(seq)",
+                "        self.waiting.appendleft(seq)"
+              ],
+              "source": {
+                "git": {
+                  "commit": "bb823b3e06983d71485a8e1f23715ebd87d98ef8",
+                  "path": "nanovllm/engine/scheduler.py",
+                  "repository": "https://github.com/GeeeekExplorer/nano-vllm",
+                  "uncommitted": false
+                }
+              },
+              "symbol": {
+                "kind": "function",
+                "name": "Scheduler.preempt"
+              }
+            }
+          ],
+          "wrap": false
+        }
+      },
+      "id": "c-preempt",
+      "locked": false,
+      "section": "s-after",
+      "tilted": false,
+      "width": 640,
+      "x": 1600,
+      "y": 120
+    },
+    {
+      "content": {
+        "note": {
+          "text": "A preempted sequence loses its blocks and goes to the **front** of the waiting queue, so it is prefilled again first. Its cached prefix may still be found by hash ([[Blocks and cache]])."
+        }
+      },
+      "id": "c-preempt-note",
+      "locked": false,
+      "section": "s-after",
+      "tilted": false,
+      "width": 420,
+      "x": 1600,
+      "y": 360
+    },
+    {
+      "content": {
+        "code": {
+          "framed": true,
+          "hide": {
+            "blankLines": false,
+            "comments": false,
+            "docstrings": false
+          },
+          "segments": [
+            {
+              "annotations": [],
+              "firstLine": 1,
+              "hidden": [],
+              "highlights": [],
+              "id": "seg-try",
+              "language": "python",
+              "lines": [
+                "from nanovllm import LLM, SamplingParams",
+                "",
+                "llm = LLM(\"Qwen/Qwen3-0.6B\", enforce_eager=True)",
+                "params = SamplingParams(temperature=0.6, max_tokens=64)",
+                "print(llm.generate([\"Hello\"], params)[0][\"text\"])"
+              ]
+            }
+          ],
+          "wrap": false
+        },
+        "description": "Free code: written by hand, not taken from a file. Double-click to edit it.",
+        "title": "Try nano-vllm"
+      },
+      "id": "c-try",
+      "locked": false,
+      "section": "s-try",
+      "tilted": false,
+      "width": 560,
+      "x": 2680,
+      "y": 120
+    }
+  ],
+  "hideComments": false,
+  "id": "b-scheduler",
+  "seal": {
+    "color": "teal",
+    "text": "SCHED"
+  },
+  "sections": [
+    {
+      "collapsed": false,
+      "height": 1260,
+      "id": "s-step",
+      "locked": false,
+      "summary": {
+        "at": 1763280000000,
+        "edited": true,
+        "input": "1u9qxst",
+        "pairs": [
+          {
+            "ai": "",
+            "at": 1763280000000,
+            "user": "**step**: schedule, run, **postprocess**"
+          }
+        ],
+        "sig": "47okks",
+        "text": "**step**: schedule, run, **postprocess**"
+      },
+      "title": "The loop",
+      "width": 1460,
+      "x": 40,
+      "y": 40
+    },
+    {
+      "collapsed": false,
+      "color": "#b5523b",
+      "height": 620,
+      "id": "s-after",
+      "locked": false,
+      "summary": {
+        "at": 1763280000000,
+        "edited": true,
+        "input": "1n58gah",
+        "pairs": [
+          {
+            "ai": "",
+            "at": 1763280000000,
+            "user": "no free block: **preempt** the newest"
+          }
+        ],
+        "sig": "w2ds4e",
+        "text": "no free block: **preempt** the newest"
+      },
+      "title": "When there is no room",
+      "width": 760,
+      "x": 1560,
+      "y": 40
+    },
+    {
+      "collapsed": false,
+      "color": "#4f7f7a",
+      "height": 420,
+      "id": "s-try",
+      "locked": false,
+      "summary": {
+        "at": 1763280000000,
+        "edited": true,
+        "input": "1c59mme",
+        "pairs": [
+          {
+            "ai": "",
+            "at": 1763280000000,
+            "user": "**generate** in three lines"
+          }
+        ],
+        "sig": "146al3n",
+        "text": "**generate** in three lines"
+      },
+      "title": "Try it",
+      "width": 640,
+      "x": 2640,
+      "y": 40
+    }
+  ],
+  "shelf": [],
+  "sidenotes": [
+    {
+      "anchor": {
+        "card": {
+          "card": "c-schedule",
+          "lines": [42, 43],
+          "segment": "seg-schedule"
+        }
+      },
+      "boardOnly": false,
+      "id": "n-chunk",
+      "lineRemoved": false,
+      "text": {
+        "alwaysShow": true,
+        "text": "Chunked prefill: only the first sequence of a batch may take fewer tokens than it has."
+      }
+    },
+    {
+      "anchor": {
+        "card": {
+          "card": "c-postprocess",
+          "lines": [89, 89],
+          "segment": "seg-post"
+        }
+      },
+      "boardOnly": false,
+      "id": "n-eos",
+      "lineRemoved": false,
+      "text": {
+        "alwaysShow": false,
+        "question": {
+          "answers": [
+            {
+              "at": 1763280400000,
+              "id": "ans-1",
+              "text": "In `SamplingParams`; benchmarks set it to get a fixed length."
+            }
+          ],
+          "at": 1763280300000,
+          "done": false
+        },
+        "text": "Where is `ignore_eos` set, and who would want it?"
+      }
+    },
+    {
+      "anchor": {
+        "point": {
+          "x": 1600,
+          "y": 760
+        }
+      },
+      "boardOnly": false,
+      "id": "n-free",
+      "lineRemoved": false,
+      "text": {
+        "alwaysShow": true,
+        "text": "A sidenote can also sit free on the board, like this one."
+      }
+    }
+  ],
+  "stickers": [
+    {
+      "anchor": {
+        "line": {
+          "card": "c-schedule",
+          "line": 62,
+          "segment": "seg-schedule"
+        }
+      },
+      "glyph": {
+        "builtin": "zap"
+      },
+      "id": "st-zap"
+    },
+    {
+      "anchor": {
+        "arrow": {
+          "arrow": "a-pre",
+          "position": 0.5,
+          "x": -16,
+          "y": -40
+        }
+      },
+      "glyph": {
+        "builtin": "flag"
+      },
+      "id": "st-flag"
+    },
+    {
+      "anchor": {
+        "card": {
+          "card": "c-try",
+          "size": 40,
+          "x": 500,
+          "y": -18
+        }
+      },
+      "glyph": {
+        "builtin": "todo-text"
+      },
+      "id": "st-todo"
+    }
+  ],
+  "version": 2
+}
