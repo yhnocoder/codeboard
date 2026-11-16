@@ -224,4 +224,46 @@ private func withDefaults(_ body: (UserDefaults, String) throws -> Void) rethrow
       #expect(w.keyStatus.stringValue == "")
     }
   }
+
+  /// settings.ts ai.deepseekBaseUrl and ai.deepseekModel: empty, DeepSeek's, shown as the placeholders; what is typed is
+  /// saved trimmed when committed, and the writer is made again with it
+  @MainActor @Test func theSettingsWindowStoresTheAddressAndTheModel() {
+    _ = NSApplication.shared
+    withDefaults { d, _ in
+      let keys = MemoryKeyStore("sk-1")
+      let w = SettingsWindow(settings: AISettings(defaults: d), keys: keys)
+      w.window.setFrameOrigin(CGPoint(x: -30000, y: -30000))
+      w.window.level = .underDesktop
+      w.window.orderFrontRegardless()
+      defer { w.window.close() }
+      var changed: [Bool] = []
+      w.onKeyChange = { changed.append($0) }
+      #expect(w.baseURLField.stringValue == "" && w.baseURLField.placeholderString == "https://api.deepseek.com")
+      #expect(w.modelField.stringValue == "" && w.modelField.placeholderString == "deepseek-flash")
+
+      w.baseURLField.stringValue = " http://127.0.0.1:8080/v1 "
+      w.baseURLField.sendAction(w.baseURLField.action, to: w.baseURLField.target)
+      #expect(AISettings(defaults: d).baseURL == "http://127.0.0.1:8080/v1" && changed == [true])
+      // unchanged: nothing
+      w.commitAI(nil)
+      #expect(changed == [true])
+      // the model, committed by closing the window; the writer asks that address with it
+      w.modelField.stringValue = "qwen3"
+      w.window.close()
+      let ai = AISettings(defaults: d)
+      #expect(ai.model == "qwen3" && changed == [true, true])
+      let writer = ai.writer(keys: keys)
+      #expect(writer.endpoint?.absoluteString == "http://127.0.0.1:8080/v1/chat/completions" && writer.model == "qwen3")
+
+      // a new window shows what was saved; cleared, DeepSeek's again
+      let again = SettingsWindow(settings: AISettings(defaults: d), keys: keys)
+      #expect(again.baseURLField.stringValue == "http://127.0.0.1:8080/v1" && again.modelField.stringValue == "qwen3")
+      again.baseURLField.stringValue = ""
+      again.modelField.stringValue = ""
+      again.commitAI(nil)
+      #expect(
+        AISettings(defaults: d).writer(keys: keys).endpoint?.absoluteString
+          == "https://api.deepseek.com/chat/completions")
+    }
+  }
 }
