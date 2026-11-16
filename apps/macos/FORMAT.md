@@ -141,6 +141,12 @@ may be); neither is on a segment with a source. `language` is a VS Code language
 - `package: {name, version, path}`: an installed package (pip, conda), `path` inside its install folder.
 - `file: {path, hash?}`: a file in no git repository, `hash` a fingerprint of its content.
 
+Where a source's code is on a machine is not part of the format: the app keeps the repositories added there (a folder
+read in place, or a GitHub repository cloned into `repositories/<owner>/<name>`, whole or blobless) in its own data
+folder (Application Support/<its id>, `repositories.json`), never in the vault, and finds a `git` source by its
+`repository` (remote URLs compared without scheme, user, `.git` or the case of their host, and on GitHub of owner and
+name), else by the origin or folder of an absolute `checkout`, else by the commit (`CodeBoardWorkspace`, `Repositories`).
+
 What a card took from a resource is not a segment's source: it is the card's `source` (CardContent, a SourceAnchor).
 
 **note**: `text, layout?`: a card with a frame, a header and the board's Note text size. `text` is Markdown. `layout` is

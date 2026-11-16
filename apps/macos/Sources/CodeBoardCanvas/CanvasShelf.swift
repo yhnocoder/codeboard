@@ -574,6 +574,16 @@ extension CanvasView {
     }
   }
 
+  /// A shelved entry shown without taking it out (⌘K picking a card in it, a ref arriving at one): the panel opened,
+  /// its thumbnail scrolled to and ringed, the entry large beside it as a click on the thumbnail shows it; the board is
+  /// not edited, and it goes as that does (Esc, a press on the board, closing the Shelf)
+  package func showShelved(_ id: String) {
+    guard shelfShown.contains(where: { $0.entry.id == id }) else { return }
+    if shelfPanel == nil { toggleShelf() }
+    if previewing != id { togglePreview(id) }
+    if let t = shelfPanel?.thumbs[id] { t.scrollToVisible(t.bounds) }
+  }
+
   package func closePreview() {
     previewing = nil
     shelfPreview?.removeFromSuperview()
