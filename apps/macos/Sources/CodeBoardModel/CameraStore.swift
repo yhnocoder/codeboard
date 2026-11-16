@@ -42,10 +42,36 @@ public struct CameraStore: Sendable {
   /// These boards' cameras kept, with the others the vault's file has; written beside it and renamed over it, so a
   /// reader never sees half a file
   public func keep(_ cams: [BoardID: BoardCamera], for vault: Vault) throws {
-    let url = file(for: vault)
     var all = Dictionary(uniqueKeysWithValues: cameras(for: vault).map { ($0.key.rawValue, $0.value) })
     for (id, c) in cams { all[id.rawValue] = c }
-    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    try Self.write(all, to: file(for: vault))
+  }
+
+  /// When each board was last opened on this machine (the welcome back hint; main keeps it in VS Code's global state,
+  /// `codeboard.opened`): beside the cameras, in Opened/, one file per vault named as its cameras', board id → seconds
+  /// since 1970
+  func openedFile(for vault: Vault) -> URL {
+    folder.deletingLastPathComponent().appending(path: "Opened").appending(path: file(for: vault).lastPathComponent)
+  }
+
+  public func opened(for vault: Vault) -> [BoardID: Date] {
+    guard let data = try? Data(contentsOf: openedFile(for: vault)),
+      let all = try? JSONDecoder().decode([String: Double].self, from: data)
+    else { return [:] }
+    return Dictionary(
+      uniqueKeysWithValues: all.map { (BoardID(rawValue: $0.key), Date(timeIntervalSince1970: $0.value)) })
+  }
+
+  /// The board opened at `time`, with the others the vault's file has
+  public func keepOpened(_ id: BoardID, at time: Date, for vault: Vault) throws {
+    var all = Dictionary(
+      uniqueKeysWithValues: opened(for: vault).map { ($0.key.rawValue, $0.value.timeIntervalSince1970) })
+    all[id.rawValue] = time.timeIntervalSince1970
+    try Self.write(all, to: openedFile(for: vault))
+  }
+
+  private static func write(_ all: some Encodable, to url: URL) throws {
+    try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
     let tmp = url.appendingPathExtension("new")
     try canonicalJSON(all).write(to: tmp)
     guard Foundation.rename(tmp.path, url.path) == 0 else { throw CocoaError(.fileWriteUnknown) }
