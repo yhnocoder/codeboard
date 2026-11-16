@@ -338,6 +338,46 @@ extension CanvasPasteTests {
       await r.until("its page read") { pages.asked == ["https://harbour.example.org/log"] }
     }
 
+    /// Several rows of a list dragged at once, an item each: the first in hand, let go a card each, in a row to the
+    /// right of the first, apart, top to top; all selected, one step
+    @Test func severalItemsDroppedAreACardEachInARowInOneStep() async throws {
+      let (r, _) = try await rig()
+      defer { r.close() }
+      let pages = CanvasWebTests.Pages()
+      r.canvas.fetchPage = pages.fetch
+      let before = Set(r.doc.board.cards.map(\.id))
+      var items: [NSPasteboardItem] = []
+      for title in ["Tidal mills", "Estuary flows"] {
+        let it = NSPasteboardItem()
+        let c = Collected(
+          body: .note(markdown: "**\(title)**"), source: SourceAnchor(entry: EntryID(rawValue: "e2")), title: title,
+          label: "")
+        it.setData(try c.data(), forType: CanvasView.collectedType)
+        items.append(it)
+      }
+      let web = NSPasteboardItem()
+      web.setString("https://harbour.example.org/log", forType: .URL)
+      items.append(web)
+      let d = Drag(at: r.at(CGPoint(x: 700, y: 500))) { $0.writeObjects(items) }
+      defer { d.draggingPasteboard.releaseGlobally() }
+      #expect(r.canvas.draggingEntered(d) == .copy)
+      await r.until("the card in hand") { r.canvas.inHand?.layers != nil }
+      let held = try #require(r.canvas.inHand?.layers?.box.frame)
+      #expect(r.canvas.performDragOperation(d))
+      r.canvas.draggingEnded(d)
+      let made = r.doc.board.cards.filter { !before.contains($0.id) }
+      #expect(made.count == 3)
+      #expect(made.first.map { $0.x == held.minX.rounded() && $0.y == held.minY.rounded() } == true, "the first held")
+      #expect(made.allSatisfy { $0.y == made[0].y }, "top to top")
+      for (a, b) in zip(made, made.dropFirst()) {
+        #expect(b.x == a.x + a.width + CanvasView.pasteGap, "apart, left to right: \(a.x) \(b.x)")
+      }
+      #expect(r.doc.selection == Set(made.map { .card($0.id) }) && r.doc.history.undoSteps.count == 1)
+      await r.until("its page read") { pages.asked == ["https://harbour.example.org/log"] }
+      r.doc.undo()
+      #expect(Set(r.doc.board.cards.map(\.id)) == before)
+    }
+
     /// An address with other words around it is no address alone: no Web card, the drag left alone as plain text is
     @Test func anAddressWithOtherWordsDroppedIsNoWebCard() async throws {
       let (r, _) = try await rig()

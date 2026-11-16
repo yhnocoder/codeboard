@@ -215,7 +215,7 @@ enum StandInScripts {
           })
         }
         return { url: location.href, title: document.title, description: "A made-up page",
-          site_name: "Loopback", favicon: location.origin + "/icon.png", cover: location.origin + "/cover.png" }
+          site_name: "Loopback", favicon: document.documentElement.dataset.icon || location.origin + "/icon.png", cover: location.origin + "/cover.png" }
       },
       async savePage(files) {
         const post = m => webkit.messageHandlers.shiyi.postMessage(m)
@@ -258,7 +258,8 @@ enum StandInScripts {
   /// The older reader with the blocks: headings, paragraphs, items, captions, quotes, cells and code numbered `1.b1`,
   /// `1.b2`… in document order, each with a hash of its text; translations shown under each block (`both`, as a
   /// `[data-shiyi-translation]` after it) or in its place (`translation`). Whatever it shows, the block at the top of
-  /// the window stays there, as the real one promises
+  /// the window stays there, as the real one promises. What is selected in one block, said as it changes (`selection`
+  /// messages) and asked (`selection()`); `scrolledTo`, the last block it was asked to scroll to
   static let reader =
     olderReader + "\n"
       + """
@@ -278,8 +279,10 @@ enum StandInScripts {
           const keep = this.files.map(f => f.body).filter(Boolean).join(",")
           return { scheme: 1, blocks: this.els().map(e => {
             const kind = this.kinds[e.tagName], text = e.dataset.shiyiOriginal
-            return { id: e.dataset.shiyiId, kind, text, textHash: this.hash(text), inBody: !keep || !!e.closest(keep),
+            const b = { id: e.dataset.shiyiId, kind, text, textHash: this.hash(text), inBody: !keep || !!e.closest(keep),
               translate: kind != "code" }
+            if (kind == "heading") b.level = +e.tagName[1]
+            return b
           }) }
         },
         setTranslations(t) { Object.assign(this.translations, t); this.render() },
@@ -308,7 +311,34 @@ enum StandInScripts {
         scrollTo(id, range, offset = 0) {
           const e = this.els().find(e => e.dataset.shiyiId == id)
           if (e) window.scrollTo(0, e.getBoundingClientRect().top + scrollY + offset)
+          this.scrolledTo = { id, range }
         },
+        selection() {
+          this.els()
+          const s = getSelection()
+          if (!s.rangeCount || s.isCollapsed) return []
+          const r = s.getRangeAt(0)
+          const block = n =>
+            (n.nodeType == 1 ? n : n.parentElement).closest("[data-shiyi-id], [data-shiyi-translation]")
+          const a = block(r.startContainer)
+          if (!a) return []
+          const at = (node, offset) => {
+            const p = document.createRange()
+            p.selectNodeContents(a)
+            p.setEnd(node, offset)
+            return p.toString().length
+          }
+          const end = block(r.endContainer) == a ? at(r.endContainer, r.endOffset) : a.textContent.length
+          const range = { id: a.dataset.shiyiId ?? a.dataset.shiyiTranslation,
+            start: at(r.startContainer, r.startOffset), end, text: s.toString() }
+          return [a.dataset.shiyiId ? range : { ...range, fromTranslation: true }]
+        },
+      })
+      document.addEventListener("selectionchange", () => {
+        const ranges = shiyiReader.selection()
+        const r = ranges.length ? getSelection().getRangeAt(0).getBoundingClientRect() : null
+        webkit.messageHandlers.shiyi.postMessage({ type: "selection", ranges,
+          rect: r && { x: r.x, y: r.y, width: r.width, height: r.height } })
       })
       """
 

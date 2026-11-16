@@ -64,7 +64,9 @@ import WebKit
     #expect(v.bar.frame.maxY == v.bounds.height - look.bottom && v.bar.frame.height == look.height)
     #expect(v.bar.frame.minX == look.bottom && v.bar.frame.maxX == v.bounds.width - look.bottom)
     #expect(v.bar.back.frame.size == look.button && v.bar.save.frame.size == look.button)
-    #expect(v.subviews.allSatisfy { $0 === v.web || $0.frame.minY > v.bounds.height / 2 }, "nothing over the top")
+    #expect(
+      v.subviews.allSatisfy { $0 === v.web || $0.isHidden || $0.frame.minY > v.bounds.height / 2 },
+      "nothing over the top")
     #expect(v.web.allowsBackForwardNavigationGestures)
     let controls: [NSControl] = [v.bar.back, v.bar.forward, v.bar.address, v.bar.extract, v.bar.translate, v.bar.save]
     #expect(controls.allSatisfy { $0.accessibilityIdentifier().hasPrefix("ui-web") })
@@ -231,7 +233,7 @@ import WebKit
     }
     try await until("page A") { v.web.title == "Page A" && !v.web.isLoading && shows("Page A", "/a") }
     #expect(!v.bar.back.isEnabled && !v.bar.forward.isEnabled)
-    #expect(v.bar.address.stringValue == "127.0.0.1" && tabs.tab(v)?.key == nil)
+    #expect(v.bar.address.stringValue == "127.0.0.1" && tabs.tab(v)?.key == WebReading.key(for: url("/a")))
     _ = try await js(v, "document.getElementById('next').click(); 0")
     try await until("page B") { v.web.title == "Page B" && !v.web.isLoading && shows("Page B", "/b") }
     #expect(v.bar.back.isEnabled && !v.bar.forward.isEnabled)
@@ -250,6 +252,25 @@ import WebKit
     try await until("page B's second visit written") { await visits("/b") == 2 }
     let h = await WebHistoryFile.shared.read(file)
     #expect(h.entries.first { $0.url == url("/a") }?.title == "Page A")
+  }
+
+  /// A tab is gone to by the address it shows now, without its fragment, as the shell opens an address: opening the
+  /// one shown goes to its tab, opening the one it has left makes another
+  @Test func aTabIsGoneToByTheAddressItShowsNow() async throws {
+    let (v, tabs) = try tab("/a")
+    defer { tabs.close() }
+    #expect(WebReading.key(for: url("/a#part")) == WebReading.key(for: url("/a")))
+    try await until("page A") { v.web.title == "Page A" && !v.web.isLoading }
+    let first = try #require(tabs.tab(v))
+    #expect(first.key == WebReading.key(for: url("/a")))
+    #expect(tabs.pane.open("A", key: WebReading.key(for: url("/a#part")), kind: WebReading.kind) == first.id)
+    _ = try await js(v, "document.getElementById('next').click(); 0")
+    try await until("page B") { v.web.title == "Page B" && !v.web.isLoading }
+    #expect(tabs.tab(v)?.key == WebReading.key(for: url("/b")))
+    let again = tabs.pane.open(
+      "A", key: WebReading.key(for: url("/a")), kind: WebReading.kind, payload: ["url": url("/a").absoluteString])
+    #expect(again != first.id && tabs.pane.tabs.count == 2 && tabs.pane.selected == again)
+    #expect(tabs.pane.open("B", key: WebReading.key(for: url("/b")), kind: WebReading.kind) == first.id)
   }
 
   /// Signing in keeps the cookie in the tab's store, sends it with the next page, and leaves the default store alone

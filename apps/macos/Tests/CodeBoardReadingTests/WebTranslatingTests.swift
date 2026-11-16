@@ -134,7 +134,7 @@ private final class Calls: Sendable {
     let b = WebBlock(script: [
       "id": "1.b3", "kind": "item", "level": 2, "text": "One", "textHash": "x", "inBody": true, "translate": true,
     ])
-    #expect(b == WebBlock(id: "1.b3", kind: "item", text: "One", hash: "x", inBody: true, translate: true))
+    #expect(b == WebBlock(id: "1.b3", kind: "item", level: 2, text: "One", hash: "x", inBody: true, translate: true))
     #expect(WebBlock(script: ["id": "1.b3", "text": "One"]) == nil, "no hash")
     #expect(WebBlock(script: "1.b3") == nil)
   }

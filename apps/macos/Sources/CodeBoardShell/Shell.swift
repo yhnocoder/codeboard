@@ -181,6 +181,7 @@ public struct ShellState: Codable, Equatable, Sendable {
     sources = ReadingSources(pane: reading)
     reading.makePop = { Self.annotationPop(act: $0, resized: $1) }
     reading.onCollect = { [weak self] in self?.collect($0) }
+    session.join(self)
   }
 
   public var current: Tab? { tabs.first { $0.id == selected } }
@@ -224,10 +225,11 @@ public struct ShellState: Codable, Equatable, Sendable {
     }
   }
 
-  /// A fresh read of the tree. Boards gone from it leave every history, and a tab whose board is gone closes.
+  /// A fresh read of the tree, for every window. Boards gone from it leave every history, and a tab whose board is gone
+  /// closes.
   public func apply(_ result: Result<VaultFolder, any Error>) {
     session.apply(result)
-    if case .success = result { treeChanged() }
+    if case .success = result { for s in session.shells { s.treeChanged() } }
   }
 
   /// The session's tree read again, for every window: this one's tabs and reading pane take it in
@@ -353,7 +355,9 @@ public struct ShellState: Codable, Equatable, Sendable {
 
   /// A new web tab in the reading pane, on `url` or blank, shown with the keys (Web/ makes its view)
   public func openWeb(_ url: URL?) {
-    reading.open(url?.host() ?? "New Tab", kind: "web", payload: url.map { ["url": $0.absoluteString] } ?? [:])
+    reading.open(
+      url?.host() ?? "New Tab", key: url.map(WebReading.key(for:)), kind: "web",
+      payload: url.map { ["url": $0.absoluteString] } ?? [:])
   }
 
   /// A passage collected from the reading pane (its selection bar's Add to Board, ⌥↵): kept, and handed to the board's
