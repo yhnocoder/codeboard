@@ -18,6 +18,15 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
   /// What was typed, back in the address when the arrows return to it from the suggestions
   private var typed = ""
   private(set) var history = WebHistory()
+  private let scripts: WebScripts?
+  /// The saving of this page whole under way
+  private(set) var capture: WebCapture?
+  /// How the page is saved, as the owner said when it loaded or as it was saved since
+  private(set) var saved = WebReading.Saved.unsaved
+  /// The address `saved` is for
+  private var savedFor: URL?
+  /// What the save button says now
+  private(set) var saveState = WebBar.Save.off("")
   private var historyFile: URL { context.dataDirectory.appending(path: "history.json") }
   static let slide: TimeInterval = 0.18
 
@@ -38,6 +47,12 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
     config.userContentController.addUserScript(
       WKUserScript(
         source: Self.scrollScript, injectionTime: .atDocumentStart, forMainFrameOnly: true, in: .defaultClient))
+    scripts = WebScripts(context.scripts)
+    let saving = SavingRelay()
+    if let scripts {
+      for s in scripts.online { config.userContentController.addUserScript(s) }
+      config.userContentController.addScriptMessageHandler(saving, contentWorld: WebReading.scriptWorld, name: "shiyi")
+    }
     web = WKWebView(frame: .zero, configuration: config)
     bar = WebBar(radius: context.look.radius)
     suggestions = WebSuggestions(radius: context.look.radius)
@@ -45,6 +60,7 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
     super.init(frame: .zero)
     setAccessibilityIdentifier("ui-web")
     relay.owner = self
+    saving.owner = self
     web.allowsBackForwardNavigationGestures = true
     web.navigationDelegate = self
     web.uiDelegate = self
@@ -59,6 +75,8 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
     bar.back.action = #selector(goBack(_:))
     bar.forward.target = self
     bar.forward.action = #selector(goForward(_:))
+    bar.save.target = self
+    bar.save.action = #selector(saveClicked(_:))
     bar.address.delegate = self
     bar.address.onEdit = { [weak self] in self?.beginEditing() }
     observations = [
@@ -182,6 +200,11 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
   private func pageChanged() {
     if !bar.address.isEditing { bar.address.show(WebAddress.shown(web.url)) }
     context.changed(web.title, web.url)
+    if web.url != savedFor { askSaved() }
+  }
+
+  func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+    capture?.cancel()
   }
 
   func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
@@ -205,6 +228,113 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
   ) -> WKWebView? {
     webView.load(action.request)
     return nil
+  }
+
+  // MARK: Saving
+
+  @objc func saveClicked(_ sender: Any?) {
+    if let capture { return capture.cancel() }
+    saveMenu().popUp(positioning: nil, at: CGPoint(x: 0, y: bar.save.bounds.height + 4), in: bar.save)
+  }
+
+  /// The two levels of saving
+  func saveMenu() -> NSMenu {
+    let menu = NSMenu()
+    menu.autoenablesItems = false
+    let link = NSMenuItem(title: "Save Link", action: #selector(saveLink(_:)), keyEquivalent: "")
+    let page = NSMenuItem(title: "Save Full Page", action: #selector(savePage(_:)), keyEquivalent: "")
+    for item in [link, page] {
+      item.target = self
+      menu.addItem(item)
+    }
+    if scripts == nil {
+      page.isEnabled = false
+      page.toolTip = "Saving a page whole needs the saving service's page scripts, which are not on this Mac"
+    }
+    return menu
+  }
+
+  /// Escape stops a saving under way
+  override func cancelOperation(_ sender: Any?) {
+    guard let capture else { return super.cancelOperation(sender) }
+    capture.cancel()
+  }
+
+  @objc func saveLink(_ sender: Any?) {
+    guard let saving = context.saving, let url = web.url else { return }
+    let title = web.title ?? ""
+    Task {
+      let script =
+        scripts == nil
+        ? nil
+        : try? await web.callAsyncJavaScript(
+          "return await shiyiCapture.meta()", contentWorld: WebReading.scriptWorld)
+      do {
+        try await saving.saveLink(WebReading.PageMeta(script: script, url: url, title: title))
+        if web.url == url, saved == .unsaved { saved = .link }
+        if capture == nil { showSaved() }
+      } catch {
+        showSave(.failed("The link could not be saved: \(error.localizedDescription)"))
+      }
+    }
+  }
+
+  @objc func savePage(_ sender: Any?) {
+    guard capture == nil, scripts != nil, let saving = context.saving, let url = web.url else { return }
+    let (title, cookies) = (web.title ?? "", context.websiteData.httpCookieStore)
+    let capture = WebCapture(web: web) { [weak self] stage in self?.showSave(.saving(stage: stage)) }
+    self.capture = capture
+    showSave(.saving(stage: ""))
+    Task {
+      defer { if self.capture === capture { self.capture = nil } }
+      do {
+        async let jar = cookies.allCookies()
+        let files = await saving.rules(forHost: url.host() ?? "")
+        let (file, script) = try await capture.run(files: files, cookies: await jar)
+        defer { try? FileManager.default.removeItem(at: file) }
+        let hash: String
+        do {
+          hash = try await saving.savePage(WebReading.PageMeta(script: script, url: url, title: title), file: file)
+        } catch {
+          throw WebSaveError(code: "store", message: error.localizedDescription)
+        }
+        if web.url == url { saved = .page(hash: hash) }
+        showSaved()
+      } catch is CancellationError {
+        showSaved()
+      } catch let e as WebSaveError {
+        showSave(.failed(e.shown))
+      } catch {
+        showSave(.failed(WebSaveError(code: "internal", message: error.localizedDescription).shown))
+      }
+    }
+  }
+
+  /// A new address: how it is saved, from the owner
+  private func askSaved() {
+    savedFor = web.url
+    saved = .unsaved
+    if capture == nil { showSaved() }
+    guard let saving = context.saving, let url = web.url, ["http", "https"].contains(url.scheme) else { return }
+    Task {
+      let s = await saving.saved(url)
+      guard web.url == url else { return }
+      saved = s
+      if capture == nil { showSaved() }
+    }
+  }
+
+  private func showSaved() {
+    guard context.saving != nil else { return showSave(.off("Saving is not set up")) }
+    guard let url = web.url, ["http", "https"].contains(url.scheme) else {
+      return showSave(.off("No page to save"))
+    }
+    showSave(.saved(saved))
+  }
+
+  private func showSave(_ state: WebBar.Save) {
+    saveState = state
+    bar.show(state)
   }
 
   // MARK: The address

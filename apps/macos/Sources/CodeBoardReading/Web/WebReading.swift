@@ -30,14 +30,22 @@ public enum WebReading {
     public var websiteData: WKWebsiteDataStore
     /// The page's title or address changed, so that the tab can follow
     public var changed: (_ title: String?, _ url: URL?) -> Void
+    /// Where saved links and pages go; none: the save button is off
+    public var saving: (any WebSaving)?
+    /// The saving service's scripts (`hooks.js`, `capture.js`), outside the app; none: a page cannot be saved
+    /// whole, only as a link
+    public var scripts: URL?
 
     public init(
       dataDirectory: URL, websiteData: WKWebsiteDataStore = WebReading.websiteData, look: BarLook = BarLook(),
+      saving: (any WebSaving)? = nil, scripts: URL? = nil,
       changed: @escaping (_ title: String?, _ url: URL?) -> Void = { _, _ in }
     ) {
       self.look = look
       self.dataDirectory = dataDirectory
       self.websiteData = websiteData
+      self.saving = saving
+      self.scripts = scripts
       self.changed = changed
     }
   }

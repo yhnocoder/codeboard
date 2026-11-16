@@ -57,8 +57,8 @@ class WebGlass: NSView {
   }
 }
 
-/// The bar floating over a web page: back and forward through the page's history, the address, and what is to come,
-/// shown but not working yet: body or full page, original, side by side or translation, save
+/// The bar floating over a web page: back and forward through the page's history, the address, saving, and what is to
+/// come, shown but not working yet: body or full page, original, side by side or translation
 final class WebBar: WebGlass {
   let back = WebBar.button("chevron.backward", "Back", "ui-web-back")
   let forward = WebBar.button("chevron.forward", "Forward", "ui-web-forward")
@@ -68,6 +68,8 @@ final class WebBar: WebGlass {
     [("character", "Original"), ("rectangle.split.2x1", "Side by Side"), ("translate", "Translation")],
     "ui-web-translate")
   let save = WebBar.button("square.and.arrow.down", "Save", "ui-web-save")
+  /// Over the save button while a saving is under way
+  private let saving = NSProgressIndicator()
   /// The address keeps this much before what is to come gives way, the translation first
   static let addressMinWidth: CGFloat = 96
 
@@ -76,6 +78,53 @@ final class WebBar: WebGlass {
     setAccessibilityIdentifier("ui-web-bar")
     for c in [extract, translate, save] { c.isEnabled = false }
     for v in [back, forward, address, extract, translate, save] { content.addSubview(v) }
+    saving.style = .spinning
+    saving.controlSize = .small
+    saving.isDisplayedWhenStopped = false
+    save.addSubview(saving)
+  }
+
+  /// What the save button says
+  enum Save: Equatable {
+    /// Nothing to save here, and why
+    case off(String)
+    case saved(WebReading.Saved)
+    /// Under way, at the capture script's stage
+    case saving(stage: String)
+    case failed(String)
+  }
+
+  func show(_ state: Save) {
+    let (symbol, tip): (String?, String) =
+      switch state {
+      case .off(let why): ("square.and.arrow.down", why)
+      case .saved(.unsaved): ("square.and.arrow.down", "Save")
+      case .saved(.link): ("link", "Saved as a Link")
+      case .saved(.page): ("square.and.arrow.down.fill", "Saved as a Full Page")
+      case .saving(let stage): (nil, "Saving: \(Self.stageName(stage)). Click or press Escape to stop")
+      case .failed(let why): ("exclamationmark.triangle", why)
+      }
+    save.image = symbol.flatMap { NSImage(systemSymbolName: $0, accessibilityDescription: tip) }
+    save.toolTip = tip
+    save.setAccessibilityValue(tip)
+    save.isEnabled = if case .off = state { false } else { true }
+    save.contentTintColor =
+      switch state {
+      case .saved(.link), .saved(.page): .controlAccentColor
+      case .failed: .systemRed
+      default: .secondaryLabelColor
+      }
+    if case .saving = state { saving.startAnimation(nil) } else { saving.stopAnimation(nil) }
+  }
+
+  static func stageName(_ stage: String) -> String {
+    switch stage {
+    case "prepare": "getting the page ready"
+    case "scroll": "loading all of the page"
+    case "serialize": "writing it out"
+    case "check": "checking it"
+    default: "starting"
+    }
   }
 
   override func layout() {
@@ -88,6 +137,7 @@ final class WebBar: WebGlass {
     place(forward, x: 36, width: 30)
     var right = bounds.width - 4
     place(save, x: right - 30, width: 30)
+    saving.frame = save.bounds.insetBy(dx: (save.bounds.width - 16) / 2, dy: (save.bounds.height - 16) / 2)
     right -= 30 + 4
     for s in [extract, translate] { s.sizeToFit() }
     let start = forward.frame.maxX + 6

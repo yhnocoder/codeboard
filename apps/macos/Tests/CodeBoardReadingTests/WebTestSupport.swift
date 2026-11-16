@@ -1,6 +1,8 @@
 import Foundation
 import Network
 
+@testable import CodeBoardReading
+
 // What the web tab's tests share: the loopback server their made-up pages come from, and waiting on a page.
 
 /// Waits for `ok`, looking again every few milliseconds; the time is only a bound
@@ -88,5 +90,73 @@ final class LoopbackServer: Sendable {
       let answer = Data((lines.joined(separator: "\r\n") + "\r\n\r\n").utf8) + body
       c.send(content: answer, completion: .contentProcessed { _ in c.cancel() })
     }
+  }
+}
+
+/// The owner of the web tabs under test: what they saved, kept in memory, and what it says was saved
+actor TestSaving: WebSaving {
+  struct Page: Sendable {
+    var meta: WebReading.PageMeta
+    var file: URL
+    var html: String
+  }
+
+  private(set) var links: [WebReading.PageMeta] = []
+  private(set) var pages: [Page] = []
+  private var states: [URL: WebReading.Saved] = [:]
+  private var ruleFiles: [String: [Data]] = [:]
+
+  func saveLink(_ meta: WebReading.PageMeta) { links.append(meta) }
+
+  func savePage(_ meta: WebReading.PageMeta, file: URL) throws -> String {
+    pages.append(Page(meta: meta, file: file, html: try String(contentsOf: file, encoding: .utf8)))
+    return "hash-\(pages.count)"
+  }
+
+  func saved(_ url: URL) -> WebReading.Saved { states[url] ?? .unsaved }
+  func rules(forHost host: String) -> [Data] { ruleFiles[host] ?? [] }
+
+  func set(_ url: URL, _ state: WebReading.Saved) { states[url] = state }
+  func set(rules: [String], forHost host: String) { ruleFiles[host] = rules.map { Data($0.utf8) } }
+}
+
+/// Stand-ins for the saving service's page scripts, speaking their messages, written to a folder of their own
+enum StandInScripts {
+  /// Marks the page's world, so that a test sees it ran there
+  static let hooks = "window.hooked = true"
+
+  /// Metadata of its own; a saving that says its first stage, fetches one resource, writes two chunks and returns.
+  /// `?fail` fails at once, `?hold` waits for `cancel()`
+  static let capture = """
+    var shiyiCapture = {
+      stopped: false,
+      meta: async () => ({ url: location.href, title: document.title, description: "A made-up page",
+        site_name: "Loopback", favicon: location.origin + "/icon.png", cover: location.origin + "/cover.png" }),
+      async savePage(files) {
+        const post = m => webkit.messageHandlers.shiyi.postMessage(m)
+        await post({ type: "stage", stage: "prepare" })
+        if (location.search == "?fail") return { ok: false, code: "too-large", message: "over the limit" }
+        if (location.search == "?hold") await new Promise(k => this.release = k)
+        if (this.stopped) return { ok: false, code: "cancelled", message: "" }
+        const asset = await post({ type: "fetch", url: location.origin + "/asset", accept: "text/plain", timeout_ms: 5000 })
+        const parts = ["<!doctype html><title>" + document.title + "</title>",
+          "<p id=asset>" + atob(asset.base64) + " " + asset.status + "</p><p id=rules>" + JSON.stringify(files) + "</p>"]
+        for (const [seq, text] of parts.entries()) {
+          const r = await post({ type: "chunk", seq, text })
+          if (!r.ok) return { ok: false, code: "internal", message: r.error }
+        }
+        return { ok: true, meta: await this.meta(), bytes: parts.join("").length, chunks: parts.length }
+      },
+      cancel() { this.stopped = true; this.release?.() },
+    }
+    """
+
+  /// A new folder holding them
+  static func folder() throws -> URL {
+    let f = FileManager.default.temporaryDirectory.appending(path: "web-scripts-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: f, withIntermediateDirectories: true)
+    try hooks.write(to: f.appending(path: "hooks.js"), atomically: true, encoding: .utf8)
+    try capture.write(to: f.appending(path: "capture.js"), atomically: true, encoding: .utf8)
+    return f
   }
 }

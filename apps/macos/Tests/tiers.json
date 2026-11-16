@@ -510,7 +510,14 @@
         },
         "reading: web": {
           "sources": ["CodeBoardReading/Web"],
-          "tests": ["WebBarVisibilityTests", "WebAddressTests", "WebHistoryTests", "WebPageTests", "WebSiteDataTests"]
+          "tests": [
+            "WebBarVisibilityTests",
+            "WebAddressTests",
+            "WebHistoryTests",
+            "WebPageTests",
+            "WebSiteDataTests",
+            "WebSavingTests"
+          ]
         },
         "reading: list": {
           "sources": ["CodeBoardReading/List"],
