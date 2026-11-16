@@ -91,6 +91,22 @@ import WebKit
     #expect(again.saveState == .saved(.link))
   }
 
+  /// A link kept without a tab goes into the resource named, once: the same address again, with or without a
+  /// fragment, gives the entry it has, untouched; what is not a web page's address gives none
+  @Test func anAddressIsKeptAsALinkWithoutATab() async throws {
+    let tabs = try WebTabs(vault: vault, scripts: nil)
+    defer { done(tabs) }
+    let r = try vault.newResource(in: "", title: "Reading", preset: .web)
+    let first = try #require(try tabs.pane.saveLink(url("/a"), title: "Kept", in: r.path))
+    #expect(first.title == "Kept" && first.origin == .web(url("/a").absoluteString) && first.versions.isEmpty)
+    let again = try tabs.pane.saveLink(try #require(URL(string: url("/a").absoluteString + "#part")), in: r.path)
+    let kept = try vault.items(in: r.path).count
+    #expect(again == first && kept == 1)
+    #expect(tabs.pane.entries.all.map(\.entry) == [first])
+    let other = try tabs.pane.saveLink(try #require(URL(string: "file:///etc/hosts")), in: r.path)
+    #expect(other == nil)
+  }
+
   /// A vault that has a web resource, in a folder, saves into it; each page loaded says how the vault has it saved,
   /// a link or its latest page whole; with no vault the button is off and says why
   @Test func theButtonShowsHowTheVaultHasEachPageSaved() async throws {

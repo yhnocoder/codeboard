@@ -46,6 +46,30 @@ extension ReadingPane {
     return hashes.last.map { .page(hash: $0) } ?? .link
   }
 
+  /// An address kept as a link without a tab (a link pasted or dropped into a list): its entry in the resource at
+  /// `resource`, or in the vault's web resource, the one it already had there or a new one named `title`, else by
+  /// its address. Nil with no vault, or for an address that is not a web page's
+  @discardableResult
+  public func saveLink(_ url: URL, title: String? = nil, in resource: String? = nil) throws -> Entry? {
+    guard let vault, ["http", "https"].contains(url.scheme) else { return nil }
+    let resource = try resource ?? WebReading.webResource(in: vault)
+    let address = Vault.pageAddress(url.absoluteString)
+    let has = try vault.items(in: resource).lazy.compactMap { i -> Entry? in
+      guard case .entry(let e, _) = i, case .web(let at) = e.origin, Vault.pageAddress(at) == address else {
+        return nil
+      }
+      return e
+    }.first
+    if let has { return has }
+    let item = SavedItem(
+      id: "", kind: .link, url: address, title: title ?? WebAddress.shown(url),
+      savedAt: Int64((Date().timeIntervalSince1970 * 1000).rounded()))
+    let path = try vault.save(item, in: resource)
+    let entry = try vault.entry(at: path)
+    entries.update(entry, at: path)
+    return entry
+  }
+
   /// What was saved, in its entry in the web resource with what was read of the page; the entries know it at once
   func saveWeb(_ item: SavedItem, meta: WebMeta) throws {
     guard let vault else { return }
