@@ -1,6 +1,10 @@
 {
   "added": 1763280001000,
-  "fields": {},
+  "fields": {
+    "f-notes-board": "b-blocks",
+    "f-starred": true,
+    "f-status": "option-reading"
+  },
   "highlights": [],
   "id": "e-pagedattention",
   "meta": {

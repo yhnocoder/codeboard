@@ -1,5 +1,40 @@
 {
-  "fields": [],
+  "fields": [
+    {
+      "id": "f-status",
+      "name": "Status",
+      "options": [
+        {
+          "id": "option-to-read",
+          "name": "To read"
+        },
+        {
+          "id": "option-reading",
+          "name": "Reading"
+        },
+        {
+          "id": "option-done",
+          "name": "Done"
+        }
+      ],
+      "type": "select"
+    },
+    {
+      "id": "f-starred",
+      "name": "Starred",
+      "type": "checkbox"
+    },
+    {
+      "id": "f-read-on",
+      "name": "Read on",
+      "type": "date"
+    },
+    {
+      "id": "f-notes-board",
+      "name": "Notes board",
+      "type": "board"
+    }
+  ],
   "id": "r-links",
   "preset": "web",
   "version": 1
