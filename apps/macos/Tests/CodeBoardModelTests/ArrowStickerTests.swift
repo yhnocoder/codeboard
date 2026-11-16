@@ -121,6 +121,15 @@ import Testing
     #expect(out.arrows.map(\.id).contains(a("xy")) && out.stickers.map(\.id) == [k("k1")] && out.brokenReference == nil)
   }
 
+  /// Resized it stays at its place on its arrow; moved it goes where it is put
+  @Test func aStickerOnAnArrowIsResizedInPlaceAndMoved() {
+    var b = board()
+    b.setStickerSize(k("k1"), 300)
+    #expect(b.stickers[0].anchor == .arrow(a("xy"), position: 0.42, x: -16, y: -40, size: 240))
+    b.moveSticker(k("k1"), to: .arrow(a("yz"), position: 0.1, x: 4, y: 5, size: nil))
+    #expect(b.stickers[0].anchor == .arrow(a("yz"), position: 0.1, x: 4, y: 5, size: nil) && b.brokenReference == nil)
+  }
+
   @Test func aSubBoardsTwoColumnPreviewIsKeptAndOnlyTwoIsWritten() throws {
     let cards = [
       SubBoard(board: BoardID(rawValue: "b2"), twoColumnPreview: true),

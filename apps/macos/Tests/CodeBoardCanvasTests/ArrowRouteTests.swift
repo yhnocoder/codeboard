@@ -208,4 +208,15 @@ private func sides(_ m: R.Mode) -> [R.Side] { [R.sides(m).0, R.sides(m).1] }
     #expect(t < 0.9 && t >= 0.5)
     #expect(R.boxClear(R.bezAt(line, t), box, near))
   }
+
+  /// The values geom.ts nearestT gives on the curve [0 0, 100 0, 200 100, 300 100]
+  @Test func nearestTIsTheWebBoardsSampledNearestPlace() {
+    let s = [CGPoint(x: 0, y: 0), CGPoint(x: 100, y: 0), CGPoint(x: 200, y: 100), CGPoint(x: 300, y: 100)]
+    let cases: [(CGFloat, CGFloat, CGFloat)] = [
+      (150, 20, 0.46), (0, -50, 0), (400, 200, 1), (120, 80, 0.46), (37, 3, 0.12),
+    ]
+    for (x, y, t) in cases { #expect(R.nearestT(s, CGPoint(x: x, y: y)) == t, "\(x), \(y)") }
+    #expect(R.nearestT(s, CGPoint(x: 150, y: 20)) { $0.x < 100 } == 0.33)
+    #expect(R.nearestT(s, CGPoint(x: 150, y: 20)) { _ in false } == 0.5, "nowhere allowed: the middle")
+  }
 }
