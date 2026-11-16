@@ -13,7 +13,6 @@ struct RepositoriesBlock: View {
   /// The list's own height, measured
   @State private var content: CGFloat = 0
   @State private var asksGitHub = false
-  @State private var picksFolder = false
 
   var body: some View {
     let height = model.shown(content: RepositoriesModel.handle + ShellTheme.rowHeight + content, room: room)
@@ -40,10 +39,6 @@ struct RepositoriesBlock: View {
       .scrollIndicators(.automatic)
     }
     .frame(height: height, alignment: .top)
-    .fileImporter(isPresented: $picksFolder, allowedContentTypes: [.folder]) { result in
-      guard case .success(let url) = result else { return }
-      Task { await model.addFolder(url.path(percentEncoded: false)) }
-    }
   }
 
   /// The list's title and its plus; an opened repository's way back, its name and its commit, in the same row
@@ -78,7 +73,7 @@ struct RepositoriesBlock: View {
           .foregroundStyle(ShellTheme.muted)
         Spacer(minLength: 4)
         Menu {
-          Button("Add Local Folder…") { picksFolder = true }
+          Button("Add Local Folder…") { Task { await model.pickFolder() } }
           Button("Add GitHub Repository…") { asksGitHub = true }
         } label: {
           Image(systemName: "plus").font(.system(size: 11.5, weight: .medium))
@@ -111,7 +106,7 @@ struct RepositoriesBlock: View {
     }
     if model.list.isEmpty && model.clones.isEmpty && model.problem == nil {
       Quiet(text: "Add a folder on this Mac or a repository on GitHub to read its code here.")
-      EntryRow(icon: "folder.badge.plus", title: "Add Local Folder…") { picksFolder = true }
+      EntryRow(icon: "folder.badge.plus", title: "Add Local Folder…") { Task { await model.pickFolder() } }
       EntryRow(icon: "arrow.down.circle", title: "Add GitHub Repository…") { asksGitHub = true }
     }
   }

@@ -40,6 +40,8 @@ import os
   /// Set by dragging the line above the block; nil: the default
   private(set) var height: CGFloat?
   /// A file of the opened repository clicked (preview) or double-clicked (kept): the reading pane's to show
+  /// The folder the user picks in the window's open panel (nil: none picked)
+  @ObservationIgnored var askFolder: (@MainActor () async -> URL?)?
   @ObservationIgnored var onOpen: ((Repository, String, _ preview: Bool) -> Void)?
   @ObservationIgnored private let runner: any GitRunner
   @ObservationIgnored private let defaults: UserDefaults?
@@ -115,6 +117,10 @@ import os
       return "\(gh.owner)/\(gh.name)"
     }
     return URL(filePath: r.path).lastPathComponent
+  }
+
+  func pickFolder() async {
+    if let url = await askFolder?() { await addFolder(url.path(percentEncoded: false)) }
   }
 
   func addFolder(_ path: String) async {

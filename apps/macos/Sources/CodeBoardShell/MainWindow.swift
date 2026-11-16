@@ -32,6 +32,14 @@ import UniformTypeIdentifiers
     panel.prompt = "Add"
     return await panel.beginSheetModal(for: window) == .OK ? panel.urls : []
   }
+  repositories?.askFolder = { [weak window] in
+    guard let window else { return nil }
+    let panel = NSOpenPanel()
+    panel.canChooseFiles = false
+    panel.canChooseDirectories = true
+    panel.prompt = "Add"
+    return await panel.beginSheetModal(for: window) == .OK ? panel.url : nil
+  }
   shell.askArxiv = { [weak window, weak shell] resource in
     guard let window, let shell else { return }
     var sheet: ArxivSheet?
