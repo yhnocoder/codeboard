@@ -102,7 +102,9 @@ import Testing
     let reading = place(p.reading, w)
     let board = place(p.board, w)
     #expect(reading.minX > board.maxX, "on the right")
-    #expect(abs(reading.width - w.shell.reading.width) < 1 && abs(board.width - (full - 8 - reading.width)) < 1)
+    // as wide as it is set, within what a window of this width leaves both panels
+    let fit = ReadingPane.fit(w.shell.reading.width, in: full - 8)
+    #expect(abs(reading.width - fit) < 1 && abs(board.width - (full - 8 - reading.width)) < 1)
     #expect(w.canvas.window != nil && w.canvas.bounds.width < full, "the board panel narrowed")
 
     try click(p.controls.toggle, in: w)
@@ -157,17 +159,20 @@ import Testing
     let mid = p.divider.convert(CGPoint(x: p.divider.bounds.midX, y: p.divider.bounds.midY), to: nil)
     #expect(frame.hitTest(frame.convert(mid, from: nil)) === p.divider, "the divider is under the pointer")
     let before = place(p.reading, w).width
+    let room = before + place(p.board, w).width
+    // 60 wider, or as wide as a narrow window lets it be
+    let wider = ReadingPane.fit(before + 60, in: room)
     drag(p.divider, by: -60, in: w)
-    await settle(w, "wider") { abs(place(p.reading, w).width - (before + 60)) < 1 }
-    #expect(w.shell.reading.width == before + 60)
-    let room = place(p.reading, w).width + place(p.board, w).width
+    await settle(w, "wider") { abs(place(p.reading, w).width - wider) < 1 }
+    #expect(w.shell.reading.width == wider)
     drag(p.divider, by: -2000, in: w)
     await settle(w, "as wide as it goes") { abs(place(p.board, w).width - ReadingPane.boardMinWidth) < 1 }
     drag(p.divider, by: 2000, in: w)
     await settle(w, "as narrow as it goes") { abs(place(p.reading, w).width - ReadingPane.minWidth) < 1 }
     #expect(abs(place(p.reading, w).width + place(p.board, w).width - room) < 1, "the board takes what it gives")
+    let kept = ReadingPane.fit(ReadingPane.minWidth + 100, in: room)
     drag(p.divider, by: -100, in: w)
-    await settle(w, "wider again") { abs(place(p.reading, w).width - (ReadingPane.minWidth + 100)) < 1 }
+    await settle(w, "wider again") { abs(place(p.reading, w).width - kept) < 1 }
 
     // relaunched with what was kept: the same split, side and tabs
     w.shell.openReadingTab(title: "Kept", key: "kept")
@@ -183,7 +188,7 @@ import Testing
     defer { window.orderOut(nil) }
     window.contentView?.layoutSubtreeIfNeeded()
     let again = try #require(view(ReadingPaneView.self, in: window.contentView)?.superview?.superview)
-    #expect(!again.isHidden && abs(again.frame.width - (ReadingPane.minWidth + 100)) < 1)
+    #expect(!again.isHidden && abs(again.frame.width - kept) < 1)
     #expect(shell.reading.tabs.map(\.title) == ["Kept"])
   }
 
