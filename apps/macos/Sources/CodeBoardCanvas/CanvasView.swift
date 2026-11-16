@@ -456,6 +456,12 @@ public final class CanvasView: NSView {
   /// gives the ids they have there now (old → new) and its title; nil: that board cannot take it now (they come as
   /// copies). With no cards it only gives the title
   public var shareOnBoard: ((BoardID, Set<CardID>) -> (ids: [CardID: CardID], title: String)?)?
+  /// Where a card drag's pointer out of the view goes (the app's windows); nil: it stays the view's drag
+  public weak var cardDragging: CardDragging?
+  /// The cards of a drag while its pointer is out of the view
+  public internal(set) var cardsOut: CardsOut?
+  /// Where cards from another window would land
+  var cardsDropLayer: CAShapeLayer?
   /// The Copy ✓ | Reference chip under copies just made (CanvasPasteChip.swift)
   var pasteChip: PasteChip?
   var chipTimer: Task<Void, Never>?

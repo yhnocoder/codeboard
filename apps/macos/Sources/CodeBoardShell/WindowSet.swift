@@ -40,6 +40,8 @@ struct SavedWindow: Codable, Equatable {
   /// A board tab dragged out of its row, every window's, and a reading tab
   @ObservationIgnored private(set) var tabDrag: TabDrag!
   @ObservationIgnored private(set) var readingDrag: TabDrag!
+  /// Cards dragged out of a canvas, every window's
+  @ObservationIgnored private(set) var cardDrag: CardDrag!
   static let stateKey = "windows"
   /// What one window saved before there were several
   static let oldStateKey = "shell"
@@ -49,6 +51,7 @@ struct SavedWindow: Codable, Equatable {
     documents = BoardDocuments(session: session)
     tabDrag = TabDrag(set: self, kind: .board)
     readingDrag = TabDrag(set: self, kind: .reading)
+    cardDrag = CardDrag(set: self)
     NotificationCenter.default.addObserver(
       forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main
     ) { [weak self] _ in MainActor.assumeIsolated { self?.screensChanged() } }
@@ -140,6 +143,10 @@ struct SavedWindow: Codable, Equatable {
       return true
     }
     // collected with no board tab here: to the board of the latest used window that shows one
+    panes.boardElsewhere = { [weak self, weak e] in
+      guard let self, let e else { return nil }
+      return others(than: e).lazy.compactMap(\.panes.shownCanvas).first?.document?.board
+    }
     panes.collectElsewhere = { [weak self, weak e] c in
       guard let self, let e else { return }
       others(than: e).lazy.compactMap(\.panes.shownCanvas).first?.collect(c)
@@ -153,6 +160,7 @@ struct SavedWindow: Codable, Equatable {
       return nil
     }
     shell.tabDragging = tabDrag
+    panes.cardDragging = cardDrag
     shell.reading.tabDragger = readingDrag
     // a window that shows only its reading pane closes with its last reading tab
     shell.reading.lastClosed = { [weak e] in
@@ -295,6 +303,28 @@ struct SavedWindow: Codable, Equatable {
 
   func readingView(of e: Entry) -> ReadingPaneView? {
     e.window.contentView.flatMap { Self.view($0, "ui-readingpane") } as? ReadingPaneView
+  }
+
+  // MARK: Cards between windows
+
+  /// The board canvas under `p` on screen, in the window in front there: nil when what is in front there is not a
+  /// board canvas (another of the app's windows, a sidebar, a reading pane, nothing)
+  func canvas(at p: CGPoint) -> (entry: Entry, canvas: CanvasView)? {
+    let z = NSApplication.shared.orderedWindows
+    let rank = { (w: NSWindow) in z.firstIndex(of: w) ?? .max }
+    let under = all.filter { onScreen($0.window) && $0.window.frame.contains(p) }.sorted {
+      rank($0.window) < rank($1.window)
+    }
+    guard let e = under.first else { return nil }
+    // another of the app's windows in front of it there (a picture that follows the pointer takes no clicks)
+    if let front = z.first(where: { $0.isVisible && !$0.ignoresMouseEvents && $0.frame.contains(p) }),
+      front !== e.window, rank(front) < rank(e.window)
+    {
+      return nil
+    }
+    guard let c = e.panes.shownCanvas, !c.isHiddenOrHasHiddenAncestor else { return nil }
+    let r = e.window.convertToScreen(c.convert(c.visibleRect, to: nil))
+    return r.contains(p) ? (e, c) : nil
   }
 
   // MARK: Tab rows

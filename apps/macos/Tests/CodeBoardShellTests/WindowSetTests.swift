@@ -749,4 +749,141 @@ import Testing
     let made = try #require(set.open())
     #expect(made.window.frameAutosaveName.isEmpty && first.window.frameAutosaveName.isEmpty)
   }
+
+  /// Code taken from the reading pane goes where Add to Board goes: this window's board, else in a window with no board
+  /// tab (one that shows only the reading pane) the board of the latest used window that shows one
+  @Test func codeFromAReadingOnlyWindowGoesToTheBoardOfTheWindowUsedLast() async throws {
+    let (set, first, second, vault) = try await onAAndB()
+    defer { try? FileManager.default.removeItem(at: vault.root) }
+    first.shell.openWeb(nil)
+    first.shell.openWeb(nil)
+    laidOut(set, first, second)
+    #expect(first.panes.addBoard?.id == a && second.panes.addBoard?.id == b)
+    let made = try #require(set.moveReadingToNewWindow(first.shell.reading.tabs[1].id, from: first, frame: nil))
+    #expect(made.shell.readingOnly && made.panes.addBoard?.id == canvas(first)?.document?.id)
+    set.onScreen = { _ in false }
+    #expect(made.panes.addBoard == nil)
+  }
+
+  // MARK: Cards between windows
+
+  /// Both windows side by side and laid out, their boards drawn, the cards' picture kept off screen
+  func cardWindows(_ set: WindowSet, _ first: WindowSet.Entry, _ second: WindowSet.Entry) async {
+    set.onScreen = { _ in true }
+    set.focus = { _ in }
+    set.cardDrag.showPicture = { _ in }
+    first.window.setFrame(CGRect(x: 100, y: 100, width: 1200, height: 700), display: false)
+    second.window.setFrame(CGRect(x: 1400, y: 100, width: 1200, height: 700), display: false)
+    for e in [first, second] { e.window.contentView?.layoutSubtreeIfNeeded() }
+    await until("both drawn") { canvas(first)?.scene != nil && canvas(second)?.scene != nil }
+  }
+
+  /// A board point of a canvas on screen
+  func onScreen(_ c: CanvasView, _ p: CGPoint) -> CGPoint {
+    c.window!.convertPoint(toScreen: c.convert(c.camera.view(p), to: nil))
+  }
+
+  func mouse(_ c: CanvasView, _ type: NSEvent.EventType, _ p: CGPoint) -> NSEvent {
+    NSEvent.mouseEvent(
+      with: type, location: c.window!.convertPoint(fromScreen: p), modifierFlags: [], timestamp: 0,
+      windowNumber: c.window!.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!
+  }
+
+  /// A press on `c` at board point `at`, dragged a little on it and then through `points` on screen
+  func drag(_ c: CanvasView, at: CGPoint, through points: [CGPoint]) {
+    // pressed unselected, it moves (the one card selected, dragged on its body, has its text selected)
+    c.document?.select([])
+    let start = onScreen(c, at)
+    c.mouseDown(with: mouse(c, .leftMouseDown, start))
+    c.mouseDragged(with: mouse(c, .leftMouseDragged, CGPoint(x: start.x + 20, y: start.y)))
+    for p in points { c.mouseDragged(with: mouse(c, .leftMouseDragged, p)) }
+  }
+
+  /// The middle of a window's canvas on screen
+  func middle(_ e: WindowSet.Entry) -> CGPoint {
+    let c = canvas(e)!
+    let r = e.window.convertToScreen(c.convert(c.visibleRect, to: nil))
+    return CGPoint(x: r.midX, y: r.midY)
+  }
+
+  @Test func cardsDraggedOntoAnotherWindowsBoardArePastedThereSharedAsOneStepAndStayHere() async throws {
+    let (set, first, second, vault) = try await onAAndB()
+    defer { try? FileManager.default.removeItem(at: vault.root) }
+    await cardWindows(set, first, second)
+    let (from, to) = (try #require(canvas(first)), try #require(canvas(second)))
+    let docA = try #require(set.documents.open[a])
+    let docB = try #require(set.documents.open[b])
+    let before = docA.board.card(n).map { CGPoint(x: $0.x, y: $0.y) }
+    let target = middle(second)
+
+    // out of its canvas over the other one: the cards back where they were here, a mark there, nothing changed yet
+    drag(from, at: CGPoint(x: 100, y: 50), through: [target])
+    #expect(from.cardsOut?.clip.cards.map(\.id) == [n] && from.liveRect(.card(n))?.origin != nil)
+    #expect(to.cardsDropLayer?.path != nil && docB.board.cards.count == 1 && docA.undoName == nil)
+    from.mouseUp(with: mouse(from, .leftMouseUp, target))
+
+    // let go there: Copy here and Paste there, the press where the pointer is
+    let landed = try #require(to.boardPoint(onScreen: target))
+    #expect(docB.board.cards.count == 2 && docB.undoName == "Paste" && to.cardsDropLayer?.path == nil)
+    let pasted = try #require(docB.board.cards.first { $0.id != k })
+    #expect(pasted.x == (landed.x - 100).rounded() && pasted.y == (landed.y - 50).rounded())
+    #expect(to.document?.selection == [.card(pasted.id)])
+    // shared by both: here it is the same card as there, where it was
+    let here = try #require(docA.board.card(pasted.id))
+    #expect(here.isShared && pasted.isShared && docA.board.cards.count == 2)
+    #expect(CGPoint(x: here.x, y: here.y) == before)
+    #expect(from.gesture == nil && from.cardsOut == nil)
+  }
+
+  @Test func cardsDraggedToTheSameBoardInAnotherWindowMoveThereAsOneStep() async throws {
+    let (set, first, second, vault) = try twoWindows()
+    defer { try? FileManager.default.removeItem(at: vault.root) }
+    await cardWindows(set, first, second)
+    let (from, to) = (try #require(canvas(first)), try #require(canvas(second)))
+    #expect(from.document?.id == a && to.document?.id == a)
+    let doc = try #require(set.documents.open[a])
+    let target = middle(second)
+    drag(from, at: CGPoint(x: 100, y: 50), through: [target])
+    from.mouseUp(with: mouse(from, .leftMouseUp, target))
+    let landed = try #require(to.boardPoint(onScreen: target))
+    let card = try #require(doc.board.card(n))
+    #expect(card.x == (landed.x - 100).rounded() && card.y == (landed.y - 50).rounded())
+    #expect(doc.board.cards.count == 2 && doc.undoName == "Move")
+  }
+
+  @Test func cardsLetGoOffABoardOrAfterEscChangeNothingAndBackOverTheirCanvasTheDragGoesOn() async throws {
+    let (set, first, second, vault) = try await onAAndB()
+    defer { try? FileManager.default.removeItem(at: vault.root) }
+    await cardWindows(set, first, second)
+    let (from, to) = (try #require(canvas(first)), try #require(canvas(second)))
+    let docA = try #require(set.documents.open[a])
+    let docB = try #require(set.documents.open[b])
+    let start = docA.board.card(n).map { CGPoint(x: $0.x, y: $0.y) }
+
+    // over the other window's sidebar, then the desktop: no mark, and let go there nothing changes
+    let sidebar = CGPoint(x: second.window.frame.minX + 60, y: middle(second).y)
+    drag(from, at: CGPoint(x: 100, y: 50), through: [middle(second), sidebar])
+    #expect(set.canvas(at: sidebar) == nil && to.cardsDropLayer?.path == nil)
+    let desktop = CGPoint(x: 5000, y: 5000)
+    from.mouseDragged(with: mouse(from, .leftMouseDragged, desktop))
+    from.mouseUp(with: mouse(from, .leftMouseUp, desktop))
+    #expect(docA.undoName == nil && docB.undoName == nil && docB.board.cards.count == 1)
+
+    // Esc over the other canvas: the mark gone; let go there, nothing; back over its own canvas it stays put
+    drag(from, at: CGPoint(x: 100, y: 50), through: [middle(second)])
+    #expect(to.cardsDropLayer?.path != nil)
+    set.cardDrag.cancel()
+    #expect(to.cardsDropLayer?.path == nil)
+    from.mouseDragged(with: mouse(from, .leftMouseDragged, onScreen(from, CGPoint(x: 400, y: 300))))
+    from.mouseUp(with: mouse(from, .leftMouseUp, middle(second)))
+    #expect(docA.undoName == nil && docB.board.cards.count == 1)
+
+    // out and back over its own canvas: the ordinary drag goes on and moves it there
+    let back = onScreen(from, CGPoint(x: 600, y: 350))
+    drag(from, at: CGPoint(x: 100, y: 50), through: [middle(second), back])
+    #expect(from.cardsOut == nil)
+    from.mouseUp(with: mouse(from, .leftMouseUp, back))
+    #expect(docA.undoName == "Move" && docA.board.card(n).map { CGPoint(x: $0.x, y: $0.y) } != start)
+    #expect(docB.board.cards.count == 1)
+  }
 }
