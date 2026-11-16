@@ -24,6 +24,23 @@ func makePDF(_ pages: [String]) -> Data {
   return data as Data
 }
 
+/// A page of two columns, each string drawn in its own from the top: the left from x 20 to 140, the right from 160
+func makeColumnsPDF(_ left: String, _ right: String) -> Data {
+  let data = NSMutableData()
+  var box = CGRect(x: 0, y: 0, width: 300, height: 400)
+  let ctx = CGContext(consumer: CGDataConsumer(data: data as CFMutableData)!, mediaBox: &box, nil)!
+  ctx.beginPDFPage(nil)
+  NSGraphicsContext.current = NSGraphicsContext(cgContext: ctx, flipped: false)
+  for (text, x) in [(left, 20.0), (right, 160.0)] {
+    (text as NSString).draw(
+      in: CGRect(x: x, y: 20, width: 120, height: 360), withAttributes: [.font: NSFont.systemFont(ofSize: 14)])
+  }
+  NSGraphicsContext.current = nil
+  ctx.endPDFPage()
+  ctx.closePDF()
+  return data as Data
+}
+
 let samplePages = [
   "The river runs north past the mill.\nBirds rest on the far bank.",
   "Evening light falls on the water.\nA boat waits at the pier.",
@@ -36,13 +53,14 @@ struct PDFVault {
   /// The file's path in the vault
   let file: String
 
-  init(pages: [String] = samplePages) throws {
+  /// `data`: the file, instead of one made of `pages`
+  init(pages: [String] = samplePages, data: Data? = nil) throws {
     let root = FileManager.default.temporaryDirectory.appending(path: "pdf-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     vault = Vault(root: root)
     resource = try vault.newResource(in: "", title: "Papers", preset: .papers)
     file = "\(resource.path)/Field notes.pdf"
-    try makePDF(pages).write(to: vault.url(of: file))
+    try (data ?? makePDF(pages)).write(to: vault.url(of: file))
   }
 
   func remove() { try? FileManager.default.removeItem(at: vault.root) }
