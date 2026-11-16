@@ -203,6 +203,7 @@ import CodeBoardReading
     }
     if reload {
       for pane in panes.values where pane.document != nil { pane.canvas.vaultChanged() }
+      (shell.reading.codeHost as? ShellCode)?.boardsChanged()
     }
     for tab in shell.tabs {
       let pane = panes[tab.id] ?? Pane(notes: notes, display: display)
@@ -270,6 +271,9 @@ import CodeBoardReading
       return boards.count
     }
     pane.canvas.onVaultChanged = { [weak self] in self?.onVaultChanged?() }
+    if shell.reading.codeHost != nil {
+      pane.canvas.onOpenCode = { [weak self, weak pane] in self?.openCodeSource($0, at: $1, on: pane?.canvas) }
+    }
     pane.canvas.onSetSeal = { [weak self] in self?.setSeal($0, $1, done: $2) }
     pane.canvas.shareOnBoard = { [weak self] in self?.boardDocuments.share($0, $1) }
     pane.canvas.cardDragging = cardDragging
@@ -351,6 +355,7 @@ import CodeBoardReading
       // what the search palette found was on the board that was in front
       closeSearch()
       pane.takeKeys()
+      (shell.reading.codeHost as? ShellCode)?.boardsChanged()
     }
   }
 

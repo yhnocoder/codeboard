@@ -71,6 +71,9 @@ extension BoardPanes {
     wireMeaning(s, sources: sources, vault: vault, here: here)
     wireResources(s, vault: vault, here: here)
     s.onPick = { [weak self] in self?.picked($0) }
+    // the functions and classes of the repositories indexed (ShellCodeCards.swift)
+    s.onCode = { [weak self] q in await (self?.shell.reading.codeHost as? ShellCode)?.symbols(q) ?? [] }
+    s.onCodePick = { [weak self] sym, add in self?.pickedCode(sym, add: add) }
     s.onClose = { [weak self] in self?.closeSearch() }
     s.view.frame = pane.bounds
     s.view.autoresizingMask = [.width, .height]

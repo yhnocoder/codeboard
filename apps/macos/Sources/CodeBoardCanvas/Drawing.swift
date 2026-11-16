@@ -562,18 +562,35 @@ enum Drawing: Sendable {
       text(ctx, s, t.linkedIn, t.ink3, x: right - 4 - w, midY: mid, width: w)
       right -= w + 8 + t.headerGap
     }
-    right -= reserve
-    var x = lockFirst(ctx, c.locked, t)
+    let x = lockFirst(ctx, c.locked, t)
     if let g = c.glyph, let font = g == "ƒ" ? t.kindGlyph : t.kindGlyphMono {
       text(ctx, g, font, t.ink3, x: x + (10 - width(g, font)) / 2, midY: mid, width: .infinity)
-      x += 10 + t.headerGap
     }
+    let at = places(c, width: r.width, t, reserve: reserve)
+    text(ctx, c.title, t.codeTitle, t.ink, x: at.x, midY: mid, width: at.title)
+    if let p = c.path, at.path > 0 {
+      text(ctx, p, t.codePath, t.ink3, x: at.x + at.title + t.headerGap + 3, midY: mid, width: at.path)
+    }
+  }
+
+  /// Where a code card's header puts its title and its path (from the card's left): the title giving way for the path,
+  /// and both for what is on the right and the hover buttons' `reserve`
+  static func places(_ c: Code, width w: CGFloat, _ t: Theme, reserve: CGFloat) -> (
+    x: CGFloat, title: CGFloat, path: CGFloat
+  ) {
+    let right = headerRight(c, width: w, t) - reserve
+    var x = c.locked ? t.headerPad + 18 + t.headerGap : t.headerPad
+    if let g = c.glyph, (g == "ƒ" ? t.kindGlyph : t.kindGlyphMono) != nil { x += 10 + t.headerGap }
     let pathWidth = c.path.map { min(width($0, t.codePath), max(0, right - x - 60)) } ?? 0
     let titleWidth = min(width(c.title, t.codeTitle), right - x - (pathWidth > 0 ? pathWidth + 6 + t.headerGap : 0))
-    text(ctx, c.title, t.codeTitle, t.ink, x: x, midY: mid, width: titleWidth)
-    if let p = c.path, pathWidth > 0 {
-      text(ctx, p, t.codePath, t.ink3, x: x + titleWidth + t.headerGap + 3, midY: mid, width: pathWidth)
-    }
+    return (x, titleWidth, pathWidth)
+  }
+
+  /// The path's box in the header (.cpath, its padding 3 across and 1 up and down), card points; nil when it shows none
+  static func pathBox(_ c: Code, width w: CGFloat, _ t: Theme, reserve: CGFloat) -> CGRect? {
+    let at = places(c, width: w, t, reserve: reserve)
+    guard c.path != nil, at.path > 0 else { return nil }
+    return CGRect(x: at.x + at.title + t.headerGap, y: t.headerHeight / 2 - 8.5, width: at.path + 6, height: 17)
   }
 
   /// A locked card's header starts with its lock (.lockb: an 18 square, the header's gap after it); where the rest starts

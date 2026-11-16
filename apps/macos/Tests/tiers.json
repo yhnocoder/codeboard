@@ -514,7 +514,8 @@
             "CodeBoardShell/RepositoriesBlock.swift",
             "CodeBoardWorkspace/Repositories.swift",
             "CodeBoardReading/Code",
-            "CodeBoardShell/ShellCode.swift"
+            "CodeBoardShell/ShellCode.swift",
+            "CodeBoardShell/ShellCodeCards.swift"
           ],
           "tests": ["RepositoriesBlockTests", "ShellCodeTests"]
         },

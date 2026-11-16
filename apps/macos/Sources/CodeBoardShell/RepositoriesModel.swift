@@ -232,6 +232,25 @@ import os
     }
   }
 
+  // MARK: A card's source
+
+  /// Where a git source's commit is here (Repositories.locate); with no list, nothing is added
+  func locate(repository: String?, commit: String, checkout: String?, fetch: Bool = true) async throws(GitError)
+    -> RepoMatch
+  {
+    guard let store else { return .notAdded(address: repository, folder: nil) }
+    return try await store.locate(repository: repository, commit: commit, checkout: checkout, fetch: fetch)
+  }
+
+  /// A repository's git root: a clone's folder, a folder's repository's
+  func root(of r: Repository) async -> String? {
+    if case .clone = r.kind { return r.path }
+    return (try? await store?.git.repoRootOfDir(r.path)) ?? nil
+  }
+
+  /// A file source's file (Repositories.locateFile)
+  func locateFile(_ path: String) async -> String? { await store?.locateFile(path) }
+
   // MARK: The opened repository
 
   /// Shows the repository's files in place of the list

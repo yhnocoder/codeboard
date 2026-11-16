@@ -7,14 +7,32 @@ import os
 /// What code tabs ask of the shell (CodeHost), over the repositories' git and a name index per repository folder:
 /// a code card's segment as the VS Code version records it (Sources.makeSegment, turned into the model's Segment
 /// here, the one place that knows both), the cards of the board in front showing a file's lines, and where a name is
-/// defined (the name index, no language server)
+/// defined (the name index, no language server). Where a file's lines are on the vault's boards, and a card's file
+/// opened from its header, are ShellCodeCards.swift's
 @MainActor final class ShellCode: CodeHost {
-  private let git: GitCache
+  let git: GitCache
   /// The board in front, beside the pane; nil: none
   private let board: @MainActor () -> Board?
-  private var repos: [String: Repo] = [:]
+  /// The vault's boards as they are now; nil: no vault
+  let boards: @MainActor () -> Boards?
+  /// The repositories added on this Mac, where a card's source is found and added; nil: none can be (tests)
+  weak var repositories: RepositoriesModel?
+  /// The pane whose code tabs hear that what is on boards changed
+  weak var pane: ReadingPane?
+  /// A card's place shown: its board, and the card on it
+  var goTo: @MainActor (BoardID, CardID) -> Void = { _, _ in }
+  var repos: [String: Repo] = [:]
   /// Each repository folder's git root and origin, once read
   private var infos: [String: GitInfo] = [:]
+  // What is on boards (ShellCodeCards.swift)
+  /// The code cards of the boards not open, as read from their files, with when those were written
+  var read: [BoardID: Read] = [:]
+  /// The open boards' documents watched, and their code cards as last seen
+  var watched: [BoardID: Watched] = [:]
+  /// Where a card's lines are in a file's text, once found (nil: not there)
+  var found: [LinesKey: ClosedRange<Int>?] = [:]
+  /// A change is being told, on the next turn
+  var telling = false
   private nonisolated static let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "CodeBoard", category: "code")
 
   /// A repository folder as the workspace reads it: links resolved, as git prints its paths
@@ -31,9 +49,10 @@ import os
     var remote: String?
   }
 
-  init(git: GitCache, board: @escaping @MainActor () -> Board?) {
+  init(git: GitCache, board: @escaping @MainActor () -> Board?, boards: @escaping @MainActor () -> Boards? = { nil }) {
     self.git = git
     self.board = board
+    self.boards = boards
   }
 
   var canAdd: Bool { board() != nil }
@@ -43,7 +62,7 @@ import os
     Task { await r.sources.lookup.index.start() }
   }
 
-  private func repo(_ folder: String) -> Repo {
+  func repo(_ folder: String) -> Repo {
     if let r = repos[folder] { return r }
     let root = Self.realPath(folder)
     let ws = FolderWorkspace(root: root) { level, text in
@@ -115,6 +134,9 @@ import os
       id: SegmentID(rawValue: Board.newID("s")), source: source, language: s.lang, firstLine: s.start, lines: s.text,
       symbol: s.symbol.flatMap { r in kind.map { Symbol(name: r.qual, kind: $0) } }, scope: s.scope)
   }
+
+  /// The board in front's id
+  var front: BoardID? { board()?.id }
 
   func counts(_ f: CodeFile, _ ranges: [ClosedRange<Int>]) -> [Int] {
     let segs =

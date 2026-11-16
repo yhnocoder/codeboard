@@ -236,6 +236,38 @@ private let seg = SegmentID(rawValue: "s1")
     #expect(c.layout.rows.isEmpty && c.layout.segmentLines.isEmpty)
   }
 
+  /// A code card's file name (CodeHead.tsx .cpath) opens its file on the release where it was pressed, when the shell
+  /// opens files: not when dragged, which moves the card, nor again on a double-click's second press; a double-click
+  /// on the title still renames the card
+  @Test func aCodeCardsFileNameOpensItsFileOnAClickNotOnADragAndTheTitleStillRenames() async throws {
+    let r = try await Rig(Self.board(), zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    #expect(c.head(cid("c"))?.path == nil, "nothing opens files: no name to press")
+    var opened: [(SegmentID, CGRect)] = []
+    c.onOpenCode = { opened.append(($0.id, $1)) }
+    let box = try #require(c.head(cid("c"))?.path)
+    func name() -> CGPoint { CGPoint(x: r.rect("c").minX + box.midX, y: r.rect("c").minY + box.midY) }
+    let at = name()
+    hoverOver(r, at)
+    #expect(c.hoveredHead?.0 == cid("c") && c.hoveredHead?.1 == .path)
+    r.click(at)
+    #expect(opened.map(\.0) == [seg] && !r.doc.history.canUndo, "opened, nothing changed")
+    #expect(opened.first.map { $0.1.insetBy(dx: -0.5, dy: -0.5).contains(c.viewPoint(at)) } == true, "at the name")
+    // dragged, selected as it is now: the card moves, nothing opens
+    r.drag(at, CGPoint(x: at.x + 80, y: at.y + 40))
+    #expect(opened.count == 1 && r.card("c").x == 80 && r.doc.undoName == "Move")
+    await r.settle()
+    // a double-click: opened by its first click alone, no title field
+    r.doubleClick(name())
+    await r.settle()
+    #expect(opened.count == 2 && c.inPlace == nil && !c.isEditing)
+    // on the title: its field
+    r.doubleClick(CGPoint(x: r.rect("c").minX + box.minX - c.theme.headerGap - 3, y: name().y))
+    await r.settle()
+    #expect(opened.count == 2 && c.inPlace?.what == .card(cid("c")))
+  }
+
   @Test func doubleClickingTheGripFitsTheCard() async throws {
     let r = try await Rig(Self.board(), zoom: 1)
     defer { r.close() }

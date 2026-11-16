@@ -17,8 +17,11 @@ public enum RepoMatch: Hashable, Sendable {
 extension Repositories {
   /// A git source's commit. A repository that has the URL but not the commit fetches it from its origin (a clone, or a
   /// folder with an origin) before saying it is missing. Without a URL: the repository the checkout folder's origin
-  /// or path names, else any added repository that has the commit
-  public func locate(repository: String?, commit: String, checkout: String?) async throws(GitError) -> RepoMatch {
+  /// or path names, else any added repository that has the commit. `fetch` false: only what is here already, so that
+  /// the owner can say it is fetching before it asks again
+  public func locate(repository: String?, commit: String, checkout: String?, fetch: Bool = true) async throws(GitError)
+    -> RepoMatch
+  {
     var isDir: ObjCBool = false
     var here: String?
     if let c = checkout, NodePath.isAbsolute(c), FileManager.default.fileExists(atPath: c, isDirectory: &isDir),
@@ -40,7 +43,7 @@ extension Repositories {
       roots.append((r, root))
     }
     guard let first = named.first else { return .notAdded(address: address, folder: here) }
-    for (r, root) in roots {
+    for (r, root) in roots where fetch {
       _ = try await git.runner.status(root, ["fetch", "--quiet", "origin", commit])
       if try await has(root, commit) { return .found(r, root: root) }
     }

@@ -503,6 +503,49 @@ final class FakeMeaning: MeaningIndex {
     await until("its tab open", in: w) { w.shell.reading.tabs.map(\.title) == ["Tidal mills"] }
   }
 
+  /// ⌘K's functions and classes come after the other groups, asked of the shell apart and merged in when they come
+  /// without moving the row highlighted; Return opens one, ⌥ adds it to the board
+  @Test func functionsAndClassesMergeInLastWithoutMovingTheHighlightedRow() async throws {
+    let w = try await opened()
+    defer { w.close() }
+    try await open(w, "k")
+    let s = BoardPanes.search
+    let (gate, release) = AsyncStream<Void>.makeStream()
+    nonisolated(unsafe) var asked: [String] = []
+    s.onCode = { q in
+      asked.append(q)
+      for await _ in gate { break }
+      return ["waiting_list", "Waiting"].map {
+        SearchPanel.Symbol(
+          label: $0, detail: "pkg/q.py:3", repository: "/r", name: "r", path: "pkg/q.py", start: 3, line: 3, end: 9,
+          isClass: $0 == "Waiting")
+      }
+    }
+    var picked: [(String, Bool)] = []
+    s.onCodePick = { picked.append(($0.label, $1)) }
+    _ = await type(w, "waiting", rows: 4)
+    await press("ArrowDown")
+    await press("ArrowDown")
+    #expect(await shown()?.on == 2 && asked == ["waiting"])
+    release.yield()
+    await until("the code group", in: w) { await shown()?.rows.count == 6 }
+    let found = try #require(await shown())
+    #expect(found.groups == ["Cards on Boards", "Sidenotes", "Functions & Classes"])
+    #expect(found.rows.suffix(2) == ["waiting_list", "Waiting"] && found.details.last == "pkg/q.py:3")
+    #expect(found.on == 2 && found.rows[2] == "Waiting elsewhere", "the highlighted row stays")
+    let foot = "return palette.state().foot"
+    #expect(await s.run(foot) as? String == " Go to Card", "on a card")
+    for _ in 0..<3 { await press("ArrowDown") }
+    #expect(await s.run(foot) as? String == " Open | ⌥↵ Add to Board", "on a function: Return opens it, ⌥↵ adds it")
+    await press("Enter")
+    await until("opened", in: w) { !picked.isEmpty }
+    #expect(picked.first?.0 == "Waiting" && picked.first?.1 == false)
+    await press("ArrowUp")
+    await press("Enter", alt: true)
+    await until("added", in: w) { picked.count == 2 }
+    #expect(picked.last?.0 == "waiting_list" && picked.last?.1 == true)
+  }
+
   @Test func bothKeysAreInTheShortcutList() {
     let view = KeysPanel.rows().first { $0.name == "View" }?.rows ?? []
     #expect(view.prefix(2).map(\.key) == ["⌘K", "⌘F"])

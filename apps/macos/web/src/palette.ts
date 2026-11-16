@@ -2,10 +2,11 @@
 // (ui/Palette.tsx, ui/PalettePreview.tsx), the same markup and classes, built here without Solid, for what the app
 // searches: cards and sidenotes, on all boards or this board (Tab switches). Typing asks native for the words' matches
 // (BoardSearch), for the Resources group (entries by title, authors or text, the words marked in their rows; ⌘F: the
-// entries this board's cards take from) and, a little later, for Related by Meaning (asked again while indexing; the
-// reranker's order, when it answers, slides the rows into place); ↑ ↓ move, Return goes to the card or opens the entry
-// at the place found, ⌥↵ puts an entry's passage on the board, Esc or a click outside closes. Not here: Add Function,
-// functions, files and entry points, pictures, marks and feedback.
+// entries this board's cards take from), on all boards for the functions and classes of the repositories indexed (an
+// answer arriving keeps the row highlighted) and, a little later, for Related by Meaning (asked again while indexing;
+// the reranker's order, when it answers, slides the rows into place); ↑ ↓ move, Return goes to the card, opens the
+// entry at the place found or opens the function, ⌥↵ puts an entry's passage or the function on the board, Esc or a
+// click outside closes. Not here: files and entry points, pictures, marks and feedback.
 import type { Markdown } from "@yhnocoder/markdown";
 import { scrollIntoBox } from "@yhnocoder/markdown/ui";
 
@@ -39,7 +40,20 @@ type ResourceItem = {
   images: string;
   faint?: undefined;
 };
-type Item = CardItem | ResourceItem;
+/** A function or class (SearchPanel.Symbol): native takes it back whole when it is picked */
+type SymbolItem = {
+  kind: "symbol";
+  label: string;
+  detail: string;
+  glyph: string;
+  repository: string;
+  path: string;
+  line: number;
+  /** Its first lines, fenced, for the preview pane */
+  preview: string;
+  faint?: undefined;
+};
+type Item = CardItem | ResourceItem | SymbolItem;
 type Group = Item["kind"] | "meaning";
 type More = { kind: "more"; group: Group; n: number };
 type Row = Item | More;
@@ -52,6 +66,8 @@ type Posted =
   | { type: "pmeaning"; n: number; q: string; here: boolean }
   | { type: "presources"; n: number; q: string; here: boolean }
   | { type: "prpick"; open: string; collect?: string }
+  | { type: "pcode"; n: number; q: string }
+  | { type: "pcodepick"; item: string; add: boolean }
   | { type: "ppick"; board: string; card: string; sidenote?: string; shelf?: string }
   | { type: "pclose" };
 const post = (m: Posted) => window.webkit?.messageHandlers.note.postMessage(m);
@@ -72,6 +88,7 @@ const GROUPS: [Group, string][] = [
   ["sidenote", "Sidenotes"],
   ["resource", "Resources"],
   ["meaning", "Related by Meaning"],
+  ["symbol", "Functions & Classes"],
 ];
 const HIGHLIGHT = "palette-hit";
 
@@ -112,6 +129,8 @@ type Open = {
   res: CardItem[];
   /** The Resources group's answer and what it is for */
   resources: { items: ResourceItem[]; q: string; here: boolean };
+  /** The functions and classes, and what they are for (asked on all boards only) */
+  code: { items: SymbolItem[]; q: string; here: boolean };
   /** The query the results are for */
   shown: string;
   busy: boolean;
@@ -135,14 +154,22 @@ const meaning = (): Meaning =>
 /** The Resources group as shown: none for an earlier query or the other scope */
 const resources = (): ResourceItem[] =>
   o && o.resources.q === trimmed() && o.resources.here === o.here ? o.resources.items : [];
+/** The functions and classes as shown: none for an earlier query or the other scope */
+const code = (): SymbolItem[] => (o && o.code.q === trimmed() && o.code.here === o.here ? o.code.items : []);
 const keyOf = (it: Item) =>
-  it.kind === "resource" ? `r:${it.entry}` : it.kind === "sidenote" ? `s:${it.sidenote}` : `c:${it.card}`;
+  it.kind === "symbol"
+    ? `y:${it.repository}:${it.path}:${it.line}:${it.label}`
+    : it.kind === "resource"
+      ? `r:${it.entry}`
+      : it.kind === "sidenote"
+        ? `s:${it.sidenote}`
+        : `c:${it.card}`;
 
 function groupOf(k: Group): Row[] {
   if (!o) return [];
   // Related by Meaning is never cut short
   if (k === "meaning") return meaning().items;
-  const all: Item[] = k === "resource" ? resources() : o.res.filter((r) => r.kind === k);
+  const all: Item[] = k === "resource" ? resources() : k === "symbol" ? code() : o.res.filter((r) => r.kind === k);
   const open = o.opened.q === trimmed() && o.opened.kinds.has(k);
   if (open || all.length <= GROUP_SHOWN + 1) return all;
   return [...all.slice(0, GROUP_SHOWN), { kind: "more", group: k, n: all.length - GROUP_SHOWN }];
@@ -193,6 +220,24 @@ function row(it: Row, idx: number): HTMLButtonElement {
     b.addEventListener("click", (e) => run(it, e.altKey));
     return b;
   }
+  if (it.kind === "symbol") {
+    // the name has the room first, the path what is left down to nothing. Cut, the name loses its owner's start
+    // before any of the function's own name, and the path its start (each bdi keeps its text read left to right)
+    const [, owner, own] = /^(.*[.:])?([^.:]*)$/.exec(it.label) ?? ["", "", it.label];
+    const cut = { overflow: "hidden", textOverflow: "ellipsis", minWidth: "0" };
+    const pre = el("span", "", el("bdi", "", owner ?? ""));
+    Object.assign(pre.style, cut, { flex: "0 1 auto", direction: "rtl" });
+    const fn = el("span", "", own ?? "");
+    Object.assign(fn.style, cut, { flex: "none", maxWidth: "100%" });
+    const name = el("span", "lb", pre, fn);
+    Object.assign(name.style, { flex: "0 1 auto", display: "flex" });
+    const where = el("small", "", el("bdi", "", it.detail));
+    Object.assign(where.style, { flex: "1 1 0", maxWidth: "none", paddingLeft: "0", direction: "rtl" });
+    kind.textContent = it.glyph;
+    b.append(kind, name, where, el("span", "pmk"));
+    b.addEventListener("click", (e) => run(it, e.altKey));
+    return b;
+  }
   if (it.shelf) kind.innerHTML = svg(SHELF, 13);
   else kind.textContent = it.kind === "card" ? "▣" : "◦";
   const lb = el("span", "lb md-inline");
@@ -221,7 +266,7 @@ function drawList() {
     } else if (rows.length) kids.push(el("div", "pgh", k === "card" && s.here ? "Cards on This Board" : title));
     for (const r of rows) kids.push(row(r, idx++));
   }
-  if (!s.res.length && !rs.length && !m.items.length && !m.error && !s.busy) {
+  if (!s.res.length && !rs.length && !code().length && !m.items.length && !m.error && !s.busy) {
     const q = trimmed();
     kids.push(
       el(
@@ -257,13 +302,15 @@ function drawList() {
   if (on) scrollIntoBox(on, "nearest");
 }
 
-/** The footer for the row highlighted: Return goes to a card or opens an entry; ⌥↵ only for an entry's passage */
+/** The footer for the row highlighted: Return goes to a card, opens an entry or a function; ⌥↵ only for an entry's
+ *  passage or a function */
 function drawFoot() {
   if (!o) return;
   const r = ordered()[o.i];
   const res = r?.kind === "resource" ? r : undefined;
-  o.go.textContent = res ? " Open" : " Go to Card";
-  o.add.hidden = !res?.collect;
+  const sym = r?.kind === "symbol";
+  o.go.textContent = res || sym ? " Open" : " Go to Card";
+  o.add.hidden = !(sym || res?.collect);
 }
 
 function drawScope() {
@@ -317,6 +364,7 @@ function slide(list: HTMLElement, was: Map<string, number>) {
 }
 
 function run(it: Item, alt: boolean) {
+  if (it.kind === "symbol") return post({ type: "pcodepick", item: JSON.stringify(it), add: alt });
   if (it.kind === "resource") {
     if (alt && !it.collect) return;
     return post({ type: "prpick", open: it.open, collect: alt ? it.collect : undefined });
@@ -338,6 +386,7 @@ function ask() {
       s.busy = true;
       post({ type: "psearch", n, q, here: s.here });
       post({ type: "presources", n, q, here: s.here });
+      if (!s.here) post({ type: "pcode", n, q });
     },
     q ? 90 : 0,
   );
@@ -378,8 +427,7 @@ function meaningAnswer(n: number, m: Meaning) {
     slide(s.list, was);
     return schedulePreview();
   }
-  s.meaning = { ...m, q: trimmed(), here: s.here };
-  drawList();
+  keeping(() => (s.meaning = { ...m, q: trimmed(), here: s.here }));
   schedulePreview();
   if (m.left) askMeaning(true);
 }
@@ -389,6 +437,25 @@ function resourcesAnswer(n: number, items: ResourceItem[]) {
   if (!o || n !== o.asked) return;
   o.resources = { items, q: trimmed(), here: o.here };
   drawList();
+  schedulePreview();
+}
+
+/** A change of what is listed that keeps the row highlighted where it went */
+function keeping(change: () => void) {
+  if (!o) return;
+  const r = ordered()[o.i];
+  const on = r && r.kind !== "more" ? keyOf(r) : undefined;
+  change();
+  const at = on === undefined ? -1 : ordered().findIndex((x) => x.kind !== "more" && keyOf(x) === on);
+  if (at >= 0) o.i = at;
+  drawList();
+}
+
+/** Native's answer to pcode n: the functions and classes, merged in without moving the row highlighted */
+function codeAnswer(n: number, items: SymbolItem[]) {
+  if (!o || n !== o.asked) return;
+  const s = o;
+  keeping(() => (s.code = { items, q: trimmed(), here: s.here }));
   schedulePreview();
 }
 
@@ -517,6 +584,16 @@ function schedulePreview() {
 function preview(it: Item | undefined) {
   if (!o) return;
   o.previewed = it;
+  if (it?.kind === "symbol") {
+    o.where.className = "ppw";
+    o.where.textContent = it.detail;
+    const md = mdOf("");
+    const h = it.preview ? md.render(it.preview) : "";
+    o.body.innerHTML = h;
+    md.hydrate(o.body, h);
+    o.body.scrollTop = 0;
+    return mark([]);
+  }
   if (!it) {
     o.where.className = "ppempty";
     o.where.textContent = "Nothing to preview";
@@ -635,6 +712,7 @@ export const palette = {
       here: d.here,
       res: [],
       resources: { items: [], q: "", here: d.here },
+      code: { items: [], q: "", here: d.here },
       shown: "",
       busy: false,
       i: 0,
@@ -659,6 +737,8 @@ export const palette = {
   results: answer,
   /** Native's answer to presources n */
   resources: resourcesAnswer,
+  /** Native's answer to pcode n */
+  code: codeAnswer,
   /** Native's answer to pmeaning n (twice when the reranker answers too) */
   meaning: meaningAnswer,
   clear() {

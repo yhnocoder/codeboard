@@ -33,9 +33,18 @@ import UniformTypeIdentifiers
         CodeFile(repository: r.path, name: RepositoriesModel.name(r), path: rel), preview: preview)
     }
     shell.reading.commitOf = { [weak repositories] in await repositories?.head(of: $0) }
-    // code taken to this window's board, ⌘-click's definitions
-    shell.reading.codeHost = repositories.git.map {
-      ShellCode(git: $0, board: { [weak root] in root?.panes.addBoard })
+    // code taken to this window's board, ⌘-click's definitions, where code is on the vault's boards
+    let code = repositories.git.map {
+      ShellCode(
+        git: $0, board: { [weak root] in root?.panes.addBoard }, boards: { [weak root] in root?.panes.vaultBoards })
+    }
+    code?.repositories = repositories
+    code?.pane = shell.reading
+    code?.goTo = { [weak root] in root?.panes.goToCard($0, $1) }
+    shell.reading.codeHost = code
+    // a repository opened in the sidebar has its names indexed, for ⌘K
+    track { [weak repositories, weak code] in
+      if let r = repositories?.opened { code?.opened(r.path) }
     }
     track { [weak shell, weak repositories] in
       let f = shell?.reading.currentCode
