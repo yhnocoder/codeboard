@@ -301,7 +301,7 @@
         },
         "card headers": {
           "sources": ["CodeBoardCanvas/CanvasHeadActs.swift", "CodeBoardModel/HeadingSplit.swift"],
-          "tests": ["CanvasHeadActsTests", "CanvasHeadingTests", "CanvasSourceTests"]
+          "tests": ["CanvasHeadActsTests", "CanvasHeadingTests", "CanvasSourceTests", "CanvasVersionsTests"]
         },
         "camera": {
           "sources": [
@@ -518,6 +518,15 @@
             "CodeBoardShell/ShellCodeCards.swift"
           ],
           "tests": ["RepositoriesBlockTests", "ShellCodeTests"]
+        },
+        "versions": {
+          "sources": [
+            "CodeBoardShell/ShellVersions.swift",
+            "CodeBoardWorkspace/Versions.swift",
+            "CodeBoardWorkspace/Diff.swift",
+            "CodeBoardModel/Lines.swift"
+          ],
+          "tests": ["ShellVersionsTests"]
         },
         "web": {
           "sources": [

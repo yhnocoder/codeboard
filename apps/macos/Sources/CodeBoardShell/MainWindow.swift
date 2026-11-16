@@ -41,6 +41,7 @@ import UniformTypeIdentifiers
     code?.repositories = repositories
     code?.pane = shell.reading
     code?.goTo = { [weak root] in root?.panes.goToCard($0, $1) }
+    code?.versions.shown = { [weak root] in root?.panes.shownBoards ?? [] }
     shell.reading.codeHost = code
     // a repository opened in the sidebar has its names indexed, for ⌘K
     track { [weak repositories, weak code] in

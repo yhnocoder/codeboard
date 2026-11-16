@@ -369,6 +369,15 @@ public final class CanvasView: NSView {
   public var onOpenCode: ((Segment, CGRect) -> Void)?
   /// A press on a code card's file name, which opens it when let go where it was pressed
   var codePathPress: CardID?
+  /// What the shell's version checks found of the board's segments (none: as pinned, or not checked); its header shows
+  /// them on each code card (CodeHead.tsx .rev). Changed cards are drawn again in one refresh, their code not laid out
+  /// again
+  public var versions: [SegmentID: VersionState] = [:] {
+    didSet { if versions != oldValue { refresh() } }
+  }
+  /// A code card's version chip clicked (its newer version, or its changes not committed), with the chip's place in
+  /// this view; nil: the chips are no buttons
+  public var onVersion: ((CardID, VersionAsk, CGRect) -> Void)?
   /// The pictures of resource blocks the provider gave, and those asked for
   var sourcePictures = SourcePictures()
   /// The pages being read now, by card ("card/row" for a list's row), and their tasks

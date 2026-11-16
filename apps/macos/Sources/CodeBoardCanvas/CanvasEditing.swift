@@ -197,6 +197,7 @@ extension CanvasView {
     fetchPictures(board)
     let remote = remotePictures
     let sources = sourceInfo(board)
+    let versions = self.versions
     refreshing = Task {
       let r = await Task.detached(priority: .userInitiated) {
         let package = vault.url(of: vb.path)
@@ -226,7 +227,8 @@ extension CanvasView {
         inline.merge(await CanvasView.measureInline(inlineTodo, theme: theme, display: display)) { a, _ in a }
         let s = Scene(
           board, package: package, vault: vault, theme: theme, highlighter: highlighter ?? Highlighter(), sizes: sizes,
-          inline: inline, reusing: old, vaultSeen: seen, fetching: fetching, remote: remote, sources: sources)
+          inline: inline, reusing: old, vaultSeen: seen, fetching: fetching, remote: remote, sources: sources,
+          versions: versions)
         var before: [Scene.Owner: Scene.Item] = [:]
         for it in old.items { if let o = it.owner { before[o] = it } }
         var fresh: [Int: Fresh] = [:]
