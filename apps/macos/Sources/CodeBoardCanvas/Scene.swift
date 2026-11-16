@@ -1,9 +1,10 @@
-import CodeBoardMarkdown
-import CodeBoardMarkdownUI
+import CodeBoardMarkdownLooks
 import CodeBoardModel
 import CodeBoardNotes
 import CoreGraphics
 import Foundation
+import MarkdownCore
+import MarkdownUI
 import TreeSitterHighlight
 
 /// Everything the canvas shows of one board, worked out once when it opens: the items that get bitmaps (cards, section
@@ -584,7 +585,7 @@ struct Scene: Sendable {
   static func desc(_ text: String?, width: CGFloat, folder: URL, theme t: Theme) -> Drawing.Desc? {
     guard let text, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
     do {
-      try MarkdownAssets.fonts.get()
+      try MarkdownLooks.fonts.get()
     } catch {
       NativeNotes.report(error)
       return nil

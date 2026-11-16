@@ -1,12 +1,12 @@
 import AppKit
-import CodeBoardMarkdown
 import CodeBoardModel
 import CodeBoardNotes
-import CodeBoardTestGuard
+import MarkdownCore
+import TestGuard
 import Testing
 
 @testable import CodeBoardCanvas
-@testable import CodeBoardMarkdownUI
+@testable import MarkdownUI
 
 // Sidenotes on the real canvas (as CanvasEditTests: a window of its own far off screen, events straight to the canvas,
 // frames ticked by the test): a marker for each kind of anchor where the web board puts it, hit areas that keep their

@@ -1,7 +1,7 @@
 import AppKit
-import CodeBoardMarkdown
 import CodeBoardModel
 import CodeBoardNotes
+import MarkdownCore
 import SwiftUI
 import TreeSitterHighlight
 

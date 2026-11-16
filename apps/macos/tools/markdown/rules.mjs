@@ -1,4 +1,4 @@
-// Writes Sources/CodeBoardMarkdown/Lexer/MarkedRules.swift: the GFM block and inline rules of the marked version the
+// Writes Sources/MarkdownCore/Lexer/MarkedRules.swift: the GFM block and inline rules of the marked version the
 // TypeScript Markdown package parses with, as JavaScript regex sources. The Swift lexer compiles them through JSRegex,
 // which maps the few places where JavaScript and ICU regexes differ. Run after a marked upgrade:
 //   node apps/macos/tools/markdown/rules.mjs [--out <the component's folder>]
@@ -9,7 +9,7 @@ import { Lexer } from "marked";
 import { componentRoot } from "./component.mjs";
 
 const version = createRequire(import.meta.url)("marked/package.json").version;
-const out = join(componentRoot(), "Sources/CodeBoardMarkdown/Lexer/MarkedRules.swift");
+const out = join(componentRoot(), "Sources/MarkdownCore/Lexer/MarkedRules.swift");
 
 // a regex source as Swift raw-string pieces of at most 80 characters, joined with +
 function literal(raw) {

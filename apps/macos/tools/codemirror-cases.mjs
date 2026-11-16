@@ -3,7 +3,7 @@
 // key and click on a set of texts and selections, for CodeCore's CodeEditor to match (Tests/CodeCoreTests/
 // CodeMirrorCaseTests.swift). The editor runs in headless Chromium; each text's layout (the row and x of each offset)
 // is written too, so the Swift side moves over the same rows:
-//   node apps/macos/tools/codemirror-cases.mjs > apps/macos/Tests/CodeCoreTests/Fixtures/codemirror.json
+//   node apps/macos/tools/codemirror-cases.mjs > ../better-swift-markdown/Tests/CodeCoreTests/Fixtures/codemirror.json
 import * as esbuild from "esbuild";
 import { launch } from "../../../tools/test/chromium.mjs";
 

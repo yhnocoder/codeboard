@@ -1,11 +1,12 @@
 import AppKit
-import CodeBoardMarkdown
-import CodeBoardMarkdownUI
+import CodeBoardMarkdownLooks
 import CodeBoardModel
 import CodeBoardNotes
 import CodeUI
 import Foundation
 import IOSurface
+import MarkdownCore
+import MarkdownUI
 import OSLog
 import Synchronization
 import TreeSitterHighlight
@@ -85,12 +86,13 @@ package final class NativeNotes: NoteDisplay {
     let binary =
       dladdr(#dsohandle, &info) != 0 && info.dli_fname != nil
       ? MeasuredSizes.stamp(URL(filePath: String(cString: info.dli_fname))) : "?"
-    let assets = MarkdownAssets.assets
+    let assets = MarkdownLooks.assets
     let fonts =
       ((try? FileManager.default.contentsOfDirectory(
         atPath: assets.appending(path: "assets").path(percentEncoded: false)))
       ?? []).filter { $0.hasSuffix(".woff2") }.sorted()
-    return ([binary, MeasuredSizes.stamp(assets.appending(path: "engines.js"))] + fonts).joined(separator: "\n")
+    return ([binary, MarkdownAssets.enginesScript.map { MeasuredSizes.stamp($0) } ?? "?"] + fonts).joined(
+      separator: "\n")
   }()
 
   private static let reported = Mutex(false)
@@ -115,11 +117,11 @@ package final class NativeNotes: NoteDisplay {
   package static func warmUp() {
     Task.detached(priority: .utility) {
       do {
-        try MarkdownAssets.fonts.get()
-        MarkdownAssets.warmUp(math: try MarkdownAssets.engines())
+        try MarkdownLooks.fonts.get()
+        MarkdownLooks.warmUp(math: try MarkdownAssets.engines())
       } catch {
         report(error)
-        if (try? MarkdownAssets.fonts.get()) != nil { MarkdownAssets.warmUp(math: nil) }
+        if (try? MarkdownLooks.fonts.get()) != nil { MarkdownLooks.warmUp(math: nil) }
       }
     }
     // its queries compiled meanwhile: tens of milliseconds the first Note with code, or the first board, waits for
@@ -333,7 +335,7 @@ package final class NativeNotes: NoteDisplay {
   private func laidOut(
     _ note: NoteBody, width: Double, folder: URL, look: String, dark: Bool, refs: [NoteRef], hideHead: Bool
   ) throws -> Laid {
-    try MarkdownAssets.fonts.get()
+    try MarkdownLooks.fonts.get()
     // its pictures at web addresses: laid out again once one is read or fails
     let remote = remoteState(note.markdown)
     let key = key(note, width: width, folder: folder, look: look, dark: dark, refs: refs, hideHead: hideHead, remote)

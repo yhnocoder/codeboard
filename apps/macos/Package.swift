@@ -4,9 +4,11 @@ import PackageDescription
 let package = Package(
   name: "CodeBoard",
   platforms: [.macOS(.v27)],
-  // tree-sitter and the grammars the TypeScript side runs (@vscode/tree-sitter-wasm 0.3.1 for the runtime, Python and
-  // Rust; packages/analysis's tree-sitter-cuda for C, C++ and CUDA), so both read code with the same grammars
+  // the code and Markdown components (CodeCore, CodeUI, TreeSitterHighlight, MarkdownCore, MarkdownUI) and the test
+  // guard: a package of their own, knowing nothing of CodeBoard
   dependencies: [
+    .package(url: "https://github.com/yhnocoder/better-swift-markdown", branch: "import"),
+    // tree-sitter and the grammars, as the package pins them, for CodeBoardAnalysis
     .package(url: "https://github.com/tree-sitter/tree-sitter", exact: "0.25.10"),
     .package(url: "https://github.com/tree-sitter/tree-sitter-python", exact: "0.25.0"),
     // untagged: v0.24.0 and six commits
@@ -17,40 +19,32 @@ let package = Package(
     .package(url: "https://github.com/yhnocoder/tree-sitter-cuda", exact: "0.21.2-cb.3"),
   ],
   targets: [
-    // The code component, to share with other apps: it knows nothing of CodeBoard (CodeComponentBoundaryTests).
-    // CodeCore: the rules, on text alone; CodeUI: laying code out and drawing it
-    .target(name: "CodeCore"),
-    .target(name: "CodeUI", dependencies: ["CodeCore"]),
-    .target(name: "CodeBoardModel", dependencies: ["CodeCore"]),
-    .target(
-      name: "TreeSitterHighlight",
-      dependencies: [
-        "CodeUI",
-        .product(name: "TreeSitter", package: "tree-sitter"),
-        .product(name: "TreeSitterPython", package: "tree-sitter-python"),
-        .product(name: "TreeSitterRust", package: "tree-sitter-rust"),
-        .product(name: "TreeSitterCUDA", package: "tree-sitter-cuda"),
-        "CTreeSitterScanners",
-      ]
-    ),
-    // The Python grammar's external scanner, which its package leaves out (include/scanners.h says why)
-    .target(
-      name: "CTreeSitterScanners",
-      exclude: ["python/LICENSE"],
-      cSettings: [.headerSearchPath("."), .disableWarning("shorten-64-to-32")]
-    ),
+    .target(name: "CodeBoardModel", dependencies: [.product(name: "CodeCore", package: "better-swift-markdown")]),
     .target(name: "CodeBoardNotes", dependencies: ["CodeBoardModel"]),
-    // what a test process may not show or touch (menus, alerts, panels, the browser, Finder, the clipboard), replaced
-    .target(name: "CodeBoardTestGuard"),
+    // the board's looks (Warm Ink, Ink Wash, light and dark) as the Markdown component's themes, and its fonts
+    .target(
+      name: "CodeBoardMarkdownLooks",
+      dependencies: [
+        .product(name: "MarkdownCore", package: "better-swift-markdown"),
+        .product(name: "MarkdownUI", package: "better-swift-markdown"),
+      ]),
     .target(
       name: "CodeBoardCanvas",
       dependencies: [
-        "CodeBoardModel", "TreeSitterHighlight", "CodeBoardNotes", "CodeBoardTestGuard", "CodeBoardMarkdown",
-        "CodeBoardMarkdownUI", "CodeUI",
+        "CodeBoardModel", "CodeBoardNotes", "CodeBoardMarkdownLooks",
+        .product(name: "TreeSitterHighlight", package: "better-swift-markdown"),
+        .product(name: "TestGuard", package: "better-swift-markdown"),
+        .product(name: "MarkdownCore", package: "better-swift-markdown"),
+        .product(name: "MarkdownUI", package: "better-swift-markdown"),
+        .product(name: "CodeUI", package: "better-swift-markdown"),
       ]),
     .target(name: "CodeBoardShell", dependencies: ["CodeBoardModel", "CodeBoardCanvas", "CodeBoardNotes"]),
     .executableTarget(name: "CodeBoard", dependencies: ["CodeBoardShell"]),
-    .executableTarget(name: "CanvasBench", dependencies: ["CodeBoardCanvas", "CodeBoardNotes", "TreeSitterHighlight"]),
+    .executableTarget(
+      name: "CanvasBench",
+      dependencies: [
+        "CodeBoardCanvas", "CodeBoardNotes", .product(name: "TreeSitterHighlight", package: "better-swift-markdown"),
+      ]),
     // the acceptance driver (tools/accept/README.md): it runs CodeBoard, or with ACCEPT_APP=demo the Markdown demo, in
     // its own process
     .executableTarget(
@@ -58,82 +52,80 @@ let package = Package(
     .executableTarget(
       name: "LookCompare",
       dependencies: [
-        "CodeBoardCanvas", "CodeBoardModel", "CodeBoardNotes", "TreeSitterHighlight", "CodeBoardShell",
-        "CodeBoardMarkdown",
-        "CodeBoardMarkdownUI",
+        "CodeBoardCanvas", "CodeBoardModel", "CodeBoardNotes", "CodeBoardShell", "CodeBoardMarkdownLooks",
+        .product(name: "TreeSitterHighlight", package: "better-swift-markdown"),
+        .product(name: "MarkdownCore", package: "better-swift-markdown"),
+        .product(name: "MarkdownUI", package: "better-swift-markdown"),
       ]),
     .executableTarget(
       name: "Drive", dependencies: ["CodeBoardShell", "CodeBoardCanvas", "CodeBoardModel", "CodeBoardNotes"]),
+    // the board's Notes drawn by the component beside the web board's (tools/markdown/look.mjs)
+    .executableTarget(
+      name: "MarkdownLook",
+      dependencies: [
+        "CodeBoardMarkdownLooks",
+        .product(name: "MarkdownCore", package: "better-swift-markdown"),
+        .product(name: "MarkdownUI", package: "better-swift-markdown"),
+        .product(name: "CodeUI", package: "better-swift-markdown"),
+        .product(name: "TreeSitterHighlight", package: "better-swift-markdown"),
+      ]),
+    // a window to try the component in, standing alone (tools/markdown/make-demo.sh packages it); code coloured by
+    // TreeSitterHighlight, as the look tool colours it; a vault's Notes read with CodeBoardModel. The kit runs it in any
+    // process (runMarkdownDemo), for a driver too
+    .target(
+      name: "MarkdownDemoKit",
+      dependencies: [
+        "CodeBoardModel", "CodeBoardMarkdownLooks",
+        .product(name: "MarkdownCore", package: "better-swift-markdown"),
+        .product(name: "MarkdownUI", package: "better-swift-markdown"),
+        .product(name: "CodeUI", package: "better-swift-markdown"),
+        .product(name: "TreeSitterHighlight", package: "better-swift-markdown"),
+        .product(name: "TestGuard", package: "better-swift-markdown"),
+      ]),
+    .executableTarget(name: "MarkdownDemo", dependencies: ["MarkdownDemoKit"]),
+    // Code analysis for reading code (symbols, calls, selections, peek, cross-language boundaries), a port of
+    // packages/analysis with its tests as the specification. Foundation and tree-sitter only, with its own small
+    // tree-sitter wrapper instead of TreeSitterHighlight's; no target depends on it yet. TreeSitterHighlight is linked,
+    // not imported: it carries the Python grammar's external scanner, which the grammar's package leaves out
+    .target(
+      name: "CodeBoardAnalysis",
+      dependencies: [
+        .product(name: "TreeSitter", package: "tree-sitter"),
+        .product(name: "TreeSitterPython", package: "tree-sitter-python"),
+        .product(name: "TreeSitterRust", package: "tree-sitter-rust"),
+        .product(name: "TreeSitterCUDA", package: "tree-sitter-cuda"),
+        .product(name: "TreeSitterHighlight", package: "better-swift-markdown"),
+      ]),
+    .testTarget(name: "CodeBoardAnalysisTests", dependencies: ["CodeBoardAnalysis"], resources: [.copy("Fixtures")]),
     .testTarget(name: "CodeBoardModelTests", dependencies: ["CodeBoardModel"], resources: [.copy("Fixtures")]),
-    .testTarget(name: "TreeSitterHighlightTests", dependencies: ["TreeSitterHighlight"]),
     .testTarget(name: "CodeBoardNotesTests", dependencies: ["CodeBoardNotes"]),
-    .testTarget(name: "CodeBoardCanvasTests", dependencies: ["CodeBoardCanvas", "CodeBoardTestGuard"]),
-    .testTarget(name: "CodeCoreTests", dependencies: ["CodeCore"], resources: [.copy("Fixtures")]),
-    .testTarget(name: "CodeUITests", dependencies: ["CodeUI"]),
+    .testTarget(
+      name: "CodeBoardMarkdownLooksTests",
+      dependencies: [
+        "CodeBoardMarkdownLooks",
+        .product(name: "MarkdownCore", package: "better-swift-markdown"),
+        .product(name: "MarkdownUI", package: "better-swift-markdown"),
+        .product(name: "CodeUI", package: "better-swift-markdown"),
+      ]),
+    .testTarget(
+      name: "CodeBoardCanvasTests",
+      dependencies: ["CodeBoardCanvas", .product(name: "TestGuard", package: "better-swift-markdown")]),
     .testTarget(
       name: "CodeBoardShellTests",
-      dependencies: ["CodeBoardShell", "CodeBoardCanvas", "CodeBoardNotes", "CodeBoardTestGuard"]),
+      dependencies: [
+        "CodeBoardShell", "CodeBoardCanvas", "CodeBoardNotes",
+        .product(name: "TestGuard", package: "better-swift-markdown"),
+      ]),
+    .testTarget(
+      name: "MarkdownDemoKitTests",
+      dependencies: [
+        "MarkdownDemoKit", "CodeBoardModel", .product(name: "TestGuard", package: "better-swift-markdown"),
+      ]),
   ]
 )
 
-// The native Markdown component (apps/macos/docs/markdown-guideline.md), self-contained: the canvas draws its Markdown
-// at rest with it, and it depends on none of the app's targets but the test guard, which its editor installs in a test
-// process as the canvas does (TreeSitterHighlight colours code for the look tool only)
-package.targets += [
-  // Markdown parsed the way @yhnocoder/markdown parses it, with source ranges, and its editing rules (guideline 6.2)
-  .target(name: "CodeBoardMarkdown", dependencies: ["CodeCore"]),
-  // Markdown laid out and drawn with CoreText, edited in place; formulas and diagrams through JavaScriptCore (6.3)
-  .target(name: "CodeBoardMarkdownUI", dependencies: ["CodeBoardMarkdown", "CodeUI", "CodeBoardTestGuard"]),
-  .executableTarget(name: "MarkdownBench", dependencies: ["CodeBoardMarkdown", "CodeBoardMarkdownUI", "CodeUI"]),
-  // the component on its own: a .md file read and edited in its sample look, its code coloured by TreeSitterHighlight
-  .executableTarget(
-    name: "MarkdownEditorDemo",
-    dependencies: ["CodeBoardMarkdown", "CodeBoardMarkdownUI", "CodeUI", "TreeSitterHighlight"]),
-  .testTarget(name: "MarkdownEditorDemoTests", dependencies: ["MarkdownEditorDemo", "CodeBoardTestGuard"]),
-  .executableTarget(
-    name: "MarkdownLook", dependencies: ["CodeBoardMarkdown", "CodeBoardMarkdownUI", "CodeUI", "TreeSitterHighlight"]),
-  .testTarget(name: "CodeBoardMarkdownTests", dependencies: ["CodeBoardMarkdown"], resources: [.copy("Fixtures")]),
-  .testTarget(name: "CodeBoardMarkdownUITests", dependencies: ["CodeBoardMarkdownUI", "CodeBoardTestGuard", "CodeUI"]),
-]
-// a window to try the component in, standing alone (tools/markdown/make-demo.sh packages it); code coloured by
-// TreeSitterHighlight, as the look tool colours it; a vault's Notes read with CodeBoardModel. The kit runs it in any process
-// (runMarkdownDemo), for a driver too
-package.targets += [
-  .target(
-    name: "MarkdownDemoKit",
-    dependencies: [
-      "CodeBoardMarkdown", "CodeBoardMarkdownUI", "CodeUI", "TreeSitterHighlight", "CodeBoardModel",
-      "CodeBoardTestGuard",
-    ]),
-  .executableTarget(name: "MarkdownDemo", dependencies: ["MarkdownDemoKit"]),
-  .testTarget(name: "MarkdownDemoKitTests", dependencies: ["MarkdownDemoKit", "CodeBoardModel", "CodeBoardTestGuard"]),
-]
-// No warnings in our own Swift (the Markdown component included, so after its targets): a concurrency warning (Swift 6 downgrades some isolation errors from AppKit's overrides)
-// is as much a crash as an error, and the rest stay at zero with it. The native Markdown component's targets, added
-// below, are not under it yet
-for t in package.targets where t.name != "CTreeSitterScanners" {
+// No warnings in our own Swift: a concurrency warning (Swift 6 downgrades some isolation errors from AppKit's
+// overrides) is as much a crash as an error, and the rest stay at zero with it
+for t in package.targets {
   t.swiftSettings = (t.swiftSettings ?? []) + [.treatAllWarnings(as: .error)]
 }
-
-// Code analysis for reading code (symbols, calls, selections, peek, cross-language boundaries), a port of
-// packages/analysis with its tests as the specification. Foundation and tree-sitter only, with its own small
-// tree-sitter wrapper instead of TreeSitterHighlight's, so that it stands alone; no target depends on it yet
-package.targets += [
-  .target(
-    name: "CodeBoardAnalysis",
-    dependencies: [
-      .product(name: "TreeSitter", package: "tree-sitter"),
-      .product(name: "TreeSitterPython", package: "tree-sitter-python"),
-      .product(name: "TreeSitterRust", package: "tree-sitter-rust"),
-      .product(name: "TreeSitterCUDA", package: "tree-sitter-cuda"),
-      "CTreeSitterScanners",
-    ],
-    swiftSettings: [.treatAllWarnings(as: .error)]
-  ),
-  .testTarget(
-    name: "CodeBoardAnalysisTests",
-    dependencies: ["CodeBoardAnalysis"],
-    resources: [.copy("Fixtures")],
-    swiftSettings: [.treatAllWarnings(as: .error)]
-  ),
-]

@@ -1,6 +1,6 @@
 import AppKit
-import CodeBoardMarkdown
-import CodeBoardMarkdownUI
+import MarkdownCore
+import MarkdownUI
 
 /// The demo as the host of ⌘ block moves (guideline 6.4, the board's md/blockmove.ts): it runs the gesture across its
 /// cards and asks each Note's editor for blocks, frames, pictures, marks, drop places and the edits.

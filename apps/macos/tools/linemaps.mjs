@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // The line anchors' cases and what core's mapLines (packages/core/src/diff.ts, fuzzy) makes of them, for CodeCore's
-// LineAnchors to match (Tests/CodeCoreTests/LineAnchorsTests.swift):
-//   node apps/macos/tools/linemaps.mjs > apps/macos/Tests/CodeCoreTests/Fixtures/linemaps.json
+// LineAnchors to match (the better-swift-markdown package's Tests/CodeCoreTests/LineAnchorsTests.swift):
+//   node apps/macos/tools/linemaps.mjs > ../better-swift-markdown/Tests/CodeCoreTests/Fixtures/linemaps.json
 import { mapLines } from "../../../packages/core/src/diff.ts";
 
 // a fixed generator: the same cases every run

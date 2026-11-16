@@ -1,7 +1,8 @@
 #!/bin/sh
-# Packages MarkdownDemo, the window to try the Markdown component in, as an app: the release binary, the component's
-# fonts and engines (assets.mjs) in Contents/Resources/Assets, ad-hoc signed with the JIT entitlement the formula
-# engines need. It shares no name, defaults or caches with the CodeBoard app.
+# Packages MarkdownDemo, the window to try the Markdown component in, as an app: the release binary, the board's
+# fonts (assets.mjs) in Contents/Resources/Assets and the package's resource bundle (the engines) in
+# Contents/Resources, ad-hoc signed with the JIT entitlement the formula engines need. It shares no name, defaults
+# or caches with the CodeBoard app.
 #   OUT_DIR  where "Markdown Demo.app" is written (default apps/macos/build)
 set -eu
 cd "$(dirname "$0")/../.."
@@ -16,6 +17,7 @@ rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp "$bin/MarkdownDemo" "$app/Contents/MacOS/MarkdownDemo"
 cp -R .build-markdown "$app/Contents/Resources/Assets"
+cp -R "$bin/better-swift-markdown_MarkdownUI.bundle" "$app/Contents/Resources/"
 # the commit and time it was built from, for the inspector's report (a "+" when the tree had changes)
 commit=$(git rev-parse --short HEAD)$(git diff --quiet HEAD -- . || echo +)
 built=$(date -u +%Y-%m-%dT%H:%MZ)

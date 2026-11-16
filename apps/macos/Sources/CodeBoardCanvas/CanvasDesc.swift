@@ -1,7 +1,8 @@
 import AppKit
-import CodeBoardMarkdown
-import CodeBoardMarkdownUI
+import CodeBoardMarkdownLooks
 import CodeBoardModel
+import MarkdownCore
+import MarkdownUI
 
 // A code, Free code or image card's description written in place (Card.tsx Desc: Editable md, menus.ts Add / Edit
 // Description): the Markdown component's editor over the description's place, on the card's paper, its text in the

@@ -1,9 +1,10 @@
 import AppKit
-import CodeBoardMarkdown
-import CodeBoardMarkdownUI
+import CodeBoardMarkdownLooks
 import CodeBoardModel
 import CodeBoardNotes
 import CodeUI
+import MarkdownCore
+import MarkdownUI
 import TreeSitterHighlight
 
 // The sidenote popup (web board ui/pops/notes.tsx, ui/NoteComposer.tsx, styles.css .hxpop), drawn by the app: a title

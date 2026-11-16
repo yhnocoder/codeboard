@@ -1,9 +1,9 @@
 import AppKit
 import CodeBoardCanvas
-import CodeBoardMarkdown
-import CodeBoardMarkdownUI
 import CodeBoardModel
 import CodeBoardNotes
+import MarkdownCore
+import MarkdownUI
 
 // LookCompare --writing <out folder>: Notes, Texts and Boxes written in, in each theme light and dark, at 2x, off screen
 // (a window far off every screen; Core Animation and the editor's own picture, never the screen):

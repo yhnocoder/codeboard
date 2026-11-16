@@ -1,9 +1,9 @@
 import AppKit
-import CodeBoardMarkdown
+import MarkdownCore
 import Testing
 
-@testable import CodeBoardMarkdownUI
 @testable import MarkdownDemoKit
+@testable import MarkdownUI
 
 private let underDesktop = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.desktopWindow)) - 1)
 

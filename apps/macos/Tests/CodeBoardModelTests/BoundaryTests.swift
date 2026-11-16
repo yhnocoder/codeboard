@@ -2,7 +2,7 @@ import Foundation
 import Testing
 
 // The model (board files, the vault, the legacy importer) must stay usable without any UI, so it imports Foundation only,
-// and the code component's rules, which import Foundation only themselves (CodeComponentBoundaryTests).
+// and the code component's rules, which import Foundation only themselves (the better-swift-markdown package's PackageBoundaryTests).
 @Test func modelImportsOnlyFoundation() throws {
   let sources = URL(filePath: #filePath).deletingLastPathComponent().appending(path: "../../Sources/CodeBoardModel")
   let files = try #require(FileManager.default.enumerator(at: sources, includingPropertiesForKeys: nil))

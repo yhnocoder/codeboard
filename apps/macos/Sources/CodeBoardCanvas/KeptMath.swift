@@ -1,7 +1,7 @@
-import CodeBoardMarkdownUI
 import CodeBoardNotes
 import CoreGraphics
 import Foundation
+import MarkdownUI
 import Synchronization
 
 /// The formula and diagram engines with what they made kept on disk: a board shown after a relaunch draws the formulas

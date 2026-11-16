@@ -1,9 +1,10 @@
-import CodeBoardMarkdownUI
+import CodeBoardMarkdownLooks
 import CodeBoardModel
 import CodeBoardNotes
 import CodeUI
 import CoreText
 import IOSurface
+import MarkdownUI
 import TreeSitterHighlight
 
 /// What one item's bitmap shows. Drawn off the main thread at any scale: a producer gets the item's size, a scale and

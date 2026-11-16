@@ -5,12 +5,13 @@
 // The toolbar switches the look (Warm Ink, Ink Wash), light and dark, and the zoom (50 to 200 %, also ⌥⌘= ⌥⌘- ⌥⌘0). Images
 // are read relative to the file. Typing edits the text shown; the file is never written.
 import AppKit
-import CodeBoardMarkdown
-import CodeBoardMarkdownUI
+import CodeBoardMarkdownLooks
 import CodeBoardModel
-import CodeBoardTestGuard
 import CodeUI
 import ImageIO
+import MarkdownCore
+import MarkdownUI
+import TestGuard
 import TreeSitterHighlight
 
 /// Images next to the file, formulas and diagrams through the engines, code coloured by the app's highlighter
@@ -264,7 +265,7 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
     self.text = text
     self.folder = folder
     self.cardWidth = cardWidth
-    try MarkdownAssets.fonts.get()
+    try MarkdownLooks.fonts.get()
     resources = FileResources(folder: folder, pasted: Pasted(), math: try MarkdownAssets.engines())
   }
 
@@ -272,7 +273,7 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
     // warm up off the main thread, as a host does at launch
     let math = resources.math
     DispatchQueue.global(qos: .userInitiated).async {
-      MarkdownAssets.warmUp(math: math)
+      MarkdownLooks.warmUp(math: math)
       // the first display ran beside the warm-up and may have made a second engine: once quiet, one is enough
       DispatchQueue.main.asyncAfter(deadline: .now() + 3) { (math as? JSEngines)?.trim() }
     }

@@ -1,8 +1,8 @@
 import AppKit
 import CodeBoardModel
-import CodeBoardTestGuard
 import Foundation
 import ImageIO
+import TestGuard
 import Testing
 import UniformTypeIdentifiers
 

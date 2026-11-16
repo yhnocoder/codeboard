@@ -1,9 +1,10 @@
-import CodeBoardMarkdownUI
+import CodeBoardMarkdownLooks
 import CodeBoardModel
 import CodeBoardNotes
 import CoreGraphics
 import Foundation
 import IOSurface
+import MarkdownUI
 import Testing
 import TreeSitterHighlight
 
@@ -173,7 +174,7 @@ import TreeSitterHighlight
   @Test func aFormulaTypesetBeforeARelaunchIsDrawnWithoutStartingAnEngine() async throws {
     let kept = FileManager.default.temporaryDirectory.appending(path: "nn-math-\(UUID().uuidString)")
     defer { try? FileManager.default.removeItem(at: kept) }
-    let script = MarkdownAssets.assets.appending(path: "engines.js")
+    let script = try #require(MarkdownAssets.enginesScript)
     let first = KeptMath(engines: try JSEngines(script: script), folder: kept)
     let typeset = first.typeset("\\frac{a}{b} + \\text{x}", display: true, preamble: "")
     guard case .ok(let picture) = typeset else {

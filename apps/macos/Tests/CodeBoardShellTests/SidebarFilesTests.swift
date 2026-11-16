@@ -1,7 +1,7 @@
 import AppKit
 import CodeBoardModel
-import CodeBoardTestGuard
 import Foundation
+import TestGuard
 import Testing
 
 @testable import CodeBoardCanvas

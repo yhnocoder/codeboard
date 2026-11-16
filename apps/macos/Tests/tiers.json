@@ -2,19 +2,7 @@
   "maxAreas": 3,
   "heavy": ["CodeBoardModel"],
   "targets": {
-    "CodeCoreTests": {
-      "changed": "whole",
-      "important": "whole"
-    },
-    "CodeUITests": {
-      "changed": "whole",
-      "important": "whole"
-    },
     "CodeBoardModelTests": {
-      "changed": "whole",
-      "important": "whole"
-    },
-    "TreeSitterHighlightTests": {
       "changed": "whole",
       "important": "whole"
     },
@@ -22,20 +10,9 @@
       "changed": "whole",
       "important": "whole"
     },
-    "CodeBoardMarkdownTests": {
+    "CodeBoardMarkdownLooksTests": {
       "changed": "whole",
-      "important": [
-        "ParityTests",
-        "BlockMoveTests",
-        "DocumentTests/readsTheBlocks",
-        "DocumentTests/inlineRangesPointIntoTheSourceThroughQuoteMarkers",
-        "CaretTests/markersShowAroundTheCaretAndAreWalkedThroughThere",
-        "MathHintTests/theCommandBeingTyped"
-      ]
-    },
-    "CodeBoardMarkdownUITests": {
-      "changed": "whole",
-      "important": ["LayoutTests", "MathTests", "EditorCoreTests", "CodeBlockTests", "WebParityTests"]
+      "important": "whole"
     },
     "CodeBoardNotesTests": {
       "extra": ["web"],
@@ -202,10 +179,7 @@
             "CodeBoardCanvas/CanvasFreeCode.swift",
             "CodeBoardCanvas/CodeLayout.swift",
             "CodeBoardModel/FreeCode.swift",
-            "CodeBoardModel/FreeLanguage.swift",
-            "TreeSitterHighlight",
-            "CodeCore",
-            "CodeUI"
+            "CodeBoardModel/FreeLanguage.swift"
           ],
           "tests": [
             "CanvasFreeCodeTests",
@@ -386,7 +360,7 @@
           "tests": ["CanvasAccessibilityTests"]
         },
         "test guard": {
-          "sources": ["CodeBoardCanvas/TestWatch.swift", "CodeBoardTestGuard"],
+          "sources": ["CodeBoardCanvas/TestWatch.swift"],
           "tests": ["TestGuardTests"]
         },
         "native notes": {
@@ -496,10 +470,6 @@
           "tests": ["FullWindowSheetTests"]
         }
       }
-    },
-    "MarkdownEditorDemoTests": {
-      "changed": "whole",
-      "important": "whole"
     }
   }
 }

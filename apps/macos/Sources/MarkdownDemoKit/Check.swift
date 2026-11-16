@@ -1,6 +1,7 @@
 import AppKit
-import CodeBoardMarkdown
-import CodeBoardMarkdownUI
+import CodeBoardMarkdownLooks
+import MarkdownCore
+import MarkdownUI
 
 /// `MarkdownDemo [file.md] --check <folder>`: what is checked before a demo build is called in place. The window is set
 /// up and laid out but never shown; at each of a few widths its whole content is rendered offscreen
@@ -23,7 +24,7 @@ enum Check {
       stages.append(["stage": name, "mb": mb(f?.now ?? 0), "peakMb": mb(f?.peak ?? 0), "by": parts])
     }
     stage("fonts and engines loaded (Demo init)")
-    MarkdownAssets.warmUp(math: demo.resources.math)
+    MarkdownLooks.warmUp(math: demo.resources.math)
     stage("warmed up")
     demo.setUp()
     stage("window set up and laid out")

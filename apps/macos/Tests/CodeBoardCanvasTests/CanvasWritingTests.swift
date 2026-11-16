@@ -4,7 +4,7 @@ import CodeBoardNotes
 import Testing
 
 @testable import CodeBoardCanvas
-@testable import CodeBoardMarkdownUI
+@testable import MarkdownUI
 
 // Writing in Notes, Texts and Boxes on the canvas, with the native Markdown component's editor over the card (the Rig
 // needs the built Note page, as CanvasEditTests): entering and leaving with nothing typed changes nothing, a session is

@@ -1,8 +1,9 @@
 import AppKit
-import CodeBoardMarkdownUI
+import CodeBoardMarkdownLooks
 import CodeBoardModel
 import CodeBoardNotes
 import CodeUI
+import MarkdownUI
 import QuartzCore
 
 // Writing in a Note, Text or Box on the canvas, with the native Markdown component's editor over the card

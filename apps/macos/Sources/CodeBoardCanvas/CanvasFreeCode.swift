@@ -1,9 +1,10 @@
 import AppKit
-import CodeBoardMarkdownUI
+import CodeBoardMarkdownLooks
 import CodeBoardModel
 import CodeBoardNotes
 import CodeCore
 import CodeUI
+import MarkdownUI
 import TreeSitterHighlight
 
 // Writing Free code on the canvas (the board's cards/FreeEdit.tsx): a double-click on a Free code card's code opens the

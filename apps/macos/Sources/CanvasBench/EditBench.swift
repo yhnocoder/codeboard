@@ -1,7 +1,7 @@
 import AppKit
 import CodeBoardCanvas
-import CodeBoardMarkdown
 import CodeBoardModel
+import MarkdownCore
 
 /// `--edit`: writing in a board's Notes, on a copy of each board named, in a window below the desktop picture that is
 /// never activated (its frames ticked here at 60 Hz on a stepped clock; keys go through the window as typed ones do,

@@ -1,7 +1,7 @@
 import AppKit
-import CodeBoardMarkdown
-import CodeBoardMarkdownUI
 import CodeBoardModel
+import MarkdownCore
+import MarkdownUI
 
 // Text selected in a Note at rest, without writing in it (interact.ts: a drag on the body of the one card selected
 // selects its text; actions/format.ts, ui/StaticFormat.tsx): the selection drawn over the card's picture, once it has

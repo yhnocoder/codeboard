@@ -1,4 +1,4 @@
-// Writes Tests/CodeBoardMarkdownTests/Fixtures/*.json: what the TypeScript Markdown package makes of the synthetic corpus
+// Writes Tests/MarkdownCoreTests/Fixtures/*.json: what the TypeScript Markdown package makes of the synthetic corpus
 // (corpus.mjs), for the Swift parser to match exactly. Run from the repository root after `npm ci`, and commit the result:
 //   node apps/macos/tools/markdown/fixtures.mjs [--out <the component's folder>]
 // It bundles the package's sources (not its build) so the fixtures follow the code in this checkout.
@@ -11,7 +11,7 @@ import { blocks, inline, moves } from "./corpus.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, "../../../..");
-const out = join(componentRoot(), "Tests/CodeBoardMarkdownTests/Fixtures");
+const out = join(componentRoot(), "Tests/MarkdownCoreTests/Fixtures");
 
 // schema.ts keeps its MarkdownManager to itself; the bundle exports it as well, to read marked's raw tokens
 const exposeManager = {

@@ -1,6 +1,6 @@
 import AppKit
-import CodeBoardMarkdown
 import CodeBoardModel
+import MarkdownCore
 import Testing
 
 @testable import CodeBoardCanvas

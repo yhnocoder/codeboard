@@ -1,10 +1,10 @@
 import AppKit
-import CodeBoardMarkdown
 import CodeBoardModel
+import MarkdownCore
 import Testing
 
 @testable import CodeBoardCanvas
-@testable import CodeBoardMarkdownUI
+@testable import MarkdownUI
 
 // Writing in a card with the native editor, everything through the window as a person does it: presses go where the
 // window's hit test puts them (the canvas, or the editor over the card), keys to its first responder, an input method's

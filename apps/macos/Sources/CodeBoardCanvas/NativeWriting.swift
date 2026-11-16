@@ -1,8 +1,8 @@
 import AppKit
-import CodeBoardMarkdown
-import CodeBoardMarkdownUI
 import CodeBoardModel
 import CodeBoardNotes
+import MarkdownCore
+import MarkdownUI
 import OSLog
 
 // Writing in a Note, Text or Box with the native Markdown component's editor (MarkdownEditorView) over the card, when

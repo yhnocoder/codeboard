@@ -1,8 +1,8 @@
-// Builds what the Markdown component draws with besides its code into apps/macos/.build-markdown: the formula and
-// diagram engines it runs in JavaScriptCore (engines.js: MathJax and pele, from engines.ts), and the board's fonts
-// (assets/<name>-<first 8 of its hash>.woff2, the names MarkdownAssets looks them up by) with their licences. Tests,
-// benches and the look tool read it from there; a host or the demo app carries it in its bundle (Contents/Resources/Assets)
-import { build } from "esbuild";
+// Builds the board's fonts, which the Markdown component draws the board's looks with, into
+// apps/macos/.build-markdown (assets/<name>-<first 8 of its hash>.woff2, the names MarkdownLooks looks them up
+// by) with their licences. Tests, benches and the look tool read them from there; the app and the demo app
+// carry them in their bundle (Contents/Resources/Assets). The formula and diagram engines are the
+// better-swift-markdown package's, in its resource bundle
 import { createHash } from "node:crypto";
 import { copyFileSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, extname, join } from "node:path";
@@ -13,15 +13,6 @@ const board = join(here, "../../../../packages/board");
 const out = join(here, "../../.build-markdown");
 rmSync(out, { recursive: true, force: true });
 mkdirSync(join(out, "assets"), { recursive: true });
-await build({
-  entryPoints: [join(here, "engines.ts")],
-  bundle: true,
-  format: "iife",
-  target: "safari18",
-  outfile: join(out, "engines.js"),
-  minify: true,
-  logLevel: "warning",
-});
 for (const e of readdirSync(join(board, "src/fonts"), { recursive: true, withFileTypes: true })) {
   if (!e.isFile() || !e.name.endsWith(".woff2")) continue;
   const data = readFileSync(join(e.parentPath, e.name));

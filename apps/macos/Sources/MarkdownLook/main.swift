@@ -1,16 +1,17 @@
-// Draws cards with the Markdown component (CodeBoardMarkdownUI, its looks in MarkdownLooks) into PNGs, for comparing with the
+import CodeBoardMarkdownLooks
+import CodeUI
+import CoreGraphics
+import Foundation
+import ImageIO
+// Draws cards with the Markdown component (MarkdownUI, its looks in MarkdownLooks) into PNGs, for comparing with the
 // web board (tools/markdown/look.mjs):
 //   swift run MarkdownLook <jobs.json> <out dir> <look> <dark 0|1> <scale>
 // jobs.json: [{name, text, style (as board.json writes it), width, height?, folder, refs}], refs as the web board's
 // resolver gives them ({label, target, hit: {title, seal?} or {broken: "place" | "item", title, badge}}). Each card is
 // drawn on the look's paper, as the canvas draws it under the content; its code coloured by TreeSitterHighlight, whose
 // tokens are written to tokens.json for the web side to colour the same code alike.
-import CodeBoardMarkdown
-import CodeBoardMarkdownUI
-import CodeUI
-import CoreGraphics
-import Foundation
-import ImageIO
+import MarkdownCore
+import MarkdownUI
 import Synchronization
 import TreeSitterHighlight
 
@@ -145,7 +146,7 @@ let classes: [MarkdownTokenKind: String] = [
 /// what the web side colours each code block with: "language\u0000code" → each line's [from, to, class]
 let tokensOut = Mutex([String: [[[String]]]]())
 let paper = MarkdownLooks.theme(look, dark: dark).colors.surface
-try MarkdownAssets.fonts.get()
+try MarkdownLooks.fonts.get()
 let engines = try MarkdownAssets.engines()
 
 for job in jobs {
