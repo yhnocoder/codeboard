@@ -7,6 +7,7 @@ import AppKit
 public final class ReadingPaneView: NSView, NSMenuItemValidation {
   public let pane: ReadingPane
   private(set) var views: [ReadingTab.ID: NSView] = [:]
+  private(set) var places: [ReadingTab.ID: ReadingContext.Place] = [:]
   /// The tab on screen at the last sync, once there was one
   private var synced: ReadingTab.ID??
   /// The bar look the tabs' views last followed
@@ -34,13 +35,11 @@ public final class ReadingPaneView: NSView, NSMenuItemValidation {
     for (id, view) in views where !live.contains(id) {
       view.removeFromSuperview()
       views[id] = nil
+      places[id] = nil
     }
     for tab in pane.tabs where views[tab.id] == nil {
-      let view = ReadingKinds.view(for: tab, in: self)
-      view.frame = bounds
-      view.autoresizingMask = [.width, .height]
-      addSubview(view)
-      views[tab.id] = view
+      let (view, place) = ReadingKinds.view(for: tab, in: self)
+      adopt(view, place, for: tab.id)
     }
     for (id, view) in views { view.isHidden = id != pane.selected }
     if look != pane.barLook {
@@ -49,6 +48,27 @@ public final class ReadingPaneView: NSView, NSMenuItemValidation {
     }
     if let was = synced, was != pane.selected, pane.selected != nil { takeKeys() }
     synced = .some(pane.selected)
+  }
+
+  /// A tab's view here: a new one, or one handed over from another window's pane view as it is (`handOver`: a page
+  /// not loaded again, a PDF on its page), its context pointed at this pane
+  public func adopt(_ view: NSView, _ place: ReadingContext.Place, for id: ReadingTab.ID) {
+    place.pane = pane
+    place.paneView = self
+    view.frame = bounds
+    view.autoresizingMask = [.width, .height]
+    // moved straight from the other window's pane view: never out of a window on the way
+    addSubview(view)
+    views[id] = view
+    places[id] = place
+    if let v = view as? ReadingLookFollower, let look { v.barLookChanged(look) }
+  }
+
+  /// Tab `id`'s view and where its context says it is, for another window's pane view (`adopt`); it stays on screen
+  /// here until that one takes it
+  public func handOver(_ id: ReadingTab.ID) -> (view: NSView, place: ReadingContext.Place)? {
+    guard let view = views.removeValue(forKey: id), let place = places.removeValue(forKey: id) else { return nil }
+    return (view, place)
   }
 
   /// The keys go to the current tab's view when it takes them, else here; they stay where they are when a view in the

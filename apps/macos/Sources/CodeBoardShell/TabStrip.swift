@@ -21,6 +21,8 @@ struct StripTab: Identifiable, Equatable {
   var dropIndex: Int? { get }
   /// What a tab dragged out of the row tells; nil: tabs stay in their row
   var tabDragging: TabDragging? { get }
+  /// How far the row is scrolled sideways, for where a tab dragged from another window goes
+  var stripScroll: CGFloat { get set }
 }
 
 extension TabSource {
@@ -28,7 +30,7 @@ extension TabSource {
   var tabDragging: TabDragging? { nil }
 }
 
-/// A board tab dragged out of its row, to another window's row or to a window of its own (WindowSet's TabDrag)
+/// A tab dragged out of its row, to another window's row of its kind or to a window of its own (WindowSet's TabDrag)
 @MainActor protocol TabDragging: AnyObject {
   /// The pointer at `p` on screen drags `tab`, held `grab` from the tab's top left (y down): true once it is out of
   /// its row, where the row no longer reorders it
@@ -44,6 +46,8 @@ extension Shell: TabSource {
 
 extension ReadingPane: TabSource {
   var stripTabs: [StripTab] { tabs.map { StripTab(id: $0.id, title: $0.title, italic: $0.preview) } }
+  var dropIndex: Int? { tabDrop }
+  var tabDragging: TabDragging? { tabDragger as? TabDragging }
 }
 
 /// Where a strip's tabs measure their frames
@@ -90,6 +94,7 @@ struct TabStrip<Source: TabSource>: View {
         for: [Bool].self,
         of: { [$0.contentOffset.x > 0.5, $0.contentOffset.x + $0.containerSize.width < $0.contentSize.width - 0.5] }
       ) { more = $1 }
+      .onScrollGeometryChange(for: CGFloat.self, of: { $0.contentOffset.x }) { source.stripScroll = $1 }
       .mask(fades)
       .onChange(of: source.selected) { _, tab in
         if let tab { withAnimation(.snappy(duration: 0.2)) { proxy.scrollTo(tab) } }

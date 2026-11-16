@@ -80,6 +80,8 @@ public struct ShellState: Codable, Equatable, Sendable {
   public var sidebarWidth: Double?
   /// nil in what was saved before the reading pane
   public var reading: ReadingPane.State?
+  /// A window that shows only its reading pane (a reading tab dragged to where no tab row was); nil: not one
+  public var readingOnly: Bool?
 }
 
 /// One window's state: its tabs, its sidebar and its reading pane, over the session the app's windows share (the vault,
@@ -90,7 +92,12 @@ public struct ShellState: Codable, Equatable, Sendable {
   public var vault: Vault? { session.vault }
   public var tree: VaultFolder? { session.tree }
   public var treeError: String? { session.treeError }
-  public private(set) var tabs: [Tab] = []
+  public private(set) var tabs: [Tab] = [] {
+    // a board tab in a window that showed only the reading pane: the board panel is back
+    didSet { if !tabs.isEmpty, readingOnly { readingOnly = false } }
+  }
+  /// Only the reading pane shows, no board panel and no divider, until a board tab arrives (WindowSet)
+  public internal(set) var readingOnly = false
   public private(set) var selected: Tab.ID?
   /// Folder paths shown open in the sidebar
   public var expanded: Set<String> = []
@@ -209,11 +216,13 @@ public struct ShellState: Codable, Equatable, Sendable {
       expanded = state.expanded
       sidebarShown = state.sidebarShown
       if let r = state.reading { reading.restore(r) }
+      readingOnly = state.readingOnly == true && tabs.isEmpty && !reading.tabs.isEmpty
     } else {
       tabs = []
       selected = nil
       expanded = []
       reading.closeAll()
+      readingOnly = false
     }
   }
 
@@ -221,7 +230,7 @@ public struct ShellState: Codable, Equatable, Sendable {
     vault.map {
       ShellState(
         vault: $0.root.path, tabs: tabs, selected: selected, expanded: expanded, sidebarShown: sidebarShown,
-        sidebarWidth: Double(sidebarWidth), reading: reading.state)
+        sidebarWidth: Double(sidebarWidth), reading: reading.state, readingOnly: readingOnly ? true : nil)
     }
   }
 
@@ -345,8 +354,9 @@ public struct ShellState: Codable, Equatable, Sendable {
 
   /// Where a board tab dragged from another window would go in this window's row, while it is over it
   public internal(set) var tabDrop: Int?
-  /// What a board tab dragged out of the row tells (WindowSet's)
+  /// What a board tab dragged out of the row tells (WindowSet's), and how far the row is scrolled sideways
   @ObservationIgnored var tabDragging: TabDragging?
+  @ObservationIgnored var stripScroll: CGFloat = 0
 
   /// A tab in the reading pane titled `title` (a resource's name), the pane shown; the tab opened for the same `key`
   /// is gone to instead of a second
