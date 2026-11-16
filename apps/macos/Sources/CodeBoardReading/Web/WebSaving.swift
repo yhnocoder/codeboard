@@ -277,7 +277,7 @@ private actor CaptureFile {
   }
 }
 
-/// Hands the saving scripts' messages to the view without the content controller keeping the view alive
+/// Hands the saving scripts' messages to the view (the reader's selection among them) without the content controller keeping the view alive
 final class SavingRelay: NSObject, WKScriptMessageHandlerWithReply {
   weak var owner: WebPageView?
 
@@ -286,6 +286,10 @@ final class SavingRelay: NSObject, WKScriptMessageHandlerWithReply {
     replyHandler: @escaping @MainActor @Sendable (Any?, String?) -> Void
   ) {
     let body = message.body
+    if let m = body as? [String: Any], m["type"] as? String == "selection" {
+      owner?.readerSelected(m)
+      return replyHandler(nil, nil)
+    }
     Task { @MainActor [weak owner] in replyHandler(await owner?.capture?.reply(to: body), nil) }
   }
 }

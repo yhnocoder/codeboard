@@ -64,7 +64,9 @@ import WebKit
     #expect(v.bar.frame.maxY == v.bounds.height - look.bottom && v.bar.frame.height == look.height)
     #expect(v.bar.frame.minX == look.bottom && v.bar.frame.maxX == v.bounds.width - look.bottom)
     #expect(v.bar.back.frame.size == look.button && v.bar.save.frame.size == look.button)
-    #expect(v.subviews.allSatisfy { $0 === v.web || $0.frame.minY > v.bounds.height / 2 }, "nothing over the top")
+    #expect(
+      v.subviews.allSatisfy { $0 === v.web || $0.isHidden || $0.frame.minY > v.bounds.height / 2 },
+      "nothing over the top")
     #expect(v.web.allowsBackForwardNavigationGestures)
     let controls: [NSControl] = [v.bar.back, v.bar.forward, v.bar.address, v.bar.extract, v.bar.translate, v.bar.save]
     #expect(controls.allSatisfy { $0.accessibilityIdentifier().hasPrefix("ui-web") })
