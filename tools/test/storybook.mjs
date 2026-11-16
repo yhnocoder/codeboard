@@ -108,11 +108,15 @@ async function finished(frame, id, from) {
       (e) => e.id === id || !e.id,
     );
     const bad = log.filter((e) => e.ev !== "storyRendered");
-    if (bad.length || log.some((e) => e.ev === "storyRendered")) {
+    // a board story is done once its scene has set itself up too (support/board.tsx Stage: opening popups, sending the host's
+    // later messages), which can outlast the render: moving on earlier, its errors would land on a later story
+    const setting = !bad.length && (await frame.evaluate(() => window.__storySetup === "running").catch(() => false));
+    if (bad.length || (log.some((e) => e.ev === "storyRendered") && !setting)) {
       await new Promise((r) => setTimeout(r, SETTLE));
       return bad.map((e) => `${e.ev}: ${e.msg}`);
     }
-    if (Date.now() - t0 > TIMEOUT) return [`timeout: not rendered after ${TIMEOUT / 1000}s`];
+    if (Date.now() - t0 > TIMEOUT)
+      return [`timeout: ${setting ? "still setting up" : "not rendered"} after ${TIMEOUT / 1000}s`];
     await new Promise((r) => setTimeout(r, 25));
   }
 }

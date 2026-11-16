@@ -150,7 +150,7 @@ import Testing
     let v = try ListVault()
     defer { v.remove() }
     let (id, list) = try await v.openList()
-    #expect(list.table.tableColumns.map(\.title) == ["Title", "Year", "Boards"])
+    #expect(list.table.tableColumns.map(\.title) == ["Title", "Year", "Boards", ""])
     #expect(
       list.rows.map(\.title) == ["Estuary flows", "Harbour log", "Pier notes", "Quay plans", "Tidal mills", "Weirs"])
     #expect(
@@ -231,7 +231,7 @@ import Testing
     ]
     for e in entries { try v.vault.newEntry(e, in: web.path) }
     let (_, list) = try await v.openList(web)
-    #expect(list.table.tableColumns.map(\.title) == ["Title", "Saved", "Boards"] && list.table.rowHeight == 42)
+    #expect(list.table.tableColumns.map(\.title) == ["Title", "Saved", "Boards", ""] && list.table.rowHeight == 42)
     #expect(list.shown.map(\.title) == ["Quay plans", "Ferry times", "Harbour log"])
     #expect(list.shown.map(\.site) == ["127.0.0.1", "ferries.example.org", "Harbour Board"])
     #expect(list.shown[0].saved == Date(timeIntervalSince1970: 300 * 86_400))
@@ -262,7 +262,7 @@ import Testing
     try put(Data("1,2\n3,4\n".utf8), "\(gauges)/r.csv", day: 20)
     let (_, list) = try await v.openList(files)
     #expect(
-      list.table.tableColumns.map(\.title) == ["Name", "Size", "Modified", "Boards"] && list.table.rowHeight == 28)
+      list.table.tableColumns.map(\.title) == ["Name", "Size", "Modified", "Boards", ""] && list.table.rowHeight == 28)
     #expect(list.shown.map(\.title) == ["Gauge", "Readings", "Tide table"])
     #expect(list.shown.map(\.size) == [list.shown[0].size, 8, 3] && list.shown[0].size ?? 0 > 0)
     let name = try cell(list, "title", 2)

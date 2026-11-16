@@ -46,11 +46,103 @@ extension ReadingPane {
     return hashes.last.map { .page(hash: $0) } ?? .link
   }
 
+  /// An address kept as a link without a tab (a link pasted or dropped into a list): its entry in the resource at
+  /// `resource`, or in the vault's web resource, the one it already had there or a new one named `title`, else by
+  /// its address. Nil with no vault, or for an address that is not a web page's
+  @discardableResult
+  public func saveLink(_ url: URL, title: String? = nil, in resource: String? = nil) throws -> Entry? {
+    guard let vault, ["http", "https"].contains(url.scheme) else { return nil }
+    let resource = try resource ?? WebReading.webResource(in: vault)
+    let address = Vault.pageAddress(url.absoluteString)
+    let has = try vault.items(in: resource).lazy.compactMap { i -> Entry? in
+      guard case .entry(let e, _) = i, case .web(let at) = e.origin, Vault.pageAddress(at) == address else {
+        return nil
+      }
+      return e
+    }.first
+    if let has { return has }
+    let item = SavedItem(
+      id: "", kind: .link, url: address, title: title ?? WebAddress.shown(url),
+      savedAt: Int64((Date().timeIntervalSince1970 * 1000).rounded()))
+    let path = try vault.save(item, in: resource)
+    let entry = try vault.entry(at: path)
+    entries.update(entry, at: path)
+    return entry
+  }
+
   /// What was saved, in its entry in the web resource with what was read of the page; the entries know it at once
-  func saveWeb(_ item: SavedItem, meta: WebMeta) throws {
-    guard let vault else { return }
+  @discardableResult
+  func saveWeb(_ item: SavedItem, meta: WebMeta) throws -> String? {
+    guard let vault else { return nil }
     let path = try vault.save(item, in: WebReading.webResource(in: vault), meta: meta)
     entries.update(try vault.entry(at: path), at: path)
+    return path
+  }
+
+  /// The site's icon read once and kept with the entry as a file, so that a card's source line draws it without the
+  /// network: a bitmap of at most 1 MB (an SVG, or anything else, leaves the entry with the icon's address)
+  func keepIcon(of item: SavedItem, meta: WebMeta) async {
+    guard case .url(let address)? = meta.icon, let url = URL(string: address),
+      ["http", "https", "data"].contains(url.scheme)
+    else { return }
+    var request = URLRequest(url: url)
+    request.timeoutInterval = 10
+    guard let (data, _) = try? await URLSession(configuration: .ephemeral).data(for: request), let vault,
+      let resource = try? WebReading.webResource(in: vault)
+    else { return }
+    let ending = url.scheme == "data" ? "" : url.pathExtension.lowercased()
+    keep(item, meta: meta, icon: data, ending: ending, in: resource)
+  }
+
+  /// `meta` kept in the entry of `item` in `resource` with the icon `icon` as a file in its images, when that is a
+  /// bitmap of at most 1 MB; else as it is
+  private func keep(_ item: SavedItem, meta: WebMeta, icon: Data?, ending: String, in resource: String) {
+    guard let vault else { return }
+    var kept = meta
+    do {
+      if let icon, icon.count <= 1_000_000, NSBitmapImageRep(data: icon) != nil {
+        let path = try vault.save(item, in: resource)
+        let name = "icon." + (["png", "ico", "jpg", "jpeg", "gif", "webp"].contains(ending) ? ending : "png")
+        let folder = vault.url(of: path).appending(path: Vault.imagesFolder)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try icon.write(to: folder.appending(path: name), options: .atomic)
+        kept.icon = .file(name)
+      }
+      let path = try vault.save(item, in: resource, meta: kept)
+      entries.update(try vault.entry(at: path), at: path)
+    } catch {}
+  }
+
+  /// A link added without a tab (pasted or dropped into a list) read as a page with a tab is when its link is saved:
+  /// its title, description, site and icon, by the reader the shell gives; nothing when there is none or it fails
+  public func readLink(_ item: SavedItem, in resource: String) {
+    guard let read = readsPage, let url = URL(string: item.url) else { return }
+    Task {
+      guard let page = await read(url) else { return }
+      var named = item
+      named.title = page.title ?? item.title
+      let meta = WebMeta(
+        title: page.title, description: page.description, site: page.site,
+        fetchedAt: (Date().timeIntervalSince1970 * 1000).rounded())
+      keep(named, meta: meta, icon: page.icon, ending: page.iconEnding ?? "", in: resource)
+    }
+  }
+}
+
+/// What was read of a page that has no tab: its icon as its bytes and the file ending they say
+public struct PageRead: Sendable {
+  public var title: String?
+  public var description: String?
+  public var site: String?
+  public var icon: Data?
+  public var iconEnding: String?
+
+  public init(title: String?, description: String?, site: String?, icon: Data?, iconEnding: String?) {
+    self.title = title
+    self.description = description
+    self.site = site
+    self.icon = icon
+    self.iconEnding = iconEnding
   }
 }
 
@@ -277,7 +369,8 @@ private actor CaptureFile {
   }
 }
 
-/// Hands the saving scripts' messages to the view without the content controller keeping the view alive
+/// Hands the saving scripts' messages to the view (the reader's selection and picking among them) without the content
+/// controller keeping the view alive
 final class SavingRelay: NSObject, WKScriptMessageHandlerWithReply {
   weak var owner: WebPageView?
 
@@ -286,6 +379,15 @@ final class SavingRelay: NSObject, WKScriptMessageHandlerWithReply {
     replyHandler: @escaping @MainActor @Sendable (Any?, String?) -> Void
   ) {
     let body = message.body
+    if let m = body as? [String: Any], m["type"] as? String == "selection" {
+      // `{type, selection: {ranges, rect} | null}`
+      owner?.readerSelected(m["selection"] as? [String: Any])
+      return replyHandler(nil, nil)
+    }
+    if let m = body as? [String: Any], m["type"] as? String == "picker" {
+      owner?.pickerSaid(m)
+      return replyHandler(nil, nil)
+    }
     Task { @MainActor [weak owner] in replyHandler(await owner?.capture?.reply(to: body), nil) }
   }
 }

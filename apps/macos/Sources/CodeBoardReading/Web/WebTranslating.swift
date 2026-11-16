@@ -23,6 +23,8 @@ extension WebReading {
 struct WebBlock: Equatable, Sendable {
   var id: String
   var kind: String
+  /// The level the reader gives it (a heading's: 1 to 6)
+  var level: Int?
   var text: String
   /// The reader's fingerprint of `text`
   var hash: String
@@ -37,17 +39,23 @@ struct WebBlock: Equatable, Sendable {
       let hash = d["textHash"] as? String
     else { return nil }
     self.init(
-      id: id, kind: d["kind"] as? String ?? "", text: text, hash: hash, inBody: d["inBody"] as? Bool ?? false,
-      translate: d["translate"] as? Bool ?? false)
+      id: id, kind: d["kind"] as? String ?? "", level: d["level"] as? Int, text: text, hash: hash,
+      inBody: d["inBody"] as? Bool ?? false, translate: d["translate"] as? Bool ?? false)
   }
 
-  init(id: String, kind: String, text: String, hash: String, inBody: Bool, translate: Bool) {
+  init(id: String, kind: String, level: Int? = nil, text: String, hash: String, inBody: Bool, translate: Bool) {
     self.id = id
     self.kind = kind
+    self.level = level
     self.text = text
     self.hash = hash
     self.inBody = inBody
     self.translate = translate
+  }
+
+  /// As the page's blocks file keeps it: a level only on a heading (FORMAT.md)
+  var kept: PageBlock {
+    PageBlock(id: id, kind: kind, level: kind == "heading" ? level : nil, hash: hash, text: text)
   }
 }
 

@@ -118,6 +118,23 @@ struct ShiyiStoreTests {
     for f in files {
       #expect(Set(((f as? [String: Any]) ?? [:]).keys) == ["domain", "origin", "rules"])
     }
+
+    // the user's own rule: kept in the vault's folder the service was given, and first for the site from then on
+    let folder = FileManager.default.temporaryDirectory.appending(path: "shiyi-vault-\(UUID().uuidString)/.codeboard")
+    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: folder.deletingLastPathComponent()) }
+    try await store.setVault(folder.resolvingSymlinksInPath())
+    let rule = ##"""
+      {"match":{"hosts":["127.0.0.1"]},"variants":[{"id":"2026-11-16","body":["#main"],"hide":["#ad"]}],
+       "source":"picker","updated":"2026-11-16T03:50:00Z"}
+      """##
+    try await store.putRule(domain: "127.0.0.1", Data(rule.utf8))
+    #expect(FileManager.default.fileExists(atPath: folder.appending(path: "site-rules/127.0.0.1.json").path))
+    let own = try await store.rules(forHost: "127.0.0.1").map { try JSONSerialization.jsonObject(with: $0) }
+    #expect((own.first as? [String: Any])?["origin"] as? String == "vault" && own.count == 1)
+    await #expect(throws: ShiyiStore.Failure.self) {
+      try await store.putRule(domain: "127.0.0.1", Data(##"{"no-such-key":1}"##.utf8))
+    }
   }
 
   /// What the service has comes into the vault's web resource, once: a second import finds nothing new
@@ -274,6 +291,57 @@ struct ShiyiWebTabTests {
     try await until("body view again") { try await js(v, navShown) as? Bool == false }
     #expect((try await js(v, text) as? String)?.contains("long enough to be read") == true)
     #expect(server.asked == asked, "the saved page reached the loopback: \(server.asked.dropFirst(asked.count))")
+
+    // a selection on the saved page, said by the real page scripts: the bar over it, and the passage at its block
+    _ = try await js(
+      v,
+      """
+      const p = document.querySelector("#main p")
+      const r = document.createRange()
+      r.selectNodeContents(p)
+      getSelection().removeAllRanges()
+      getSelection().addRange(r)
+      """)
+    try await until("the selection said") { v.selection?.text.contains("long enough to be read") == true }
+    #expect(!v.selectionBar.isHidden)
+    let passage = try #require(v.collecting())
+    if case .id? = passage.source?.place?.block {
+    } else {
+      Issue.record("no block in \(String(describing: passage.source))")
+    }
+    #expect(
+      passage.body
+        == .note(markdown: "The article's text, long enough to be read as the body of the page and nothing else."))
+
+    // the selection highlighted: kept in the entry at its block, drawn over the same text by the app's script, and
+    // removed from the bar a click on it brings
+    func marks() throws -> [Highlight] {
+      try vault.items(in: WebReading.webResource(in: vault)).flatMap { i -> [Highlight] in
+        if case .entry(let e, _) = i { e.highlights } else { [] }
+      }
+    }
+    func drawn() async throws -> String? {
+      try await v.web.callAsyncJavaScript(
+        "return [...(CSS.highlights.get('codeboard-yellow') ?? [])].map(r => r.toString()).join('|')",
+        contentWorld: WebReading.selectionWorld) as? String
+    }
+    v.highlight()
+    #expect(try marks().count == 1 && marks().first?.place == passage.source?.place)
+    try await until("the highlight drawn") {
+      try await drawn() == "The article's text, long enough to be read as the body of the page and nothing else."
+    }
+    try await until("the selection let go") { v.selection == nil }
+    _ = try await js(
+      v,
+      """
+      const b = document.querySelector("#main p").getBoundingClientRect()
+      document.querySelector("#main p").dispatchEvent(
+        new MouseEvent("click", { bubbles: true, clientX: b.left + 20, clientY: b.top + b.height / 2 }))
+      """)
+    try await until("the highlight's bar") { v.shownHighlight != nil && !v.highlightBar.isHidden }
+    v.removeShownHighlight()
+    #expect(try marks().isEmpty && v.highlightBar.isHidden)
+    try await until("nothing drawn") { try await drawn() == "" }
 
     // the real page scripts' blocks, translated by a made-up translator and shown beside the original
     pane.entries = EntryIndex(vault, try vault.tree())

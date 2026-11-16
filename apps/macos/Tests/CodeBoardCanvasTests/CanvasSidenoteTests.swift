@@ -1177,6 +1177,54 @@ extension CanvasSidenoteTests {
     r.type(pop, "!")
     #expect(field.source == "why wai!t")
   }
+
+  @Test func thePopupBroughtInStepWithTheBoardWhileAnInputMethodComposesKeepsTheComposition() async throws {
+    let r = try await Rig(sidenoteBoard(), zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    let at = PopAt.spot(.card(cid("n1")))
+    c.openPop(at, write: true)
+    await opened(r, at)
+    let pop = c.sidenotePop
+    let field = try #require(pop.field)
+    await r.until("the input has the keys") { r.window.firstResponder === field }
+    r.type(pop, "why ")
+    let none = NSRange(location: NSNotFound, length: 0)
+    field.setMarkedText("deng", selectedRange: NSRange(location: 4, length: 0), replacementRange: none)
+    #expect(field.hasMarkedText())
+    c.refreshPop()
+    await c.popTask?.value
+    #expect(pop.field === field && field.hasMarkedText(), "still composing in the same input")
+    field.insertText("等", replacementRange: none)
+    #expect(field.source == "why 等")
+  }
+
+  @Test func composingInThePopupWhileTheBoardIsPannedAndClickedOverAndOverGoesOn() async throws {
+    let r = try await Rig(sidenoteBoard(), zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    let at = PopAt.spot(.card(cid("n1")))
+    let none = NSRange(location: NSNotFound, length: 0)
+    for round in 0..<3 {
+      c.openPop(at, write: true)
+      await opened(r, at)
+      let pop = c.sidenotePop
+      let field = try #require(pop.field)
+      await r.until("the input has the keys") { r.window.firstResponder === field }
+      field.setMarkedText("deng", selectedRange: NSRange(location: 4, length: 0), replacementRange: none)
+      for i in 1...4 {
+        c.camera = Camera(origin: CGPoint(x: c.camera.origin.x + 30, y: c.camera.origin.y + 12), zoom: 1)
+        c.tick(at: r.next(1.0 / 60))
+        c.refreshPop()
+        r.click(pop: field, at: CGPoint(x: 6 + CGFloat(i) * 5, y: 8), clicks: i)
+        field.setMarkedText("deng\(i)", selectedRange: NSRange(location: 5, length: 0), replacementRange: none)
+        await c.popTask?.value
+      }
+      // a press on the canvas closes the popup with the composition still open
+      if round < 2 { r.click(CGPoint(x: 8, y: 8)) }
+      await c.popTask?.value
+    }
+  }
 }
 
 // The welcome back hint (host boards.ts welcomeOf, ui/QuestionList.tsx WelcomeHint): when it shows and what it says

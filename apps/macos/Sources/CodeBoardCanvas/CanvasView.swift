@@ -364,6 +364,20 @@ public final class CanvasView: NSView {
   }
   /// A press on a card's source, which shows it when let go where it was pressed
   var sourcePress: SourceAnchor?
+  /// Where a code card's file name clicked opens its file, with the name's place in this view (the shell: its reading
+  /// pane, or what is missing to open it there); nil: the name is no button
+  public var onOpenCode: ((Segment, CGRect) -> Void)?
+  /// A press on a code card's file name, which opens it when let go where it was pressed
+  var codePathPress: CardID?
+  /// What the shell's version checks found of the board's segments (none: as pinned, or not checked); its header shows
+  /// them on each code card (CodeHead.tsx .rev). Changed cards are drawn again in one refresh, their code not laid out
+  /// again
+  public var versions: [SegmentID: VersionState] = [:] {
+    didSet { if versions != oldValue { refresh() } }
+  }
+  /// A code card's version chip clicked (its newer version, or its changes not committed), with the chip's place in
+  /// this view; nil: the chips are no buttons
+  public var onVersion: ((CardID, VersionAsk, CGRect) -> Void)?
   /// The pictures of resource blocks the provider gave, and those asked for
   var sourcePictures = SourcePictures()
   /// The pages being read now, by card ("card/row" for a list's row), and their tasks
@@ -456,6 +470,12 @@ public final class CanvasView: NSView {
   /// gives the ids they have there now (old → new) and its title; nil: that board cannot take it now (they come as
   /// copies). With no cards it only gives the title
   public var shareOnBoard: ((BoardID, Set<CardID>) -> (ids: [CardID: CardID], title: String)?)?
+  /// Where a card drag's pointer out of the view goes (the app's windows); nil: it stays the view's drag
+  public weak var cardDragging: CardDragging?
+  /// The cards of a drag while its pointer is out of the view
+  public internal(set) var cardsOut: CardsOut?
+  /// Where cards from another window would land
+  var cardsDropLayer: CAShapeLayer?
   /// The Copy ✓ | Reference chip under copies just made (CanvasPasteChip.swift)
   var pasteChip: PasteChip?
   var chipTimer: Task<Void, Never>?
@@ -1193,13 +1213,48 @@ public final class CanvasView: NSView {
     if motion.isResting { arrive() }
   }
 
+  /// On screen: in a window, neither it nor a view it is in hidden. Only then does it draw
+  var onScreen: Bool { window != nil && !isHiddenOrHasHiddenAncestor && !miniaturized }
+  /// Its window in the Dock: nothing is drawn until it is back, then what is in view once
+  var miniaturized = false
+  /// The backing scale the items were last planned for at rest
+  var restBacking: CGFloat?
+  /// How long the window must stay put on a screen of another scale before the board is drawn again for it
+  package var backingDelay = Duration.milliseconds(250)
+  var backingSettle: Task<Void, Never>?
+
+  /// On a screen of another scale (dragged across two, it changes back and forth): nothing now, one redraw once the
+  /// window has stopped moving there
   public override func viewDidChangeBackingProperties() {
     super.viewDidChangeBackingProperties()
-    if motion.isResting && scene != nil { arrive() }
+    backingChanged()
   }
 
-  /// On screen: in a window, neither it nor a view it is in hidden. Only then does it draw
-  var onScreen: Bool { window != nil && !isHiddenOrHasHiddenAncestor }
+  func backingChanged() {
+    backingSettle?.cancel()
+    let delay = backingDelay
+    backingSettle = Task { [weak self] in
+      try? await Task.sleep(for: delay)
+      guard let self, !Task.isCancelled else { return }
+      backingSettle = nil
+      if scene != nil, restBacking != backing, motion.isResting { arrive() }
+    }
+  }
+
+  @objc private func windowMoved() {
+    if backingSettle != nil { backingChanged() }
+  }
+
+  @objc private func windowMiniaturized() {
+    miniaturized = true
+    cancelRedraws()
+    link?.isPaused = true
+  }
+
+  @objc private func windowDeminiaturized() {
+    miniaturized = false
+    if scene != nil, motion.isResting { arrive() } else { wake() }
+  }
 
   /// Hidden (its tab is not the one shown): what it was drawing is dropped, what it has stays
   public override func viewDidHide() {
@@ -1216,9 +1271,17 @@ public final class CanvasView: NSView {
   public override func viewDidMoveToWindow() {
     super.viewDidMoveToWindow()
     // Space let go while another window had the keys: its key up never comes here
-    NotificationCenter.default.removeObserver(self, name: NSWindow.didResignKeyNotification, object: nil)
-    NotificationCenter.default.addObserver(
-      self, selector: #selector(windowResignedKey), name: NSWindow.didResignKeyNotification, object: window)
+    let center = NotificationCenter.default
+    for (name, action) in [
+      (NSWindow.didResignKeyNotification, #selector(windowResignedKey)),
+      (NSWindow.didMoveNotification, #selector(windowMoved)),
+      (NSWindow.didMiniaturizeNotification, #selector(windowMiniaturized)),
+      (NSWindow.didDeminiaturizeNotification, #selector(windowDeminiaturized)),
+    ] {
+      center.removeObserver(self, name: name, object: nil)
+      center.addObserver(self, selector: action, name: name, object: window)
+    }
+    miniaturized = window?.isMiniaturized == true
     link?.invalidate()
     link = nil
     watchWheel()
@@ -1424,6 +1487,7 @@ public final class CanvasView: NSView {
     if scene != nil, onScreen { settleOnPixels() }
     keepCamera()
     guard scene != nil, onScreen else { return }
+    restBacking = backing
     CanvasView.clock += 1
     shownAt = CanvasView.clock
     let others = CanvasView.all.allObjects.filter { $0 !== self }
@@ -1825,6 +1889,14 @@ public final class CanvasView: NSView {
 open class BoardWindow: NSWindow {
   open override func sendEvent(_ e: NSEvent) {
     if BoardWindow.stopsGlide(e), let v = contentView?.superview ?? contentView { BoardWindow.stopGlides(in: v) }
+    // A press while an input method composes commits what it shows first, as a text view does: the Markdown editor
+    // takes a press against its source, which does not have the marked text yet
+    if [.leftMouseDown, .rightMouseDown, .otherMouseDown].contains(e.type),
+      let v = firstResponder as? NSView, let client = v as? NSTextInputClient, client.hasMarkedText()
+    {
+      client.unmarkText()
+      v.inputContext?.discardMarkedText()
+    }
     super.sendEvent(e)
   }
 

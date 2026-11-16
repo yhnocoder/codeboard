@@ -23,6 +23,9 @@ import os
   }
 
   @ObservationIgnored private let store: Repositories?
+  /// The repositories' git, its answers kept (code tabs' cards and definitions share it); nil when the list could not
+  /// be read
+  var git: GitCache? { store?.git }
   private(set) var list: [Repository] = []
   private(set) var clones: [Clone] = []
   /// Why the block cannot work (no git, the list unreadable), said once in the block
@@ -46,6 +49,13 @@ import os
   @ObservationIgnored private let runner: any GitRunner
   @ObservationIgnored private let defaults: UserDefaults?
   @ObservationIgnored private var gitCheck: Task<Bool, Never>?
+  // The opened repository followed on disk: its folders listed again when what is in them changes, its HEAD read again
+  @ObservationIgnored private var watch: (() -> Void)?
+  @ObservationIgnored private var listDue: Set<String> = []
+  @ObservationIgnored private var listWait: Task<Void, Never>?
+  @ObservationIgnored private var headWait: Task<Void, Never>?
+  /// How long to wait before listing again (the tests' wait nothing)
+  @ObservationIgnored var pause: @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) }
   private static let heightKey = "repositoriesHeight"
   private static let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "CodeBoard", category: "repositories")
 
@@ -229,10 +239,30 @@ import os
     }
   }
 
+  // MARK: A card's source
+
+  /// Where a git source's commit is here (Repositories.locate); with no list, nothing is added
+  func locate(repository: String?, commit: String, checkout: String?, fetch: Bool = true) async throws(GitError)
+    -> RepoMatch
+  {
+    guard let store else { return .notAdded(address: repository, folder: nil) }
+    return try await store.locate(repository: repository, commit: commit, checkout: checkout, fetch: fetch)
+  }
+
+  /// A repository's git root: a clone's folder, a folder's repository's
+  func root(of r: Repository) async -> String? {
+    if case .clone = r.kind { return r.path }
+    return (try? await store?.git.repoRootOfDir(r.path)) ?? nil
+  }
+
+  /// A file source's file (Repositories.locateFile)
+  func locateFile(_ path: String) async -> String? { await store?.locateFile(path) }
+
   // MARK: The opened repository
 
   /// Shows the repository's files in place of the list
   func open(_ r: Repository) async {
+    unwatch()
     opened = r
     head = nil
     expanded = []
@@ -240,6 +270,49 @@ import os
     selected = nil
     await list("")
     if let h = await head(of: r.path), opened == r { head = h }
+    guard opened == r, watch == nil, let git else { return }
+    let base = ShellCode.realPath(r.path)
+    let root = (try? await git.repoRootOfDir(base)) ?? nil ?? base
+    let at = await RepoWatcher.place(root, git: git)
+    guard opened == r, watch == nil else { return }
+    watch = RepoWatcher.listen(at.paths) { [weak self] paths in
+      self?.heard(RepoWatcher.sort(paths, root: root, gitDir: at.gitDir), base: base, r)
+    }
+  }
+
+  /// Files added or removed: the folders listed that hold them listed again; a commit: HEAD read again
+  private func heard(_ h: RepoWatcher.Heard, base: String, _ r: Repository) {
+    for p in h.files where p.hasPrefix(base + "/") {
+      let parent = (String(p.dropFirst(base.count + 1)) as NSString).deletingLastPathComponent
+      if children[parent] != nil { listDue.insert(parent) }
+    }
+    if !listDue.isEmpty {
+      listWait?.cancel()
+      listWait = Task { [weak self, pause] in
+        await pause(VersionPause.recheck)
+        guard !Task.isCancelled, let self, self.opened == r else { return }
+        let due = self.listDue
+        self.listDue = []
+        for rel in due where self.children[rel] != nil { await self.list(rel) }
+      }
+    }
+    if h.head {
+      headWait?.cancel()
+      headWait = Task { [weak self, pause] in
+        await pause(VersionPause.git)
+        guard !Task.isCancelled, let self, self.opened == r else { return }
+        let h = await self.head(of: r.path)
+        if self.opened == r, self.head != h { self.head = h }
+      }
+    }
+  }
+
+  private func unwatch() {
+    watch?()
+    watch = nil
+    listDue = []
+    listWait?.cancel()
+    headWait?.cancel()
   }
 
   struct TreeRow: Hashable {
@@ -265,6 +338,7 @@ import os
   }
 
   func close() {
+    unwatch()
     opened = nil
     head = nil
     expanded = []

@@ -1,4 +1,5 @@
 import AppKit
+import CodeBoardModel
 import CodeBoardResources
 import WebKit
 
@@ -30,6 +31,10 @@ public enum WebReading {
         WebPageView(context: $0, store: saving, scripts: scripts, translate: translate, websiteData: websiteData)
       })
   }
+
+  /// What a web tab showing `url` online is gone to by: its address without its fragment, as saved links are told
+  /// apart; a saved page's tab is gone to by its hash instead (`Page.key`)
+  public static func key(for url: URL) -> String { "web:" + Vault.pageAddress(url.absoluteString) }
 
   /// Every web tab's store: one fixed identifier, so that sign-ins outlive the tab and the app. WebKit keeps it where
   /// it keeps an app's web data; it has no way to put it in a folder of the app's choosing

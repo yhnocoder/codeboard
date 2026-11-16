@@ -74,6 +74,18 @@ function resetChrome() {
   setStickerColor(undefined);
 }
 
+declare global {
+  interface Window {
+    /**
+     * Whether the story on the page is still setting itself up (its scene's `after`): tools/test/storybook.mjs waits for it, so
+     * what goes wrong there counts against this story, not a later one the runner had moved on to
+     */
+    __storySetup?: "running" | "done";
+  }
+}
+/** Which load of a Stage is the page's current one: a setup replaced by a newer load does not report the newer one done */
+let setupGen = 0;
+
 let chromeDefault = true;
 /**
  * 挂整个 App 还是只挂白板（BoardView：没有工具栏和 Dock，卡和画布的小样不被它们挡着；面包屑、新版本横幅、讲解条是白板自己的，照样有）。
@@ -92,6 +104,11 @@ export function Stage(p: { scene: () => Scene; globals: Globals; replies?: Repli
   let raf = 0;
   const load = (s: Scene) => {
     cancelAnimationFrame(raf);
+    const gen = ++setupGen;
+    window.__storySetup = "running";
+    const done = () => {
+      if (gen === setupGen) window.__storySetup = "done";
+    };
     const b: Board = structuredClone({ ...s.board, cam: { x: ORIGIN, y: ORIGIN, z: s.zoom ?? untrack(z) } });
     // scenes put sidenotes on lines; the Highlights they belong to come as the host's reads bring them (core edit/highlights.ts)
     fixHighlights(b, undefined, { review: false });
@@ -125,10 +142,10 @@ export function Stage(p: { scene: () => Scene; globals: Globals; replies?: Repli
     raf = requestAnimationFrame(() => {
       raf = requestAnimationFrame(() => {
         if (s.links?.length || s.sections?.length) select({ links: s.links, sections: s.sections }, true);
-        if (s.after)
-          void Promise.resolve()
-            .then(s.after)
-            .catch((e) => console.error("Story setup failed:", e));
+        void Promise.resolve()
+          .then(s.after)
+          .catch((e) => console.error("Story setup failed:", e))
+          .finally(done);
       });
     });
   };
@@ -154,6 +171,9 @@ export function Stage(p: { scene: () => Scene; globals: Globals; replies?: Repli
   );
   onCleanup(() => {
     cancelAnimationFrame(raf);
+    // a setup still going when the story is taken away reports nothing for the next one
+    setupGen++;
+    window.__storySetup = "done";
     // 卸下时编辑器把正在编辑的交上去（mutate → 存盘的 patch），假宿主的回答要等下一个任务：下一个 story 的 init 先到，
     // 请求作废，那边弹「Couldn't save the board」。标成没加载，这一下就不存了（init 再标回来）
     setLoaded(false);

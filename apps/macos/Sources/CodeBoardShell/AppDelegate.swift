@@ -47,6 +47,8 @@ import CodeBoardResources
   /// The main window's shell, which menu actions act on
   private var shell: Shell { windows.main?.shell ?? first }
   private var window: NSWindow? { windows.main?.window }
+  /// The shell of the board window in front (the bug recorder's)
+  private var frontShell: Shell { BugRecorder.frontWindow().flatMap { windows.entry(of: $0) }?.shell ?? shell }
   private var watcher: VaultWatcher?
   /// The repositories added on this Mac, in the app's data folder
   private var repositories: RepositoriesModel?
@@ -108,9 +110,11 @@ import CodeBoardResources
       panes.summarySwitch = ai.summarySwitch
       panes.summaryWriter = keys.key() != nil ? ai.writer(keys: keys) : nil
     }
-    let window = windows.add(first).window
+    // where it was (the frame kept under "main" when the windows' state has none)
+    let window = windows.addFirst(first, saved: savedWindows.first).window
     if let driver {
       windows.present = { driver.opened(window: $0) }
+      windows.focus = { $0.makeKey() }
       driver.started(window: window)
     } else {
       window.makeKeyAndOrderFront(nil)
@@ -153,11 +157,11 @@ import CodeBoardResources
       },
       entries: { [weak shell] in shell?.reading.entries ?? EntryIndex() },
       resources: { [weak shell] in shell?.tree?.allFolders.flatMap(\.resources) ?? [] },
-      readingFront: { [weak shell] in
-        guard let r = shell?.reading, let t = r.tabs.first(where: { $0.id == r.selected }) else { return nil }
+      readingFront: { [weak self] in
+        guard let r = self?.frontShell.reading, let t = r.tabs.first(where: { $0.id == r.selected }) else { return nil }
         return t.payload.merging(["kind": t.kind, "key": t.key ?? "", "title": t.title, "at": "0"]) { a, _ in a }
       },
-      look: { [weak shell] in (shell?.theme.rawValue ?? "?", shell?.dark ?? false) })
+      look: { [weak self] in (self?.frontShell.theme.rawValue ?? "?", self?.frontShell.dark ?? false) })
     return BugRecorder(folder: folder.appending(path: "Bug Reports", directoryHint: .isDirectory), source: source)
   }
 
@@ -307,6 +311,11 @@ import CodeBoardResources
 
   @objc func newWindow(_ sender: Any?) { windows.open() }
 
+  @objc func moveTabToNewWindow(_ sender: Any?) {
+    guard let e = windows.main, let tab = e.shell.selected else { return }
+    Task { await windows.moveToNewWindow(tab, from: e, frame: nil) }
+  }
+
   // Not toggleSidebar(_:): NSWindow answers that one itself (and disables it, having no split view)
   @objc func flipSidebar(_ sender: Any?) { shell.sidebarShown.toggle() }
   @objc func flipReadingPane(_ sender: Any?) { shell.reading.shown.toggle() }
@@ -346,6 +355,7 @@ import CodeBoardResources
     switch item.action {
     case #selector(importOldBoards(_:)): return shell.vault != nil && !shell.importing
     case #selector(newWindow(_:)): return shell.vault != nil
+    case #selector(moveTabToNewWindow(_:)): return shell.tabs.count > 1
     case #selector(closeTab(_:)):
       item.title = shell.selected == nil || otherKeyWindow != nil ? "Close" : "Close Tab"
       return window != nil
@@ -463,6 +473,7 @@ import CodeBoardResources
     windows.addItem(.separator())
     windows.addItem(item("Show Previous Tab", #selector(showPreviousTab(_:)), "[", [.command, .shift]))
     windows.addItem(item("Show Next Tab", #selector(showNextTab(_:)), "]", [.command, .shift]))
+    windows.addItem(withTitle: "Move Tab to New Window", action: #selector(moveTabToNewWindow(_:)), keyEquivalent: "")
     // ⌃Tab and ⌃⇧Tab, the other tab-switching keys, without a second visible pair of items
     // a keyboard's ⇧Tab types a back tab (U+0019), which a "\t" item does not match; an event made with a plain tab
     // matches only that one

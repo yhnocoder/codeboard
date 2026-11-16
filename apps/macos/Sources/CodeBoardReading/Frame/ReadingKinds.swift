@@ -41,12 +41,13 @@ import CodeBoardModel
   /// What `ReadingContext.open` hands the tab it opens, until that tab's view is made
   fileprivate static var handing: (tab: ReadingTab.ID, value: Any)?
 
-  /// The view a tab shows, made once when it opens and kept while it is open
-  static func view(for tab: ReadingTab, in paneView: ReadingPaneView) -> NSView {
+  /// The view a tab shows, made once when it opens and kept while it is open, and where its context says it is (which
+  /// the pane view it moves to points at itself)
+  static func view(for tab: ReadingTab, in paneView: ReadingPaneView) -> (NSView, ReadingContext.Place) {
     let handed = handing.flatMap { $0.tab == tab.id ? $0.value : nil }
-    return kinds[tab.kind]?.make(
-      ReadingContext(tab: tab.id, kind: tab.kind, pane: paneView.pane, paneView: paneView, handed: handed))
-      ?? NSView()
+    let place = ReadingContext.Place(pane: paneView.pane, paneView: paneView)
+    let view = kinds[tab.kind]?.make(ReadingContext(tab: tab.id, kind: tab.kind, place: place, handed: handed))
+    return (view ?? NSView(), place)
   }
 }
 
@@ -60,8 +61,20 @@ import CodeBoardModel
 @MainActor public struct ReadingContext {
   public let tab: ReadingTab.ID
   public let kind: String
-  public let pane: ReadingPane
-  weak var paneView: ReadingPaneView?
+  /// The pane the tab is in now: a tab moved to another window's pane takes its view with it (ReadingPaneView.adopt)
+  public var pane: ReadingPane { place.pane }
+  var paneView: ReadingPaneView? { place.paneView }
+  let place: Place
+  /// Where the tab is, shared by every copy of its context
+  @MainActor public final class Place {
+    var pane: ReadingPane
+    weak var paneView: ReadingPaneView?
+
+    init(pane: ReadingPane, paneView: ReadingPaneView) {
+      self.pane = pane
+      self.paneView = paneView
+    }
+  }
   /// What the tab that opened this one handed it (`open`'s `handing`); nil for every other way a tab is made. Never
   /// saved
   public let handed: Any?

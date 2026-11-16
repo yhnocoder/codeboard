@@ -1,6 +1,10 @@
 {
   "added": 1763280000000,
-  "fields": {},
+  "fields": {
+    "f-read-on": "2025-11-14",
+    "f-starred": true,
+    "f-status": "option-done"
+  },
   "highlights": [],
   "id": "e-nano-vllm",
   "meta": {

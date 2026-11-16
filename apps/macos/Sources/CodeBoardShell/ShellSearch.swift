@@ -2,6 +2,7 @@ import AppKit
 import CodeBoardCanvas
 import CodeBoardModel
 import CodeBoardNotes
+import CodeBoardReading
 
 // ⌘K and ⌘F (keymap.ts search, searchBoard; ui/Palette.tsx): the search palette over the board in front, on all boards
 // or this board's. The boards open in a tab are searched as they are now, the rest as their files are. A card picked
@@ -9,11 +10,15 @@ import CodeBoardNotes
 // on a Shelf is shown large beside the opened Shelf and left there, the board not edited. Esc or a click outside closes it, the camera where it was. Related by Meaning (host
 // meaning.ts) asks box, the index service VS Code's windows share: the boards handed to it when the palette opens, then
 // each query searched and, its answer whole, read again by the reranker. With no embedding address it is off and box is
-// never asked.
+// never asked. Resources (ListSearch.swift) lists the vault's entries found by title, authors or text, searched off the
+// main thread; ⌘F only those this board's cards take from. Return opens one at the place found, ⌥↵ puts that passage on
+// the board as a Note with its source.
 
 extension BoardPanes {
   /// One palette for the app
   @MainActor static let search = SearchPanel()
+  /// The entries' texts the Resources group searches, read once and kept while their files stay as they were
+  @MainActor static let resourceTexts = ResourceTexts()
   /// Related by Meaning's index, its settings and its key (tests put their own here)
   @MainActor static var meaningIndex: any MeaningIndex = BoxService(bin: bundledBox)
   @MainActor static var searchSettings = SearchSettings(defaults: .standard)
@@ -64,7 +69,11 @@ extension BoardPanes {
       BoardSearch.search(q, in: await sources.value, here: here, thisBoard: thisBoard)
     }
     wireMeaning(s, sources: sources, vault: vault, here: here)
+    wireResources(s, vault: vault, here: here)
     s.onPick = { [weak self] in self?.picked($0) }
+    // the functions and classes of the repositories indexed (ShellCodeCards.swift)
+    s.onCode = { [weak self] q in await (self?.shell.reading.codeHost as? ShellCode)?.symbols(q) ?? [] }
+    s.onCodePick = { [weak self] sym, add in self?.pickedCode(sym, add: add) }
     s.onClose = { [weak self] in self?.closeSearch() }
     s.view.frame = pane.bounds
     s.view.autoresizingMask = [.width, .height]
@@ -119,6 +128,25 @@ extension BoardPanes {
     }
   }
 
+  /// Resources: the entries as the last tree read listed them, this board's those its cards take from
+  private func wireResources(_ s: SearchPanel, vault: Vault, here: BoardID) {
+    let entries = shell.reading.entries.all
+    let onBoard = documents[here].map { ResourceTexts.entries(on: $0.board) } ?? []
+    s.onResources = { q, thisBoard in
+      await Self.resourceTexts.search(q, in: entries, vault: vault, only: thisBoard ? onBoard : nil).map { h in
+        SearchPanel.Resource(
+          entry: h.entry, label: h.title, context: h.label.map { "\($0) · \(h.context)" } ?? h.context,
+          detail: h.count > 1 ? "\(h.count) places" : "", open: h.anchor, collect: h.collect, preview: h.preview,
+          where: h.where, images: vault.root)
+      }
+    }
+    s.onPickResource = { [weak self] open, collect in
+      guard let self else { return }
+      self.closeSearch()
+      if let collect { self.shell.collect(collect) } else { self.shell.reading.open(found: open) }
+    }
+  }
+
   /// What the group's error line says
   static func meaningError(_ e: Error) -> String {
     switch e as? BoxError {
@@ -152,8 +180,8 @@ extension BoardPanes {
     closeSearch()
     guard let pane = frontPane else { return }
     guard p.board == pane.document?.id else {
-      // the canvas's way to another board: it opens in this tab, then goes to the card
-      pane.canvas.onOpenBoard?(p.board, .card(p.card))
+      // it opens in this tab, then goes to the card: never in another window, as a click on a board may
+      pane.open(p.board, at: .card(p.card))
       return
     }
     pane.canvas.arrive(at: p.card)

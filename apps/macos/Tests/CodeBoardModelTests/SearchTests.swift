@@ -132,3 +132,13 @@ private func found(_ q: String, thisBoard: Bool = false) -> [String] {
     images: URL(filePath: "/v"))
   #expect(BoardSearch.search("step", in: [many], here: here, thisBoard: false).count == 60)
 }
+
+@Test func everyWordMustBeFoundInAnyOrderAndPlace() {
+  // "kv" in the title, "frees" in the body
+  #expect(found("kv frees") == ["n1"])
+  #expect(found("frees kv") == ["n1"])
+  #expect(found("kv nowhere").isEmpty)
+  // a sidenote's words on different lines; its row is the first line with one
+  let s = BoardSearch.search("fifo first", in: boards(), here: here, thisBoard: false)
+  #expect(s.map { $0.sidenote ?? $0.card } == ["sn1"] && s.first?.label == "First line")
+}

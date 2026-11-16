@@ -20,6 +20,19 @@ enum HeadAct: Hashable {
   case unlock
   /// A hovered Link List row's tools (.ltools): Show as Compact / Rich, Open in Browser, Remove from List
   case row(String, RowTool)
+  /// A code card's file name (.cpath): its file opened (CanvasView.onOpenCode); pressed as the card is, so that a drag
+  /// moves the card
+  case path
+  /// A code card's version chip (.rev) and its "+ uncommitted" (.rev.unc): what changed (CanvasView.onVersion)
+  case version, uncommitted
+}
+
+/// What a code card's version chip asks the shell for
+public enum VersionAsk: Sendable {
+  /// Its newer version against the pinned one (DiffPop), or what keeps it from being had
+  case newVersion
+  /// HEAD against the working tree (openWorktreeDiff)
+  case uncommitted
 }
 
 enum RowTool: CaseIterable {
@@ -39,6 +52,8 @@ extension CanvasView {
     var parts = 0
     /// A Web card's: its two buttons on glass over its top right corner (.wacts), no header behind them
     var floating = false
+    /// A code card's file name, when it opens the file: its box (.cpath)
+    var path: CGRect?
 
     /// What the strip is drawn from: the drawing less a code card's lines, which take long to describe and which the
     /// strip does not show (a 400-line card's took 50 ms each time a card started to be written)
@@ -150,6 +165,14 @@ extension CanvasView {
     let lockb = CGRect(x: t.headerPad, y: t.headerHeight / 2 - 9, width: 18, height: 18)
     h.buttons = (locked ? [(.unlock, lockb)] : []) + buttons.reversed() + h.buttons + [more]
     h.reserve = right - (x + 2) + t.headerGap
+    if case .code(let c) = it.drawing, onOpenCode != nil {
+      h.path = Drawing.pathBox(c, width: w, t, reserve: h.reserve)
+    }
+    if case .code(let c) = it.drawing, onVersion != nil, !doc.board.isFreeCode(id) {
+      let chips = Drawing.chips(c, width: w, t)
+      h.buttons += [(.version, chips.version), (.uncommitted, chips.uncommitted)].compactMap { a, r in r.map { (a, $0) }
+      }
+    }
     return h
   }
 
@@ -169,7 +192,80 @@ extension CanvasView {
     }
     let box = items[i].box
     let local = box.convert(p, from: box.superlayer)
-    return h.buttons.first { $0.1.contains(local) }.map { (id, $0.0) }
+    if let b = h.buttons.first(where: { $0.1.contains(local) }) { return (id, b.0) }
+    return h.path?.contains(local) == true ? (id, .path) : nil
+  }
+
+  /// The code card whose file name is under a board point, when it opens the file
+  func codePathAt(_ p: CGPoint) -> CardID? {
+    headAct(at: p).flatMap { $0.1 == .path ? $0.0 : nil }
+  }
+
+  /// A code card's file name clicked: its first segment's file, with where the name is in this view
+  func openCodePath(_ id: CardID) {
+    guard let open = onOpenCode, let r = codePathRect(id), case .own(let k)? = document?.board.card(id)?.content,
+      case .code(let code) = k.body, let s = code.segments.first
+    else { return }
+    open(s, r)
+  }
+
+  /// Where a code card's file name is in this view, when it opens the file
+  func codePathRect(_ id: CardID) -> CGRect? {
+    guard let r = head(id)?.path, let i = index(of: .card(id)) else { return nil }
+    let box = items[i].box
+    let a = camera.view(box.convert(r.origin, to: box.superlayer))
+    let b = camera.view(box.convert(CGPoint(x: r.maxX, y: r.maxY), to: box.superlayer))
+    return CGRect(x: min(a.x, b.x), y: min(a.y, b.y), width: abs(b.x - a.x), height: abs(b.y - a.y))
+  }
+
+  /// Where a header button is in this view
+  func headRect(_ id: CardID, _ a: HeadAct) -> CGRect? {
+    guard let r = head(id)?.buttons.first(where: { $0.0 == a })?.1, let i = index(of: .card(id)) else { return nil }
+    let box = items[i].box
+    let p = camera.view(box.convert(r.origin, to: box.superlayer))
+    let q = camera.view(box.convert(CGPoint(x: r.maxX, y: r.maxY), to: box.superlayer))
+    return CGRect(x: min(p.x, q.x), y: min(p.y, q.y), width: abs(q.x - p.x), height: abs(q.y - p.y))
+  }
+
+  /// A code card's version chip in this view once the camera is at rest (Review One by One brings the card there)
+  package func versionChip(_ id: CardID) async -> CGRect? {
+    await rest()
+    return headRect(id, .version)
+  }
+
+  /// The version chip's tip (CodeHead.tsx .rev data-tip)
+  func versionTip(_ h: Head) -> String {
+    guard case .code(let c) = h.drawing, let v = c.version else { return "" }
+    let what =
+      switch c.mark.version {
+      case .changed?: "New version · View Diff"
+      case .hidden?: "Changes only in hidden lines"
+      case .lost?, nil: c.mark.unknown ? "Unknown version (not in git)" : "Pinned version"
+      }
+    return "\(v) · \(what)"
+  }
+
+  /// The code cards' version chips, as accessibility elements (version-<card>, uncommitted-<card>), labelled with their
+  /// tips
+  func versionElements() -> [Any] {
+    guard onVersion != nil, let s = scene else { return [] }
+    return s.items.flatMap { it -> [Any] in
+      guard case .card(let id)? = it.owner, case .code = it.drawing, let h = head(id) else { return [] }
+      return [HeadAct.version, .uncommitted].compactMap { a -> Any? in
+        guard let r = headRect(id, a) else { return nil }
+        let name = a == .version ? "version" : "uncommitted"
+        return uiElement("\(name)-\(id.rawValue)", r, label: headTip(a, h).text, in: self)
+      }
+    }
+  }
+
+  /// The code cards' file names that open their files, as accessibility elements
+  func codePathElements() -> [Any] {
+    guard onOpenCode != nil, let s = scene else { return [] }
+    return s.items.compactMap { it -> Any? in
+      guard case .card(let id)? = it.owner, case .code = it.drawing, let r = codePathRect(id) else { return nil }
+      return uiElement("codepath-\(id.rawValue)", r, label: "Open in Reading Pane", in: self)
+    }
   }
 
   /// What a button does
@@ -180,6 +276,10 @@ extension CanvasView {
     case .wrap: toggleWrap([id])
     case .copy: copyCode(id)
     case .unlock: doc.edit("Unlock") { $0.setLocked([.card(id)], false) }
+    case .path: openCodePath(id)
+    case .version, .uncommitted:
+      guard let ask = onVersion, let r = headRect(id, a) else { return }
+      ask(id, a == .version ? .newVersion : .uncommitted, r)
     case .row(let item, let tool): pressRowTool(id, item, tool)
     case .split: if !h.faint.contains(.split) { splitByHeadings(id) }
     case .source:
@@ -301,6 +401,9 @@ extension CanvasView {
     case .source: Tip("Markdown Source", kbd: "⌘/")
     case .open: Tip("Open in Browser", kbd: onOpenWeb == nil ? "Double-click" : "⌘ Double-click")
     case .unlock: Tip("Unlock", kbd: BoardKey.show(of: "Lock / Unlock"))
+    case .path: Tip("Open in Reading Pane")
+    case .version: Tip(versionTip(h))
+    case .uncommitted: Tip("+ uncommitted · HEAD vs Working Tree")
     case .row(let item, let tool):
       switch tool {
       case .rich: Tip(isRichRow(h.drawing, item) ? "Show as Compact" : "Show as Rich")
@@ -326,7 +429,7 @@ extension CanvasView {
       return CGRect(x: min(a.x, b.x), y: min(a.y, b.y), width: abs(b.x - a.x), height: abs(b.y - a.y))
     }
     var tip: (Tip, CGRect)?
-    if let (id, a) = hoveredHead, let h = head(id), let r = h.buttons.first(where: { $0.0 == a })?.1,
+    if let (id, a) = hoveredHead, let h = head(id), let r = h.buttons.first(where: { $0.0 == a })?.1 ?? h.path,
       let i = index(of: .card(id))
     {
       let box = items[i].box
@@ -366,7 +469,7 @@ extension CanvasView {
       let hovered = hoveredHead?.0 == id ? hoveredHead?.1 : nil
       let size = box.bounds.size
       let key =
-        "\(h.header) \(h.folded) \(h.buttons.map(\.0)) \(h.on) \(h.faint) \(String(describing: hovered)) \(size) \(theme.id) \(theme.dark) \(scale)"
+        "\(h.header) \(h.folded) \(h.buttons.map(\.0)) \(h.on) \(h.faint) \(String(describing: hovered)) \(String(describing: h.path)) \(size) \(theme.id) \(theme.dark) \(scale)"
       let l: CALayer
       if let shown = headShown[id] {
         l = shown.layer
@@ -481,10 +584,27 @@ enum HeadActs {
     default: break
     }
     ctx.restoreGState()
+    // the file name under the pointer: the row's tint behind it, in the ink (.cpath:hover)
+    if hovered == .path, let r = h.path, case .code(let c) = h.drawing, let p = c.path {
+      ctx.addPath(CGPath(roundedRect: r, cornerWidth: 5.5, cornerHeight: 5.5, transform: nil))
+      ctx.setFillColor(t.hlrow)
+      ctx.fillPath()
+      Drawing.text(ctx, p, t.codePath, t.ink, x: r.minX + 3, midY: r.midY, width: r.width - 6)
+    }
     for (a, r) in h.buttons {
       // drawn with the row (placeRowHover)
       if case .row = a { continue }
       let lit = hovered == a
+      if a == .version || a == .uncommitted {
+        // drawn with the header; lit: .rev:hover, the row's tint behind it
+        if lit, case .code(let c) = h.drawing {
+          ctx.addPath(CGPath(roundedRect: r, cornerWidth: 7, cornerHeight: 7, transform: nil))
+          ctx.setFillColor(t.hlrow)
+          ctx.fillPath()
+          Drawing.chip(ctx, c, uncommitted: a == .uncommitted, in: r, lit: true, t)
+        }
+        continue
+      }
       if h.floating {
         floating(a, in: r, lit: lit, t, ctx)
         continue
@@ -541,7 +661,7 @@ enum HeadActs {
         case .wrap: wrap
         case .copy: copy
         case .split: splitH
-        case .more, .lang, .open, .unlock, .row, .source: CGMutablePath()
+        case .more, .lang, .open, .unlock, .row, .source, .path, .version, .uncommitted: CGMutablePath()
         }
       ctx.saveGState()
       if faint { ctx.setAlpha(0.35) }

@@ -70,6 +70,14 @@ private func tree(_ boards: [(String, String)] = [("a", "A.board"), ("b", "B.boa
     #expect(s.current?.back.map(\.board) == [id("a")])
   }
 
+  /// A board the reading pane opens (a board field's Open Board) shows in this shell's current tab
+  @Test func aBoardOpenedFromTheReadingPaneShowsInTheCurrentTab() {
+    let s = shell()
+    s.show(id("a"))
+    s.reading.onOpenBoard?(id("b"))
+    #expect(s.tabs.count == 1 && s.current?.board == id("b") && s.current?.back.map(\.board) == [id("a")])
+  }
+
   /// A sub-board entered from its card (actions/subboards.ts enterFrame, host handlers.ts enterBoard): the boards it was
   /// entered from are its crumbs; leaving to one (leaveBoard) shows it from where its camera was when it was left; back
   /// and forward bring a board back with its crumbs, and a board shown otherwise has none

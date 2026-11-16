@@ -218,7 +218,11 @@ package final class SidenotePop: NSObject {
       wireHead()
       sync(d)
       // refs written before the [[ list came (picked from it, or typed) are drawn as they resolve now
-      for f in fields { f.editor.core.relayout(f.editor.core.layout.copy(resources: resources(editing: true))) }
+      // not while an input method composes: the layout then shows marked text the source does not have yet, and the
+      // editor takes a relayout only of its own source
+      for f in fields where f.editor.core.marked == nil {
+        f.editor.core.relayout(f.editor.core.layout.copy(resources: resources(editing: true)))
+      }
       relayout()
       return size
     }
@@ -1705,7 +1709,7 @@ final class Composer: NSView, Fits {
     var inner: CGFloat = 20
     if let e = editor {
       let tw = textWidth(w)
-      if abs(e.core.layout.width - tw) > 0.5 { e.core.relayout(e.core.layout.laid(width: tw)) }
+      if abs(e.core.layout.width - tw) > 0.5, e.core.marked == nil { e.core.relayout(e.core.layout.laid(width: tw)) }
       e.setFrameOrigin(CGPoint(x: left, y: 5))
       inner = max(e.frame.height, 20)
     }

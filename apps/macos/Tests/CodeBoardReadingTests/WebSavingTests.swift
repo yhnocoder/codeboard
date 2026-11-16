@@ -91,6 +91,22 @@ import WebKit
     #expect(again.saveState == .saved(.link))
   }
 
+  /// A link kept without a tab goes into the resource named, once: the same address again, with or without a
+  /// fragment, gives the entry it has, untouched; what is not a web page's address gives none
+  @Test func anAddressIsKeptAsALinkWithoutATab() async throws {
+    let tabs = try WebTabs(vault: vault, scripts: nil)
+    defer { done(tabs) }
+    let r = try vault.newResource(in: "", title: "Reading", preset: .web)
+    let first = try #require(try tabs.pane.saveLink(url("/a"), title: "Kept", in: r.path))
+    #expect(first.title == "Kept" && first.origin == .web(url("/a").absoluteString) && first.versions.isEmpty)
+    let again = try tabs.pane.saveLink(try #require(URL(string: url("/a").absoluteString + "#part")), in: r.path)
+    let kept = try vault.items(in: r.path).count
+    #expect(again == first && kept == 1)
+    #expect(tabs.pane.entries.all.map(\.entry) == [first])
+    let other = try tabs.pane.saveLink(try #require(URL(string: "file:///etc/hosts")), in: r.path)
+    #expect(other == nil)
+  }
+
   /// A vault that has a web resource, in a folder, saves into it; each page loaded says how the vault has it saved,
   /// a link or its latest page whole; with no vault the button is off and says why
   @Test func theButtonShowsHowTheVaultHasEachPageSaved() async throws {
@@ -181,18 +197,71 @@ import WebKit
     let first = try #require(try web().first?.1.first)
     #expect(first.title == "Page Late" && first.meta?.title == "Page Late" && first.meta?.description == nil)
     #expect(tabs.pane.entries.all.map(\.entry) == [first], "the sidebar and the lists have it already")
-    _ = try await v.web.evaluateJavaScript("document.documentElement.dataset.answer = '1'; 0")
+    // (the page's icon a one-pixel PNG: the loopback server answers with text only)
+    let png =
+      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+    _ = try await v.web.evaluateJavaScript(
+      "document.documentElement.dataset.icon = '\(png)'; document.documentElement.dataset.answer = '1'; 0")
     try await until("the metadata added") { try web().first?.1.first?.meta?.description == "A made-up page" }
+    try await until("the site's icon kept as a file") { try web().first?.1.first?.meta?.icon == .file("icon.png") }
     let entries = try web().first?.1
     #expect(entries?.count == 1 && entries?.first?.id == first.id && entries?.first?.added == first.added)
+    let found = try #require(tabs.pane.entries.all.first)
+    let vault = try #require(tabs.pane.vault)
+    let file = vault.url(of: found.path).appending(path: Vault.imagesFolder).appending(path: "icon.png")
+    #expect(FileManager.default.fileExists(atPath: file.path))
+    #expect(WebReading.sourceLabel(SourceAnchor(entry: found.entry.id), in: tabs.pane)?.icon == .image(file))
+  }
+
+  /// A link added without a tab is read by the reader the shell gives: its entry takes the page's title, description
+  /// and site, and its icon as a file; with no reader, or a page that cannot be read, it stays as it was added
+  @Test func aLinkAddedWithoutATabIsReadAndKeepsItsIcon() async throws {
+    let tabs = try WebTabs(vault: vault, store: nil, scripts: nil)
+    defer { done(tabs) }
+    let pane = tabs.pane
+    let resource = try vault.newResource(in: "", title: "Links", preset: .web).path
+    let png = try #require(
+      Data(
+        base64Encoded:
+          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="))
+    func add(_ address: String) throws -> (SavedItem, String) {
+      let item = SavedItem(id: "", kind: .link, url: address, title: address, savedAt: 1_000)
+      let path = try vault.save(item, in: resource)
+      pane.entries.update(try vault.entry(at: path), at: path)
+      pane.readLink(item, in: resource)
+      return (item, path)
+    }
+    let (_, bare) = try add("https://example.org/bare")
+    #expect(try vault.entry(at: bare).meta == nil, "no reader: as it was added")
+
+    pane.readsPage = { url in
+      url.path == "/gone"
+        ? nil : PageRead(title: "A Page", description: "About it", site: "Example", icon: png, iconEnding: "png")
+    }
+    let (_, read) = try add("https://example.org/read")
+    try await until("read") { try vault.entry(at: read).meta?.icon == .file("icon.png") }
+    let e = try vault.entry(at: read)
+    #expect(e.title == "A Page" && e.meta?.description == "About it" && e.meta?.site == "Example")
+    #expect(pane.entries[e.id]?.entry == e, "the pane knows")
+    let file = vault.url(of: read).appending(path: Vault.imagesFolder).appending(path: "icon.png")
+    #expect(try Data(contentsOf: file) == png)
+    #expect(WebReading.sourceLabel(SourceAnchor(entry: e.id), in: pane)?.icon == .image(file))
+    let (_, gone) = try add("https://example.org/gone")
+    try await Task.sleep(for: .milliseconds(50))
+    #expect(try vault.entry(at: gone).meta == nil && vault.entry(at: gone).title == "https://example.org/gone")
   }
 
   /// Saving a page whole: the script's fetch is answered with the tab's cookie, its two chunks written in order, the
-  /// rule files of its host handed to it; the service gets the one file, and the page's entry one version of the hash
-  /// it gave, which the button then shows; the file is gone after
+  /// rule files of its host handed to it, the vault's own first; the service gets the one file, and the page's entry
+  /// one version of the hash it gave, which the button then shows; the file is gone after
   @Test func aFullPageIsCapturedKeptByTheServiceAndListedInTheVault() async throws {
     let store = TestStore()
-    await store.set(rules: [##"{"body":"#main"}"##], forHost: "127.0.0.1")
+    await store.set(
+      rules: [
+        ##"{"domain":"127.0.0.1","origin":"vault","rules":{"variants":[{"hide":["#ad"]}]}}"##,
+        ##"{"domain":"127.0.0.1","origin":"builtin","rules":{"variants":[{"body":"#main"}]}}"##,
+      ],
+      forHost: "127.0.0.1")
     let websiteData = WKWebsiteDataStore.nonPersistent()
     let cookie = try #require(
       HTTPCookie(properties: [.name: "session", .value: "made-up-token", .domain: "127.0.0.1", .path: "/"]))
@@ -208,7 +277,8 @@ import WebKit
     let page = try #require(await store.pages.first)
     #expect(
       page.html == "<!doctype html><title>Page A</title><p id=asset>asset for session=made-up-token 200</p>"
-        + ##"<p id=rules>[{"body":"#main"}]</p>"##)
+        + ##"<p id=rules>vault 127.0.0.1 {"variants":[{"hide":["#ad"]}]} | "##
+        + ##"builtin 127.0.0.1 {"variants":[{"body":"#main"}]}</p>"##)
     #expect(page.capture == PageCapture(url: url("/a").absoluteString, title: "Page A"))
     try await until("the button says so") { v.saveState == .saved(.page(hash: TestStore.hash(1))) }
     #expect(v.capture == nil && !FileManager.default.fileExists(atPath: page.file.path))

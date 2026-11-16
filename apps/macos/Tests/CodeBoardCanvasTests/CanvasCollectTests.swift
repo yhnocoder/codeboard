@@ -96,6 +96,44 @@ extension CanvasPasteTests {
       #expect(r.doc.history.undoSteps.count == 1)
     }
 
+    static let code = Collected(
+      body: .code(
+        Segment(
+          id: SegmentID(rawValue: "s1"),
+          source: .git(
+            repository: "https://github.com/acme/engine", commit: "abc1234", path: "engine.py", uncommitted: false,
+            checkout: nil),
+          language: "python", firstLine: 12, lines: ["def step(self):", "    return self.run()"],
+          symbol: Symbol(name: "Engine.step", kind: .function))),
+      source: nil, title: "engine.py", label: "12–13")
+
+    /// A code tab's lines: a code card of their segment, its width the longest line's (at least 380), selected, one
+    /// step that undo takes back whole; the same lines again are a second card
+    @Test func addToBoardMakesACodeCardOfItsSegmentAndAgainASecond() async throws {
+      let (r, _) = try await rig()
+      defer { r.close() }
+      let before = Set(r.doc.board.cards.map(\.id))
+      #expect(r.canvas.collect(Self.code))
+      let c = try added(r, before)
+      guard case .own(let k) = c.content, case .code(let code) = k.body, case .code(let seg) = Self.code.body else {
+        Issue.record("not a code card: \(c)")
+        return
+      }
+      #expect(code.segments == [seg] && k.title == nil && cardTitle(k) == "Engine.step" && c.width == 380)
+      #expect(
+        r.doc.selection == [.card(c.id)] && r.doc.undoName == "Add to Board" && r.doc.history.undoSteps.count == 1)
+      await r.until("its card drawn") { r.canvas.index(of: .card(c.id)) != nil }
+      #expect(r.canvas.camera.visible(r.canvas.bounds.size).contains(r.rect(c.id.rawValue)), "in view")
+      #expect(r.canvas.collect(Self.code))
+      #expect(r.doc.board.cards.count == before.count + 2 && r.doc.history.undoSteps.count == 2, "a second card")
+      r.doc.undo()
+      r.doc.undo()
+      #expect(Set(r.doc.board.cards.map(\.id)) == before, "each add one step")
+      var long = seg
+      long.lines = [String(repeating: "x", count: 200)]
+      #expect(CanvasView.codeWidth(long) == 760 && CanvasView.codeWidth(seg) == 380)
+    }
+
     @Test func aWebPictureIsAnImageCardAtItsAddressWithThePageAsItsSource() async throws {
       // read through the test's own loader: never the network
       let png = CanvasPasteTests.png(600, 300)
@@ -298,6 +336,46 @@ extension CanvasPasteTests {
       #expect(
         r.doc.selection == [.card(c.id)] && r.doc.undoName == "Add to Board" && r.doc.history.undoSteps.count == 1)
       await r.until("its page read") { pages.asked == ["https://harbour.example.org/log"] }
+    }
+
+    /// Several rows of a list dragged at once, an item each: the first in hand, let go a card each, in a row to the
+    /// right of the first, apart, top to top; all selected, one step
+    @Test func severalItemsDroppedAreACardEachInARowInOneStep() async throws {
+      let (r, _) = try await rig()
+      defer { r.close() }
+      let pages = CanvasWebTests.Pages()
+      r.canvas.fetchPage = pages.fetch
+      let before = Set(r.doc.board.cards.map(\.id))
+      var items: [NSPasteboardItem] = []
+      for title in ["Tidal mills", "Estuary flows"] {
+        let it = NSPasteboardItem()
+        let c = Collected(
+          body: .note(markdown: "**\(title)**"), source: SourceAnchor(entry: EntryID(rawValue: "e2")), title: title,
+          label: "")
+        it.setData(try c.data(), forType: CanvasView.collectedType)
+        items.append(it)
+      }
+      let web = NSPasteboardItem()
+      web.setString("https://harbour.example.org/log", forType: .URL)
+      items.append(web)
+      let d = Drag(at: r.at(CGPoint(x: 700, y: 500))) { $0.writeObjects(items) }
+      defer { d.draggingPasteboard.releaseGlobally() }
+      #expect(r.canvas.draggingEntered(d) == .copy)
+      await r.until("the card in hand") { r.canvas.inHand?.layers != nil }
+      let held = try #require(r.canvas.inHand?.layers?.box.frame)
+      #expect(r.canvas.performDragOperation(d))
+      r.canvas.draggingEnded(d)
+      let made = r.doc.board.cards.filter { !before.contains($0.id) }
+      #expect(made.count == 3)
+      #expect(made.first.map { $0.x == held.minX.rounded() && $0.y == held.minY.rounded() } == true, "the first held")
+      #expect(made.allSatisfy { $0.y == made[0].y }, "top to top")
+      for (a, b) in zip(made, made.dropFirst()) {
+        #expect(b.x == a.x + a.width + CanvasView.pasteGap, "apart, left to right: \(a.x) \(b.x)")
+      }
+      #expect(r.doc.selection == Set(made.map { .card($0.id) }) && r.doc.history.undoSteps.count == 1)
+      await r.until("its page read") { pages.asked == ["https://harbour.example.org/log"] }
+      r.doc.undo()
+      #expect(Set(r.doc.board.cards.map(\.id)) == before)
     }
 
     /// An address with other words around it is no address alone: no Web card, the drag left alone as plain text is

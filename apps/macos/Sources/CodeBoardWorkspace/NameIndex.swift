@@ -408,6 +408,10 @@ public actor NameIndex {
     return out
   }
 
+  /// The entries of the files analysed so far, in list order (⌘K's functions and classes): nothing is listed, read or
+  /// analysed for it, so a query never waits for the build
+  public func indexedEntries() -> [IndexEntry] { files.flatMap { byFile[$0] ?? [] } }
+
   /// Every file, in list order, with its entries
   public func indexedFiles() async -> [IndexedFile] {
     await list()

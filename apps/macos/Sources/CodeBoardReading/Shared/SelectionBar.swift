@@ -65,9 +65,9 @@ public final class SelectionBar: NSView {
 
   public override var isFlipped: Bool { true }
 
-  /// Its buttons side by side, 4 in and 2 apart, as the board toolbar's
+  /// Its buttons shown, side by side, 4 in and 2 apart, as the board toolbar's
   public var size: CGSize {
-    let n = CGFloat(buttons.count)
+    let n = CGFloat(buttons.count { !$0.isHidden })
     return CGSize(width: 8 + n * look.button.width + max(0, n - 1) * 2, height: look.height)
   }
 
@@ -76,7 +76,7 @@ public final class SelectionBar: NSView {
   public override func layout() {
     super.layout()
     let y = ((bounds.height - look.button.height) / 2).rounded()
-    for (i, b) in buttons.enumerated() {
+    for (i, b) in buttons.filter({ !$0.isHidden }).enumerated() {
       b.frame = CGRect(
         x: 4 + CGFloat(i) * (look.button.width + 2), y: y, width: look.button.width, height: look.button.height)
     }

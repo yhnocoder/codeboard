@@ -313,17 +313,31 @@ private struct FileRow: View {
   }
 }
 
-/// The address of a GitHub repository and how much of it to download; a wrong address is said under the field
-private struct GitHubForm: View {
+/// The address of a GitHub repository and how much of it to download; a wrong address is said under the field.
+/// `adding`: what Add does in place of adding it here (a card's missing repository, at its address)
+struct GitHubForm: View {
   let model: RepositoriesModel
+  let title: String
+  let adding: ((_ address: String, _ lightweight: Bool) -> Void)?
   let done: () -> Void
-  @State private var address = ""
+  @State private var address: String
   @State private var lightweight = true
   @State private var error: String?
 
+  init(
+    model: RepositoriesModel, address: String = "", title: String = "Add a GitHub Repository",
+    adding: ((String, Bool) -> Void)? = nil, done: @escaping () -> Void
+  ) {
+    self.model = model
+    self.title = title
+    self.adding = adding
+    self.done = done
+    _address = State(initialValue: address)
+  }
+
   var body: some View {
     VStack(alignment: .leading, spacing: 10) {
-      Text("Add a GitHub Repository").font(.system(size: 13, weight: .semibold))
+      Text(title).font(.system(size: 13, weight: .semibold)).fixedSize(horizontal: false, vertical: true)
       VStack(alignment: .leading, spacing: 4) {
         TextField("github.com/owner/name", text: $address)
           .textFieldStyle(.roundedBorder)
@@ -363,6 +377,7 @@ private struct GitHubForm: View {
   }
 
   private func add() {
+    if let adding { return adding(address, lightweight) }
     if let e = model.addGitHub(address, lightweight: lightweight) { error = e } else { done() }
   }
 }

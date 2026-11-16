@@ -44,7 +44,16 @@ mkdir -p "$app/Contents/Resources"
 cp -R web/dist "$app/Contents/Resources/NotePage"
 cp -R .build-markdown "$app/Contents/Resources/Assets"
 cp -R "$bin/better-swift-markdown_MarkdownUI.bundle" "$app/Contents/Resources/"
-# the saving service and its page scripts, when tools/shiyi/fetch.mjs has fetched them
+# the saving service and its page scripts, fetched here at the version the package is pinned to when this Mac has the
+# token file for them (tools/shiyi/fetch.mjs; nothing is fetched again when they are there). Without them the app is
+# built all the same and says so: web pages are then saved as links only, with no body view and no translation
+if [ -f "${SHIYI_NETRC:-$HOME/.config/codeboard/shiyi.netrc}" ]; then
+  node tools/shiyi/fetch.mjs || echo "warning: the saving service's files could not be fetched" >&2
+fi
+if [ ! -x .build-shiyi/shiyi ] || [ ! -f .build-shiyi/scripts/reader.js ]; then
+  echo "warning: this app has no saving service (apps/macos/tools/shiyi/setup-token.sh sets up the token for it):" >&2
+  echo "         Save Full Page, body view and translation are off in it" >&2
+fi
 if [ -x .build-shiyi/shiyi ]; then cp .build-shiyi/shiyi "$app/Contents/Resources/"; fi
 if [ -d .build-shiyi/scripts ]; then cp -R .build-shiyi/scripts "$app/Contents/Resources/ShiyiScripts"; fi
 # box, the index service behind Related by Meaning, beside the executable where the app looks for it

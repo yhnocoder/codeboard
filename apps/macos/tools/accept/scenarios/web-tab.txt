@@ -7,20 +7,24 @@ wait 300
 expect focus has WebAddressField
 expect ui.webbar.bottom = ui.dock.bottom
 type $SITE/a.html\n
-wait 500
-expect focus has WKWebView
+until webviews has "Page A"
+expect focus has PageWebView
 expect webviews has "Page A" view shown page visible
-expect readtabs has * web: Page A
-click @view:WKWebView
-wait 500
-expect webviews has "Page B"
+until readtabs has * web: Page A
+expect ui.webnote.w = missing
+click @ui.webextract
+until ui.webnote.w > 100
+click @ui.webtranslate
+expect ui.webnote.w > 100
+click @view:PageWebView
+until webviews has "Page B"
 click @ui.webback
-wait 500
+until webviews has "Page A"
 click @ui.webforward
-wait 500
+until webviews has "Page B"
 click @ui.webback
-wait 500
-move @view:WKWebView 200
+until webviews has "Page A"
+move @view:PageWebView 200
 wheel -40 6
 wait 400
 expect ui.webbar.y = missing
@@ -30,10 +34,9 @@ expect ui.webbar.bottom = ui.dock.bottom
 key cmd+l
 expect focus has WebAddressField
 key esc
-expect focus has WKWebView
+expect focus has PageWebView
 click @ui.websave
 pick Save Link
-wait 1500
-expect entry:网页 has Page A
+until entry:网页 has Page A
 expect row:网页 = shown
 shot saved @ui.webbar

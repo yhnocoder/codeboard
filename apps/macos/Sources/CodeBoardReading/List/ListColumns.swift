@@ -1,5 +1,6 @@
 import AppKit
 import CodeBoardModel
+import CodeBoardResources
 
 /// A column of a resource's list, described by what it reads from a row and how it orders rows: a preset's columns are
 /// a list of these, so a field the user adds later is one more
@@ -18,6 +19,10 @@ struct ListColumn {
   var order: (ListRow, ListRow) -> Bool
   /// Which way a first click on its header sorts
   var ascending = true
+  /// Rows it says nothing for, sorted after the others whichever way; nil: none are
+  var blank: ((ListRow) -> Bool)?
+  /// The resource's field it shows; nil: one of the preset's
+  var field: Resource.Field?
 }
 
 extension ListColumn {
@@ -81,8 +86,9 @@ extension ListColumn {
     switch preset {
     case .papers: papers
     case .web: web
-    // images (until their grid) and blank resources list as files do
-    case .files, .images, .blank: files
+    // images (until their grid) list as files do
+    case .files, .images: files
+    case .blank: [title("Title", detail: nil)]
     }
   }
 
@@ -92,7 +98,8 @@ extension ListColumn {
     switch preset {
     case .papers: [NSSortDescriptor(key: "year", ascending: false), NSSortDescriptor(key: "title", ascending: true)]
     case .web: [NSSortDescriptor(key: "saved", ascending: false)]
-    case .files, .images, .blank: [NSSortDescriptor(key: "modified", ascending: false)]
+    case .files, .images: [NSSortDescriptor(key: "modified", ascending: false)]
+    case .blank: [NSSortDescriptor(key: "title", ascending: true)]
     }
   }
 }
@@ -100,9 +107,14 @@ extension ListColumn {
 extension [ListColumn] {
   /// `rows` in the order `sort` gives (its first descriptor first, then the next for ties), ties in Finder's order
   func sorted(_ rows: [ListRow], by sort: [NSSortDescriptor]) -> [ListRow] {
-    let keys = sort.compactMap { d in first { $0.id == d.key }.map { ($0.order, d.ascending) } }
+    let keys = sort.compactMap { d in first { $0.id == d.key }.map { ($0.order, d.ascending, $0.blank) } }
     return rows.enumerated().sorted { a, b in
-      for (less, up) in keys {
+      for (less, up, blank) in keys {
+        if let blank {
+          let (x, y) = (blank(a.element), blank(b.element))
+          if x != y { return y }
+          if x { continue }
+        }
         if less(a.element, b.element) { return up }
         if less(b.element, a.element) { return !up }
       }

@@ -14,9 +14,6 @@ public enum CodeReading {
     ReadingKinds.register(kind, make: { CodeTabView(context: $0) })
   }
 
-  /// Files larger than this are not shown: the component lays a text out whole, on the main thread
-  static let maxBytes = 1 << 20
-
   /// The look code is drawn in before the shell gives the board's (tests, a pane without a board)
   @MainActor static let plainLook: CodeEditorView.Look = {
     let ns = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
@@ -31,20 +28,67 @@ public enum CodeReading {
       band: CodeBandShape(left: -4, right: 14, inset: 2, radius: 6), padTop: 6, padBottom: 8)
   }()
 
+  /// Posted by the shell for a pane: files its code tabs show changed on disk (userInfo "files": [CodeFile]); each is
+  /// read again
+  public static let filesChanged = Notification.Name("CodeReading.filesChanged")
+  /// Posted by the shell for a pane: repositories' commits moved (userInfo "repositories": [String], their folders);
+  /// each tab of them reads its commit again
+  public static let commitsChanged = Notification.Name("CodeReading.commitsChanged")
+
   /// Compiled queries, shared by every code tab
   static let highlighter = Highlighter()
 
   // MARK: Reading a file
 
-  /// A file as its tab shows it: its text, its classes and functions, and each line's colours
+  /// A file as its tab shows it: its text, its analysis (classes and functions, blank lines, calls), and each line's
+  /// colours
   struct Text: Sendable {
     var text: String
     var lineCount: Int
     /// The longest line, tabs counted to their stops
     var columns: Int
-    var symbols: [Sym]
+    var analysis: FileAnalysis
     var runs: [[CodeRun]]
+    /// Where each line starts in the text, in UTF-16 units (the code component's offsets)
+    var starts: [Int]
+
+    var symbols: [Sym] { analysis.symbols }
+
+    init(text: String, analysis: FileAnalysis, runs: [[CodeRun]] = []) {
+      self.text = text
+      self.analysis = analysis
+      self.runs = runs
+      let lines = text.components(separatedBy: "\n")
+      lineCount = lines.count
+      columns = lines.map(CodeReading.columns).max() ?? 0
+      var at = 0
+      starts = lines.map { l in
+        defer { at += l.utf16.count + 1 }
+        return at
+      }
+    }
+
+    /// The line (1-based) an offset is on, and its column in UTF-16 units
+    func place(_ q: Int) -> (line: Int, col: Int) {
+      var lo = 0
+      var hi = starts.count - 1
+      while lo < hi {
+        let mid = (lo + hi + 1) / 2
+        if starts[mid] <= q { lo = mid } else { hi = mid - 1 }
+      }
+      return (lo + 1, q - starts[lo])
+    }
+
+    /// A line's text (1-based)
+    func line(_ n: Int) -> Substring {
+      let u = text.utf16
+      let a = u.index(u.startIndex, offsetBy: starts[n - 1])
+      let b = n < starts.count ? u.index(u.startIndex, offsetBy: starts[n] - 1) : u.endIndex
+      return text[a..<b]
+    }
   }
+
+  static let gone = "This file cannot be read. It may have been moved or deleted."
 
   enum Loaded: Sendable {
     case text(Text)
@@ -52,18 +96,11 @@ public enum CodeReading {
     case quiet(String)
   }
 
-  /// Off the main actor: the file read, analysed and coloured; one that is not there, binary, too large or
-  /// unreadable gets a line saying so
+  /// Off the main actor: the file read, analysed and coloured (the component lays out only the lines drawn, so a file
+  /// of any size is shown); one that is not there, binary or unreadable gets a line saying so
   static func load(_ url: URL) -> Loaded {
     let path = url.path(percentEncoded: false)
-    guard let size = (try? FileManager.default.attributesOfItem(atPath: path))?[.size] as? Int else {
-      return .quiet("This file cannot be read. It may have been moved or deleted.")
-    }
-    guard size <= maxBytes else {
-      let shown = ByteCountFormatter.string(fromByteCount: Int64(size), countStyle: .file)
-      let most = ByteCountFormatter.string(fromByteCount: Int64(maxBytes), countStyle: .file)
-      return .quiet("This file is too large to show here (\(shown); files up to \(most) are shown).")
-    }
+    guard FileManager.default.fileExists(atPath: path) else { return .quiet(gone) }
     guard let data = FileManager.default.contents(atPath: path) else { return .quiet("This file cannot be read.") }
     // git's test for a binary file: a NUL in its first 8000 bytes
     if data.prefix(8000).contains(0) { return .quiet("This is a binary file.") }
@@ -72,10 +109,10 @@ public enum CodeReading {
     let lines = text.components(separatedBy: "\n")
     let lang = langOfExt(path)?.id
     let tokens = lang.map { highlighter.tokens(lines: lines, language: $0) } ?? []
+    // a language without a grammar is analysed too: its blank lines, which a selection leaves out at its ends
     return .text(
       Text(
-        text: text, lineCount: lines.count, columns: lines.map(columns).max() ?? 0,
-        symbols: lang.map { analyze($0, text).symbols } ?? [],
+        text: text, analysis: analyze(lang ?? "plaintext", text),
         runs: tokens.map { $0.map { CodeRun(columns: $0.columns, style: $0.kind.rawValue) } }))
   }
 
@@ -264,6 +301,17 @@ extension ReadingPane {
   /// kept, when this is no preview)
   @discardableResult public func openCode(_ f: CodeFile, preview: Bool) -> ReadingTab.ID {
     open(f.title, key: f.key, kind: CodeReading.kind, payload: f.payload, preview: preview)
+  }
+
+  /// A file in a kept tab (opened, or gone to), `lines` brought into view and marked a moment (nil: where it is);
+  /// `note`: a quiet line on its bar, as the commit a card opened there is from (nil: none)
+  public func openCode(_ f: CodeFile, locating lines: ClosedRange<Int>?, note: String?) {
+    CodeTabView.locate(lines, note: note, in: openCode(f, preview: false))
+  }
+
+  /// The files the code tabs show
+  public var codeFiles: [CodeFile] {
+    tabs.compactMap { $0.kind == CodeReading.kind ? CodeFile(payload: $0.payload) : nil }
   }
 
   /// The file the current tab shows, when it is a code tab

@@ -80,6 +80,8 @@ public struct ShellState: Codable, Equatable, Sendable {
   public var sidebarWidth: Double?
   /// nil in what was saved before the reading pane
   public var reading: ReadingPane.State?
+  /// A window that shows only its reading pane (a reading tab dragged to where no tab row was); nil: not one
+  public var readingOnly: Bool?
 }
 
 /// One window's state: its tabs, its sidebar and its reading pane, over the session the app's windows share (the vault,
@@ -90,7 +92,12 @@ public struct ShellState: Codable, Equatable, Sendable {
   public var vault: Vault? { session.vault }
   public var tree: VaultFolder? { session.tree }
   public var treeError: String? { session.treeError }
-  public private(set) var tabs: [Tab] = []
+  public private(set) var tabs: [Tab] = [] {
+    // a board tab in a window that showed only the reading pane: the board panel is back
+    didSet { if !tabs.isEmpty, readingOnly { readingOnly = false } }
+  }
+  /// Only the reading pane shows, no board panel and no divider, until a board tab arrives (WindowSet)
+  public internal(set) var readingOnly = false
   public private(set) var selected: Tab.ID?
   /// Folder paths shown open in the sidebar
   public var expanded: Set<String> = []
@@ -181,6 +188,8 @@ public struct ShellState: Codable, Equatable, Sendable {
     sources = ReadingSources(pane: reading)
     reading.makePop = { Self.annotationPop(act: $0, resized: $1) }
     reading.onCollect = { [weak self] in self?.collect($0) }
+    if !TestGuard.underTest { reading.readsPage = Self.readPage }
+    reading.onOpenBoard = { [weak self] in self?.show($0) }
     session.join(self)
   }
 
@@ -209,11 +218,13 @@ public struct ShellState: Codable, Equatable, Sendable {
       expanded = state.expanded
       sidebarShown = state.sidebarShown
       if let r = state.reading { reading.restore(r) }
+      readingOnly = state.readingOnly == true && tabs.isEmpty && !reading.tabs.isEmpty
     } else {
       tabs = []
       selected = nil
       expanded = []
       reading.closeAll()
+      readingOnly = false
     }
   }
 
@@ -221,7 +232,7 @@ public struct ShellState: Codable, Equatable, Sendable {
     vault.map {
       ShellState(
         vault: $0.root.path, tabs: tabs, selected: selected, expanded: expanded, sidebarShown: sidebarShown,
-        sidebarWidth: Double(sidebarWidth), reading: reading.state)
+        sidebarWidth: Double(sidebarWidth), reading: reading.state, readingOnly: readingOnly ? true : nil)
     }
   }
 
@@ -330,6 +341,25 @@ public struct ShellState: Codable, Equatable, Sendable {
     tabs.insert(tabs.remove(at: i), at: max(0, min(index, tabs.count)))
   }
 
+  /// A tab taken out whole (to another window), the one beside it selected as closing it does
+  func take(_ tab: Tab.ID) -> Tab? {
+    guard let t = tabs.first(where: { $0.id == tab }) else { return nil }
+    close(tab)
+    return t
+  }
+
+  /// A tab from another window, whole, at `index`, selected
+  func insert(_ tab: Tab, at index: Int) {
+    tabs.insert(tab, at: max(0, min(index, tabs.count)))
+    selected = tab.id
+  }
+
+  /// Where a board tab dragged from another window would go in this window's row, while it is over it
+  public internal(set) var tabDrop: Int?
+  /// What a board tab dragged out of the row tells (WindowSet's), and how far the row is scrolled sideways
+  @ObservationIgnored var tabDragging: TabDragging?
+  @ObservationIgnored var stripScroll: CGFloat = 0
+
   /// A tab in the reading pane titled `title` (a resource's name), the pane shown; the tab opened for the same `key`
   /// is gone to instead of a second
   public func openReadingTab(title: String, key: String) {
@@ -355,7 +385,9 @@ public struct ShellState: Codable, Equatable, Sendable {
 
   /// A new web tab in the reading pane, on `url` or blank, shown with the keys (Web/ makes its view)
   public func openWeb(_ url: URL?) {
-    reading.open(url?.host() ?? "New Tab", kind: "web", payload: url.map { ["url": $0.absoluteString] } ?? [:])
+    reading.open(
+      url?.host() ?? "New Tab", key: url.map(WebReading.key(for:)), kind: "web",
+      payload: url.map { ["url": $0.absoluteString] } ?? [:])
   }
 
   /// A passage collected from the reading pane (its selection bar's Add to Board, ⌥↵): kept, and handed to the board's

@@ -28,10 +28,10 @@ import PDFKit
   }
 
   public func sourceLabel(_ a: SourceAnchor) -> SourceLabel? {
+    if case .web? = pane.entries[a.entry]?.entry.origin { return WebReading.sourceLabel(a, in: pane) }
     guard let found = pane.entries[a.entry] else { return nil }
     // the entry as a whole: its title alone
     guard let place = a.place else {
-      if case .web = found.entry.origin { return SourceLabel(title: found.entry.title, number: nil, icon: .site) }
       return SourceLabel(title: Paper.shortTitle(found.entry.title), number: nil, icon: .paper)
     }
     guard found.entry.versions.contains(where: { $0.id == place.version }) else { return nil }
@@ -72,9 +72,18 @@ import PDFKit
     return p
   }
 
+  /// The reading pane of another window on screen with a tab that `holds` takes, and that tab (WindowSet); nil: none
+  public var elsewhere: (_ holds: (ReadingTab) -> Bool) -> (pane: ReadingPane, tab: ReadingTab.ID)? = { _ in nil }
+
+  /// A card's source, in its tab: in another window's reading pane when that has it open, else in this one
   public func reveal(_ a: SourceAnchor) {
-    guard let place = a.place else { return pane.openEntry(a.entry) }
-    guard let tab = pane.openPDF(.entry(a.entry, version: place.version)) else { return }
+    guard let place = a.place else {
+      let key = pane.openKey(a.entry)
+      return ((key.flatMap { k in elsewhere { $0.key == k }?.pane }) ?? pane).openEntry(a.entry)
+    }
+    if WebReading.reveal(a, in: pane, elsewhere: { k in k.flatMap { k in elsewhere { $0.key == k }?.pane } }) { return }
+    let t = PDFTarget.entry(a.entry, version: place.version)
+    guard let tab = (elsewhere { $0.key == t.key }?.pane ?? pane).openPDF(t) else { return }
     PDFTabView.reveal(place, in: tab)
   }
 

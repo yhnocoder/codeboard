@@ -90,7 +90,9 @@ private let seg = SegmentID(rawValue: "s1")
     let w = r.rect("c").width
     let bs = try #require(c.head(cid("c"))?.buttons)
     #expect(bs.last?.1 == CGRect(x: w - t.headerPadRight - 26, y: t.headerHeight / 2 - 13, width: 26, height: 26))
-    #expect(bs[2].1.maxX == w - t.headerPadRight - 26 - t.headerGap)
+    // and before its version chip ("No commit")
+    let chip = Drawing.width("No commit", t.codePath) + 10
+    #expect(bs[2].1.maxX == w - t.headerPadRight - 26 - t.headerGap - chip - t.headerGap)
     #expect(bs[1].1.maxX == bs[2].1.minX - 2 && bs[0].1.maxX == bs[1].1.minX - 2)
   }
 
@@ -234,6 +236,38 @@ private let seg = SegmentID(rawValue: "s1")
       return
     }
     #expect(c.layout.rows.isEmpty && c.layout.segmentLines.isEmpty)
+  }
+
+  /// A code card's file name (CodeHead.tsx .cpath) opens its file on the release where it was pressed, when the shell
+  /// opens files: not when dragged, which moves the card, nor again on a double-click's second press; a double-click
+  /// on the title still renames the card
+  @Test func aCodeCardsFileNameOpensItsFileOnAClickNotOnADragAndTheTitleStillRenames() async throws {
+    let r = try await Rig(Self.board(), zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    #expect(c.head(cid("c"))?.path == nil, "nothing opens files: no name to press")
+    var opened: [(SegmentID, CGRect)] = []
+    c.onOpenCode = { opened.append(($0.id, $1)) }
+    let box = try #require(c.head(cid("c"))?.path)
+    func name() -> CGPoint { CGPoint(x: r.rect("c").minX + box.midX, y: r.rect("c").minY + box.midY) }
+    let at = name()
+    hoverOver(r, at)
+    #expect(c.hoveredHead?.0 == cid("c") && c.hoveredHead?.1 == .path)
+    r.click(at)
+    #expect(opened.map(\.0) == [seg] && !r.doc.history.canUndo, "opened, nothing changed")
+    #expect(opened.first.map { $0.1.insetBy(dx: -0.5, dy: -0.5).contains(c.viewPoint(at)) } == true, "at the name")
+    // dragged, selected as it is now: the card moves, nothing opens
+    r.drag(at, CGPoint(x: at.x + 80, y: at.y + 40))
+    #expect(opened.count == 1 && r.card("c").x == 80 && r.doc.undoName == "Move")
+    await r.settle()
+    // a double-click: opened by its first click alone, no title field
+    r.doubleClick(name())
+    await r.settle()
+    #expect(opened.count == 2 && c.inPlace == nil && !c.isEditing)
+    // on the title: its field
+    r.doubleClick(CGPoint(x: r.rect("c").minX + box.minX - c.theme.headerGap - 3, y: name().y))
+    await r.settle()
+    #expect(opened.count == 2 && c.inPlace?.what == .card(cid("c")))
   }
 
   @Test func doubleClickingTheGripFitsTheCard() async throws {

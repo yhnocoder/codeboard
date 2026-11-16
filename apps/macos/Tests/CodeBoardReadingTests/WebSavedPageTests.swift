@@ -128,7 +128,8 @@ import WebKit
     editor.doCommand(by: #selector(NSResponder.insertNewline(_:)))
     try await shown(v, "Page A")
     #expect(v.page == .online(url("/a")) && tabs.tab(v)?.payload == ["url": url("/a").absoluteString])
-    #expect(tabs.tab(v)?.title == "Page A" && tabs.tab(v)?.key == nil, "no longer gone to by the saved page's hash")
+    #expect(
+      tabs.tab(v)?.title == "Page A" && tabs.tab(v)?.key == WebReading.key(for: url("/a")), "gone to by its address")
     #expect(asked.all == ["/moved", "/a"])
     #expect(v.bar.back.isEnabled)
     v.bar.back.performClick(nil)
@@ -143,7 +144,8 @@ import WebKit
   /// With the scripts, a saved page is read in body view with its site's rule files, and full page shows it all
   /// again; the control is off, saying why, on an online page and without the scripts
   @Test func bodyAndFullPageReadASavedPage() async throws {
-    let (v, tabs) = try await tab(saved, html: savedFile(), rules: [##"{"body":"#main"}"##])
+    let rule = ##"{"domain":"127.0.0.1","origin":"builtin","rules":{"variants":[{"body":"#main"}]}}"##
+    let (v, tabs) = try await tab(saved, html: savedFile(), rules: [rule])
     defer { done(tabs) }
     try await shown(v, "Saved A")
     #expect(v.bar.extract.isEnabled && v.bar.extract.selectedSegment == 0)

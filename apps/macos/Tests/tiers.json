@@ -169,6 +169,7 @@
             "CodeBoardCanvas/CanvasPaste.swift",
             "CodeBoardCanvas/CanvasPasteChip.swift",
             "CodeBoardCanvas/CanvasCollect.swift",
+            "CodeBoardCanvas/CanvasCardsOut.swift",
             "CodeBoardModel/Clip.swift"
           ],
           "tests": [
@@ -300,7 +301,7 @@
         },
         "card headers": {
           "sources": ["CodeBoardCanvas/CanvasHeadActs.swift", "CodeBoardModel/HeadingSplit.swift"],
-          "tests": ["CanvasHeadActsTests", "CanvasHeadingTests", "CanvasSourceTests"]
+          "tests": ["CanvasHeadActsTests", "CanvasHeadingTests", "CanvasSourceTests", "CanvasVersionsTests"]
         },
         "camera": {
           "sources": [
@@ -412,10 +413,12 @@
           "sources": [
             "CodeBoardShell/Shell.swift",
             "CodeBoardShell/VaultSession.swift",
-            "CodeBoardShell/TabStrip.swift"
+            "CodeBoardShell/TabStrip.swift",
+            "CodeBoardShell/TabDrag.swift"
           ],
           "tests": [
             "ShellTests",
+            "WindowSetTests",
             "ParityMenuKeysTests/controlMinusAndCommandBracketsGoBackAndForward",
             "ParityMenuKeysTests/orderKeysAreTheAppsOwnAndBracketsSwitchTabs"
           ]
@@ -425,11 +428,15 @@
             "CodeBoardShell/BoardPanes.swift",
             "CodeBoardShell/BoardDocuments.swift",
             "CodeBoardShell/WindowSet.swift",
+            "CodeBoardShell/ScreenPlaces.swift",
+            "CodeBoardShell/CardDrag.swift",
+            "CodeBoardCanvas/CanvasCardsOut.swift",
             "CodeBoardModel/SharedCards.swift"
           ],
           "tests": [
             "BoardPanesTests",
             "WindowSetTests",
+            "ScreenPlacesTests",
             "MissingCardTests",
             "FullWindowDeleteEverywhereTests",
             "aQuestionBeforeDeletingTakesAPressToGoAhead"
@@ -459,7 +466,8 @@
           "sources": [
             "CodeBoardShell/ShellSearch.swift",
             "CodeBoardNotes/SearchPanel.swift",
-            "CodeBoardModel/Search.swift"
+            "CodeBoardModel/Search.swift",
+            "CodeBoardReading/List/ListSearch.swift"
           ],
           "tests": ["FullWindowSearchTests"]
         },
@@ -505,9 +513,21 @@
             "CodeBoardShell/RepositoriesModel.swift",
             "CodeBoardShell/RepositoriesBlock.swift",
             "CodeBoardWorkspace/Repositories.swift",
-            "CodeBoardReading/Code"
+            "CodeBoardReading/Code",
+            "CodeBoardShell/ShellCode.swift",
+            "CodeBoardShell/ShellCodeCards.swift",
+            "CodeBoardShell/ShellCodeFiles.swift"
           ],
-          "tests": ["RepositoriesBlockTests"]
+          "tests": ["RepositoriesBlockTests", "ShellCodeTests", "ShellCodeFilesTests"]
+        },
+        "versions": {
+          "sources": [
+            "CodeBoardShell/ShellVersions.swift",
+            "CodeBoardWorkspace/Versions.swift",
+            "CodeBoardWorkspace/Diff.swift",
+            "CodeBoardModel/Lines.swift"
+          ],
+          "tests": ["ShellVersionsTests"]
         },
         "web": {
           "sources": [
@@ -557,7 +577,7 @@
           ]
         },
         "reading: web": {
-          "sources": ["CodeBoardReading/Web"],
+          "sources": ["CodeBoardReading/Web", "CodeBoardResources/PageBlocks.swift"],
           "tests": [
             "WebBarVisibilityTests",
             "WebAddressTests",
@@ -567,16 +587,26 @@
             "WebSavingTests",
             "WebSavedPageTests",
             "WebTranslatingTests",
-            "WebTranslationTests"
+            "WebTranslationTests",
+            "WebSelectionTests",
+            "WebPickingTests"
           ]
         },
         "reading: code": {
           "sources": ["CodeBoardReading/Code"],
-          "tests": ["CodeReadingTests"]
+          "tests": ["CodeReadingTests", "CodeCardsTests"]
         },
         "reading: list": {
           "sources": ["CodeBoardReading/List"],
-          "tests": ["ListReadingTests", "ListAddingTests", "ListDragTests", "ListDeleteTests"]
+          "tests": [
+            "ListReadingTests",
+            "ListAddingTests",
+            "ListDragTests",
+            "ListDeleteTests",
+            "ListSearchTests",
+            "ListFieldsTests",
+            "ListUndoTests"
+          ]
         },
         "reading: shared": {
           "sources": ["CodeBoardReading/Shared", "CodeBoardModel/Collected.swift"],

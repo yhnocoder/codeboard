@@ -232,3 +232,34 @@ public func trackSeg(_ seg: CodeSegment, _ lines: [String], _ syms: [Sym], _ aga
 
 /// JavaScript's startsWith, by UTF-16 code unit
 func startsWith(_ s: String, _ prefix: String) -> Bool { s.utf16.starts(with: prefix.utf16) }
+
+// Where a code card's lines are in a file as it is now (a code tab's marks, a card's source opened in the reading pane)
+
+/// `lines` are there in `now`, from line `start`
+public func sameLinesAt(_ start: Int, _ lines: [String], in now: [String]) -> Bool {
+  sameLines(lineSlice(now, start - 1, start - 1 + lines.count), lines)
+}
+
+/// Where lines `range` of `old` are in `now`, by their line correspondence (diffLines): from the first of them still
+/// there to the last, the lines changed between them with them; nil when none is left
+public func followLines(_ range: ClosedRange<Int>, from old: [String], to now: [String]) -> ClosedRange<Int>? {
+  var first: Int?
+  var last: Int?
+  for d in diffLines(old, now) where d.op == .same {
+    guard let a = d.a, let b = d.b, range.contains(a) else { continue }
+    first = first ?? b
+    last = b
+  }
+  guard let first, let last else { return nil }
+  return first...last
+}
+
+/// Where a card's lines (from `start`, as they were at its version) are in `now`: followed from `old`, the whole file
+/// at the card's version, when it could be read; else found by their text alone. nil: not found, or found in several
+/// places; never guessed by the line number
+public func linesNow(start: Int, lines: [String], old: String?, in now: [String]) -> ClosedRange<Int>? {
+  guard !lines.isEmpty else { return nil }
+  if let old { return followLines(start...(start + lines.count - 1), from: splitLines(old), to: now) }
+  guard case .at(let l)? = findBlock(now, lines, near: start) else { return nil }
+  return l.start...l.end
+}
