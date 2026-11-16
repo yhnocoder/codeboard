@@ -8,10 +8,10 @@ expect focus has WebAddressField
 expect ui.webbar.bottom = ui.dock.bottom
 type $SITE/a.html\n
 wait 500
-expect focus has WKWebView
+expect focus has PageWebView
 expect webviews has "Page A" view shown page visible
 expect readtabs has * web: Page A
-click @view:WKWebView
+click @view:PageWebView
 wait 500
 expect webviews has "Page B"
 click @ui.webback
@@ -20,7 +20,7 @@ click @ui.webforward
 wait 500
 click @ui.webback
 wait 500
-move @view:WKWebView 200
+move @view:PageWebView 200
 wheel -40 6
 wait 400
 expect ui.webbar.y = missing
@@ -30,7 +30,7 @@ expect ui.webbar.bottom = ui.dock.bottom
 key cmd+l
 expect focus has WebAddressField
 key esc
-expect focus has WKWebView
+expect focus has PageWebView
 click @ui.websave
 pick Save Link
 wait 1500

@@ -91,6 +91,22 @@ import WebKit
     #expect(again.saveState == .saved(.link))
   }
 
+  /// A link kept without a tab goes into the resource named, once: the same address again, with or without a
+  /// fragment, gives the entry it has, untouched; what is not a web page's address gives none
+  @Test func anAddressIsKeptAsALinkWithoutATab() async throws {
+    let tabs = try WebTabs(vault: vault, scripts: nil)
+    defer { done(tabs) }
+    let r = try vault.newResource(in: "", title: "Reading", preset: .web)
+    let first = try #require(try tabs.pane.saveLink(url("/a"), title: "Kept", in: r.path))
+    #expect(first.title == "Kept" && first.origin == .web(url("/a").absoluteString) && first.versions.isEmpty)
+    let again = try tabs.pane.saveLink(try #require(URL(string: url("/a").absoluteString + "#part")), in: r.path)
+    let kept = try vault.items(in: r.path).count
+    #expect(again == first && kept == 1)
+    #expect(tabs.pane.entries.all.map(\.entry) == [first])
+    let other = try tabs.pane.saveLink(try #require(URL(string: "file:///etc/hosts")), in: r.path)
+    #expect(other == nil)
+  }
+
   /// A vault that has a web resource, in a folder, saves into it; each page loaded says how the vault has it saved,
   /// a link or its latest page whole; with no vault the button is off and says why
   @Test func theButtonShowsHowTheVaultHasEachPageSaved() async throws {
@@ -181,10 +197,20 @@ import WebKit
     let first = try #require(try web().first?.1.first)
     #expect(first.title == "Page Late" && first.meta?.title == "Page Late" && first.meta?.description == nil)
     #expect(tabs.pane.entries.all.map(\.entry) == [first], "the sidebar and the lists have it already")
-    _ = try await v.web.evaluateJavaScript("document.documentElement.dataset.answer = '1'; 0")
+    // (the page's icon a one-pixel PNG: the loopback server answers with text only)
+    let png =
+      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+    _ = try await v.web.evaluateJavaScript(
+      "document.documentElement.dataset.icon = '\(png)'; document.documentElement.dataset.answer = '1'; 0")
     try await until("the metadata added") { try web().first?.1.first?.meta?.description == "A made-up page" }
+    try await until("the site's icon kept as a file") { try web().first?.1.first?.meta?.icon == .file("icon.png") }
     let entries = try web().first?.1
     #expect(entries?.count == 1 && entries?.first?.id == first.id && entries?.first?.added == first.added)
+    let found = try #require(tabs.pane.entries.all.first)
+    let vault = try #require(tabs.pane.vault)
+    let file = vault.url(of: found.path).appending(path: Vault.imagesFolder).appending(path: "icon.png")
+    #expect(FileManager.default.fileExists(atPath: file.path))
+    #expect(WebReading.sourceLabel(SourceAnchor(entry: found.entry.id), in: tabs.pane)?.icon == .image(file))
   }
 
   /// Saving a page whole: the script's fetch is answered with the tab's cookie, its two chunks written in order, the

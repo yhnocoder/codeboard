@@ -138,10 +138,7 @@ extension ReadingPane {
     case .pdf(let t): openPDF(t)
     case .web(let p):
       var key = p.key
-      if key == nil, case .online(let url?) = p, var parts = URLComponents(url: url, resolvingAgainstBaseURL: false) {
-        parts.fragment = nil
-        key = parts.string.map { "web:" + $0 }
-      }
+      if key == nil, case .online(let url?) = p { key = WebReading.key(for: url) }
       open(row.title, key: key, kind: WebReading.kind, payload: p.payload)
     case nil: break
     }

@@ -29,7 +29,11 @@ extension Vault {
       ?? Entry(
         id: EntryID(rawValue: Board.newID("e")), title: item.title, added: Double(item.savedAt),
         origin: .web(address))
-    if let meta { entry.meta = meta }
+    if var meta {
+      // (the icon kept as a file stays: what is read of the page again only has its address)
+      if case .file? = entry.meta?.icon { meta.icon = entry.meta?.icon }
+      entry.meta = meta
+    }
     switch item.kind {
     case .link:
       entry.title = item.title
