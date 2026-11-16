@@ -245,21 +245,6 @@ func stickerBoard() -> Board {
     #expect(disc?.fillColor == red, "drawn in its own red: \(String(describing: disc?.fillColor))")
   }
 
-  @Test func aGlyphPickedWithOneSelectedSwapsItsGlyphAndItsColourGoesBack() async throws {
-    let r = try await Rig(stickerBoard(), zoom: 1)
-    defer { r.close() }
-    let c = r.canvas
-    r.click(centre(try spot(c, "k1")))
-    c.toggleStickerPalette(above: CGRect(x: 480, y: 640, width: 30, height: 28))
-    #expect(c.stickerPalette?.chosen == .builtin(.star))
-    let heart = try #require(StickerPalette.slots.firstIndex { $0.glyph == .builtin(.heart) })
-    c.stickerPalette?.press(heart)
-    #expect(sticker(r, "k1")?.glyph == .builtin(.heart) && sticker(r, "k1")?.color == nil)
-    #expect(r.doc.undoName == "Change Sticker" && c.placing == nil)
-    r.doc.undo()
-    #expect(sticker(r, "k1")?.glyph == .builtin(.star) && sticker(r, "k1")?.color == "#4C8BF5")
-  }
-
   /// Its Color ▸ (actions/stickers.ts stickerMenu): Default and the palette by name, the one it is in checked; the glyph's
   /// own colour picked is kept as none; an emoji has none
   @Test func itsMenuIsItsColorSizeAndDeleteAndAnEmojiHasNoColor() async throws {
@@ -426,6 +411,32 @@ extension CanvasStickerTests {
     #expect(tips.shown == nil)
     #expect(c.spokenName(of: .item(.sticker(kid("k3")))) == "Understood")
     #expect(c.spokenName(of: .item(.sticker(kid("k5")))) == "🔥")
+  }
+
+  /// A glyph picked while a sticker is selected is placed as a new one (actions/stickers.ts pickSticker), the selected
+  /// one kept as it is
+  @Test func aGlyphPickedWithAStickerSelectedIsPlacedAsANewOne() async throws {
+    let r = try await Rig(stickerBoard(), zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    let button = CGRect(x: 480, y: 640, width: 30, height: 28)
+    func pick(_ g: BuiltinSticker) throws {
+      c.toggleStickerPalette(above: button)
+      c.stickerPalette?.press(try #require(StickerPalette.slots.firstIndex { $0.glyph == .builtin(g) }))
+    }
+    try pick(.flag)
+    r.click(CGPoint(x: 260, y: 420))
+    let flag = try #require(r.doc.board.stickers.last)
+    #expect(flag.glyph == .builtin(.flag) && r.doc.selection == [.sticker(flag.id)])
+    await r.settle()
+    try pick(.heart)
+    #expect(c.placing == .builtin(.heart) && c.stickerPalette == nil)
+    #expect(r.doc.board.sticker(flag.id)?.glyph == .builtin(.flag))
+    r.click(CGPoint(x: 260, y: 700))
+    #expect(r.doc.board.stickers.count == 7)
+    let heart = try #require(r.doc.board.stickers.last)
+    #expect(heart.id != flag.id && heart.glyph == .builtin(.heart))
+    #expect(r.doc.board.sticker(flag.id)?.glyph == .builtin(.flag) && r.doc.selection == [.sticker(heart.id)])
   }
 
   /// Picking a glyph says how to put it down (actions/stickers.ts pickSticker)

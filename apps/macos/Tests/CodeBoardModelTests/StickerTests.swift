@@ -33,9 +33,6 @@ import Testing
     #expect(b.sticker(k)?.color == "#4C8BF5" && b.sticker(k)?.drawnColor == "#4C8BF5")
     b.setStickerColor(k, "#e3a132")
     #expect(b.sticker(k)?.color == nil && b.sticker(k)?.drawnColor == BuiltinSticker.star.color)
-    b.setStickerColor(k, "#4C8BF5")
-    b.setStickerGlyph(k, .emoji("🔥"))
-    #expect(b.sticker(k)?.color == nil && b.sticker(k)?.drawnColor == nil)
   }
 
   @Test func aSizeIsWholeWithinItsBoundsAndKeepsItsTopLeftAndALinesChipStays() {

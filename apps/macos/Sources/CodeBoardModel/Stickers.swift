@@ -80,13 +80,6 @@ extension Board {
     selfCheck()
   }
 
-  /// Another glyph for it; its colour goes back to the glyph's own
-  public mutating func setStickerGlyph(_ id: StickerID, _ g: Sticker.Glyph) {
-    guard let i = stickers.firstIndex(where: { $0.id == id }) else { return }
-    stickers[i].glyph = g
-    stickers[i].color = nil
-  }
-
   /// Its colour ("#RRGGBB"); the glyph's own is kept as none
   public mutating func setStickerColor(_ id: StickerID, _ color: String?) {
     guard let i = stickers.firstIndex(where: { $0.id == id }) else { return }

@@ -369,8 +369,6 @@ extension CanvasView {
     if stickerPalette != nil { return closeStickerPalette() }
     cancelPlacing()
     let p = StickerPalette(theme: theme)
-    let chosen = selectedSticker.map { stickerSpots[$0].glyph }
-    p.chosen = chosen
     p.onPick = { [weak self] g in self?.pickSticker(g) }
     let size = p.fittingSize
     var x = button.midX - size.width / 2
@@ -388,14 +386,9 @@ extension CanvasView {
     onMode?(activeTool)
   }
 
-  /// A glyph picked: the selected sticker takes it (its colour back to the glyph's own), else it is placed
+  /// A glyph picked is placed, whatever is selected (actions/stickers.ts pickSticker)
   package func pickSticker(_ g: Sticker.Glyph) {
     closeStickerPalette()
-    if let i = selectedSticker, let doc = document {
-      let id = stickerSpots[i].id
-      doc.edit("Change Sticker") { $0.setStickerGlyph(id, g) }
-      return
-    }
     beginPlacing(g)
   }
 
@@ -454,10 +447,6 @@ extension CanvasView {
 /// glyphs in eight columns, the TODO tag two wide, and one button for the system's emoji
 package final class StickerPalette: NSView {
   package var onPick: ((Sticker.Glyph) -> Void)?
-  /// The selected sticker's glyph, ringed
-  var chosen: Sticker.Glyph? {
-    didSet { draw() }
-  }
   let theme: Theme
   private var hover: Int? {
     didSet { if hover != oldValue { draw() } }
@@ -591,16 +580,15 @@ package final class StickerPalette: NSView {
       for (i, cell) in cells.enumerated() {
         for l in cell.sublayers ?? [] where l.name == "ring" { l.removeFromSuperlayer() }
         let g = Self.slots[i].glyph
-        let on = g != nil && g == chosen
-        guard on || hover == i, let art = cell.sublayers?.first else { continue }
+        guard hover == i, let art = cell.sublayers?.first else { continue }
         let ring = CAShapeLayer()
         ring.name = "ring"
         ring.position = art.position
         ring.path =
           g.map { StickerArt.outline($0, size: 22, out: 2.75) }
           ?? CGPath(ellipseIn: CGRect(x: -2.75, y: -2.75, width: 27.5, height: 27.5), transform: nil)
-        ring.fillColor = on ? nil : t.hlrow
-        ring.strokeColor = on ? t.accent : t.ink3.copy(alpha: 0.5)
+        ring.fillColor = t.hlrow
+        ring.strokeColor = t.ink3.copy(alpha: 0.5)
         ring.lineWidth = 1.5
         cell.addSublayer(ring)
       }
