@@ -1,5 +1,6 @@
 import AppKit
 import CodeBoardModel
+import CodeBoardResources
 import Foundation
 import Testing
 
@@ -128,6 +129,54 @@ import Testing
     await until("Outer again") { pane.canvas.shown?.board.id == a }
     #expect(pane.canvas.currentCamera == was)
     #expect(shell.current?.forward.map(\.board) == [b])
+  }
+
+  /// What the reading pane collects (`shell.collect`) is a Note with its source on the selected tab's board, not on
+  /// another tab's; every canvas's feet are what `shell.sources` says of the entry
+  @Test func aCollectedPassageIsANoteOnTheSelectedTabsBoardWithItsSourceFromTheShell() async throws {
+    let fm = FileManager.default
+    let root = fm.temporaryDirectory.appending(path: "panes-\(UUID().uuidString)")
+    defer { try? fm.removeItem(at: root) }
+    try fm.createDirectory(at: root, withIntermediateDirectories: true)
+    let vault = Vault(root: root)
+    let a = BoardID(rawValue: "a")
+    let b = BoardID(rawValue: "b")
+    try vault.newBoard(in: "", title: "A", board: Board(id: a))
+    try vault.newBoard(in: "", title: "B", board: Board(id: b))
+    let papers = try vault.newResource(in: "", title: "Papers", preset: .papers)
+    let v1 = VersionID(rawValue: "v1")
+    try vault.newEntry(
+      Entry(
+        id: EntryID(rawValue: "e1"), title: "Field notes", added: 0,
+        versions: [Version(id: v1, added: 0, content: .pdf(file: "paper.pdf"))]),
+      in: papers.path)
+    let shell = Shell()
+    shell.open(vault, restoring: nil)
+    shell.apply(.success(try vault.tree()))
+    let panes = BoardPanes(shell: shell)
+    panes.frame = CGRect(x: 0, y: 0, width: 1000, height: 700)
+    shell.show(a)
+    let tabA = try #require(shell.selected)
+    shell.show(b, newTab: true)
+    shell.select(tabA)
+    panes.sync()
+    let pa = try #require(panes.panes[tabA])
+    let pb = try #require(shell.tabs.first { $0.id != tabA }.flatMap { panes.panes[$0.id] })
+    await until("both shown") { pa.canvas.scene != nil && pb.canvas.scene != nil }
+    #expect(pa.canvas.sources === shell.sources && pb.canvas.sources === shell.sources)
+
+    let source = SourceAnchor(entry: EntryID(rawValue: "e1"), place: Place(version: v1, block: .page(3)))
+    shell.collect(Collected(body: .note(markdown: "The river runs north."), source: source, title: "", label: ""))
+    let card = try #require(panes.documents[a]?.board.cards.first)
+    #expect(panes.documents[b]?.board.cards.isEmpty == true, "not on the other tab's board")
+    guard case .own(let k) = card.content, case .note(let n) = k.body else {
+      Issue.record("not a Note")
+      return
+    }
+    #expect(n.text == "The river runs north." && k.source == source)
+    await until("its foot") { pa.canvas.index(of: .card(card.id)) != nil }
+    let foot = pa.canvas.index(of: .card(card.id)).flatMap { pa.canvas.scene?.items[$0].drawing.foot }
+    #expect(foot?.title == "Field notes" && foot?.number == "p. 3" && foot?.icon == .paper && foot?.missing == false)
   }
 
   /// A [[ref]] to a card in a sub-board, all the way down: the sub-boards are entered in this tab, each on the way a

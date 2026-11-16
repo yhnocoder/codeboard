@@ -172,9 +172,11 @@ extension CanvasView {
     guard let v = ed.writer, let look = ed.look else { return ed.size ?? .zero }
     let p = look.padding
     let width = ed.across.map { $0 + p[1] + p[3] } ?? CGFloat(ed.card.width)
-    if let h = ed.storedHeight { return CGSize(width: width, height: CGFloat(h)) }
+    // its source's foot under the text, not the editor's
+    let foot = index(of: .card(ed.id)).flatMap { scene?.items[$0].drawing.foot } == nil ? 0 : Drawing.Foot.noteBand
+    if let h = ed.storedHeight { return CGSize(width: width, height: CGFloat(h) + foot) }
     let content = max(v.core.layout.size.height, look.minContent)
-    return CGSize(width: width, height: ed.inset.y + content + p[2])
+    return CGSize(width: width, height: ed.inset.y + content + p[2] + foot)
   }
 
   /// A Text as wide as its text (or as narrow as its longest word) laid out again at its widest line's width as that
