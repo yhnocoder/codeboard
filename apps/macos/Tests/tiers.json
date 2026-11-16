@@ -420,7 +420,11 @@
           ]
         },
         "board panes": {
-          "sources": ["CodeBoardShell/BoardPanes.swift", "CodeBoardModel/SharedCards.swift"],
+          "sources": [
+            "CodeBoardShell/BoardPanes.swift",
+            "CodeBoardShell/BoardDocuments.swift",
+            "CodeBoardModel/SharedCards.swift"
+          ],
           "tests": [
             "BoardPanesTests",
             "MissingCardTests",

@@ -8,6 +8,10 @@ import CodeBoardNotes
 /// opening a tab never passes through an empty canvas
 @MainActor final class BoardPanes: NSView {
   let shell: Shell
+  /// The open boards' documents, the app's: other windows' panes may show them too
+  let boardDocuments: BoardDocuments
+  /// The open boards' documents by board
+  var documents: [BoardID: BoardDocument] { boardDocuments.open }
   private(set) var panes: [Tab.ID: Pane] = [:]
   /// Tabs closed while a card in them was being written in, until what was typed is on their board's disk: no longer
   /// in `panes`, so quitting and another vault wait for them here
@@ -58,30 +62,6 @@ import CodeBoardNotes
       "Delete Everywhere")
   }
 
-  /// The boards showing shared card `id` now: an open one as it is edited, the others as their files hold them
-  // ponytail: reads every board not open on each ask (its menu, ⌘⌫); keep an index with the vault watcher if vaults grow
-  func boardsShowing(_ id: CardID) -> [VaultBoard] {
-    guard let vault = shell.vault else { return [] }
-    return (shell.tree?.allBoards ?? []).filter { b in
-      let board = documents[b.id]?.board ?? (try? vault.board(at: b.path))
-      return board?.cards.contains { $0.id == id && $0.isShared } == true
-    }
-  }
-
-  /// A shared card deleted everywhere from another board goes from this one as the host takes it (storage deleteEverywhere,
-  /// core cards.ts dropGone): no undo step here; a board not open is read, changed and written
-  private func remove(_ id: CardID, from b: VaultBoard) {
-    let doc =
-      documents[b.id]
-      ?? (try? BoardDocument(
-        file: { [weak shell] in
-          shell?.vault.flatMap { v in shell?.board(b.id).map { v.url(of: $0.path).appending(path: Vault.boardFileName) }
-          }
-        }, vault: shell.vault))
-    doc?.sync { $0.delete([.card(id)], ignoringLock: true) }
-    doc?.flush()
-  }
-
   /// The sidebar's Delete Folder: main's Delete Group question (actions.ts deleteGroup) in the words of what it does here,
   /// where the boards and resources go with their folder
   static func deleteFolderQuestion(_ name: String, boards: Int, resources: Int = 0) -> NSAlert {
@@ -109,8 +89,9 @@ import CodeBoardNotes
     return a
   }
 
-  init(shell: Shell, notes: NoteRenderer? = nil, display: NativeNotes? = nil) {
+  init(shell: Shell, notes: NoteRenderer? = nil, display: NativeNotes? = nil, documents: BoardDocuments? = nil) {
     self.shell = shell
+    boardDocuments = documents ?? BoardDocuments(session: shell.session)
     self.notes = notes
     self.display = display
     super.init(frame: .zero)
@@ -126,18 +107,8 @@ import CodeBoardNotes
     shell.beforeFiles = { [weak self] in self?.flush() }
     shell.afterFiles = { [weak self] in self?.sync(reload: true) }
     shell.setSeal = { [weak self] in self?.setSeal($0, $1, done: $2) }
-    shell.entryLeft = { [weak self] parent, entry in
-      guard let self, let fb = self.shell.tree?.folder(at: parent)?.folderBoard, let doc = try? self.document(fb.id)
-      else { return }
-      doc.sync { $0.dropAutoCard(for: entry.target) }
-      doc.flush()
-    }
-    shell.folderRenamed = { [weak self] parent, old, new in
-      guard let self, let fb = self.shell.tree?.folder(at: parent)?.folderBoard, let doc = try? self.document(fb.id)
-      else { return }
-      doc.sync { $0.renameFolderCard(old, to: new) }
-      doc.flush()
-    }
+    shell.entryLeft = { [weak self] in self?.boardDocuments.entryLeft($0, $1) }
+    shell.folderRenamed = { [weak self] in self?.boardDocuments.folderRenamed($0, $1, $2) }
   }
 
   /// A board or folder from the sidebar let go on an open folder board: its card where it was let go, then the move
@@ -159,36 +130,10 @@ import CodeBoardNotes
     if shell.move(path, into: fb.folder) == nil { doc.sync { $0.dropAutoCard(for: entry.target) } }
   }
 
-  /// Cards copied on board `id` and pasted on another become shared cards there first (host storage/boards.ts share),
-  /// written at once so the other board finds their files; returns their ids there now (old → new) and its title. No
-  /// cards: only the title
-  func share(_ id: BoardID, _ cards: Set<CardID>) -> (ids: [CardID: CardID], title: String)? {
-    guard let vault = shell.vault, let at = shell.board(id), let doc = try? document(id) else { return nil }
-    var ids: [CardID: CardID] = [:]
-    if !cards.isEmpty {
-      doc.sync { ids = $0.share(cards, taken: vault.sharedCardExists) }
-      doc.flush()
-    }
-    return (ids, at.title)
-  }
-
-  /// Where each board whose seal is being edited began
-  private var sealBefore: [BoardID: Seal?] = [:]
-
   /// A board's seal set at once, written, and shown everywhere (the sidebar, every ref to it); once done, all that
   /// changed while editing is one undo step on that board, none when it ends where it began
   func setSeal(_ id: BoardID, _ seal: Seal?, done: Bool) {
-    guard let vault = shell.vault, let doc = try? document(id) else { return }
-    let from = sealBefore[id] ?? doc.board.seal
-    if done {
-      sealBefore[id] = nil
-      doc.preview { $0.seal = from }
-      if seal != from { doc.edit("Edit Mark") { $0.seal = seal } }
-    } else {
-      sealBefore[id] = from
-      doc.preview { $0.seal = seal }
-    }
-    doc.flush()
+    guard let vault = shell.vault, boardDocuments.setSeal(id, seal, done: done) else { return }
     // ponytail: the whole tree is read again on each change typed; keep the seals in memory if large vaults lag
     shell.apply(Result { try vault.tree() })
     sync(reload: true)
@@ -218,7 +163,7 @@ import CodeBoardNotes
       }
     }
     if reload {
-      for doc in documents.values { doc.diskChanged() }
+      boardDocuments.diskChanged()
       for pane in panes.values where pane.document != nil { pane.canvas.vaultChanged() }
     }
     for tab in shell.tabs {
@@ -250,20 +195,20 @@ import CodeBoardNotes
           guard await confirm(Self.deleteQuestion(b.title, cards: n), pane?.window) else { return false }
           return shell.trash(b.path)
         }
-        pane.canvas.boardsShowing = { [weak self] id in self?.boardsShowing(id).map(\.title) ?? [] }
+        pane.canvas.boardsShowing = { [weak self] id in self?.boardDocuments.boardsShowing(id).map(\.title) ?? [] }
         pane.canvas.onDeleteEverywhere = { [weak self, weak pane] id, title, here in
           guard let self, let at = pane?.document?.id else { return nil }
-          let boards = boardsShowing(id)
+          let boards = boardDocuments.boardsShowing(id)
           guard await confirm(Self.deleteEverywhereQuestion(title, boards: boards.map(\.title)), pane?.window)
           else { return nil }
           here()
-          for b in boards where b.id != at { remove(id, from: b) }
+          for b in boards where b.id != at { boardDocuments.remove(id, from: b) }
           shell.trash("\(Vault.appDataFolder)/\(Vault.sharedFolder)/\(id.rawValue).json")
           return boards.count
         }
         pane.canvas.onVaultChanged = { [weak self] in self?.onVaultChanged?() }
         pane.canvas.onSetSeal = { [weak self] in self?.setSeal($0, $1, done: $2) }
-        pane.canvas.shareOnBoard = { [weak self] in self?.share($0, $1) }
+        pane.canvas.shareOnBoard = { [weak self] in self?.boardDocuments.share($0, $1) }
         pane.canvas.onVaultDrop = { [weak self, weak pane] path, p in
           guard let self, let id = pane?.document?.id else { return }
           self.vaultDrop(path, at: p, on: id)
@@ -280,7 +225,7 @@ import CodeBoardNotes
         do {
           pane.canvas.arriving = tab.arriving
           shell.arrived(tab.id)
-          pane.load(at, in: vault, theme: theme, document: try document(tab.board))
+          pane.load(at, in: vault, theme: theme, document: try boardDocuments.document(tab.board))
         } catch {
           pane.fail(error)
         }
@@ -288,38 +233,8 @@ import CodeBoardNotes
         pane.restyle(theme)
       }
     }
-    keepFolderBoardsUp()
+    boardDocuments.keepFolderBoardsUp()
     reveal()
-  }
-
-  /// Each open folder board keeps one automatic card for each board and subfolder in its folder (no undo step)
-  private func keepFolderBoardsUp() {
-    guard let tree = shell.tree else { return }
-    let titles = Dictionary(tree.allBoards.map { ($0.id, $0.title) }, uniquingKeysWith: { a, _ in a })
-    defer { known.merge(titles) { _, new in new } }
-    for (id, doc) in documents {
-      guard let at = shell.board(id), at.isFolderBoard, let folder = tree.folder(at: at.folder) else { continue }
-      doc.sync { $0.keepUp(with: folder.entries, titles: titles, known: known) }
-    }
-  }
-
-  /// The title each board seen while the app runs last had: a missing automatic card finds its board again by it
-  private var known: [BoardID: String] = [:]
-
-  /// One document per board while the app runs, whichever tabs show it, so its undo history outlives tab switches
-  private(set) var documents: [BoardID: BoardDocument] = [:]
-
-  private func document(_ id: BoardID) throws -> BoardDocument {
-    if let doc = documents[id] { return doc }
-    // ponytail: reads board.json on the main thread when a board is first opened; move off it if large boards stall
-    // its shared cards are read in from the vault open now (documents go when it changes: close())
-    let doc = try BoardDocument(
-      file: { [weak shell] in
-        guard let shell, let vault = shell.vault, let at = shell.board(id) else { return nil }
-        return vault.url(of: at.path).appending(path: Vault.boardFileName)
-      }, vault: shell.vault)
-    documents[id] = doc
-    return doc
   }
 
   /// Writes every board with changes not yet saved (quitting, another vault); returns the boards whose changes could
@@ -327,12 +242,7 @@ import CodeBoardNotes
   @discardableResult func flush() -> [(title: String, why: String)] {
     // and where each board is looked at, not yet written while it was coming to rest (quitting)
     for pane in panes.values { pane.canvas.keepCamera(now: true) }
-    var unsaved: [(title: String, why: String)] = []
-    for (id, doc) in documents {
-      doc.flush()
-      if doc.isDirty, let why = doc.problem { unsaved.append((shell.board(id)?.title ?? id.rawValue, why)) }
-    }
-    return unsaved.sorted { $0.title < $1.title }
+    return boardDocuments.flush()
   }
 
   /// Ends the writing in any card or sidenote popup, what was typed written to its board (quitting); a tab closed
@@ -353,7 +263,7 @@ import CodeBoardNotes
   func close() async {
     await endEditing()
     flush()
-    documents = [:]
+    boardDocuments.closeAll()
     for pane in panes.values { pane.close() }
     panes = [:]
   }
