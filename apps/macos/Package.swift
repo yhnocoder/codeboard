@@ -39,7 +39,8 @@ let package = Package(
         .product(name: "CodeUI", package: "better-swift-markdown"),
       ]),
     .target(
-      name: "CodeBoardShell", dependencies: ["CodeBoardModel", "CodeBoardCanvas", "CodeBoardNotes", "CodeBoardReading"]),
+      name: "CodeBoardShell",
+      dependencies: ["CodeBoardModel", "CodeBoardCanvas", "CodeBoardNotes", "CodeBoardReading", "CodeBoardResources"]),
     .executableTarget(name: "CodeBoard", dependencies: ["CodeBoardShell"]),
     .executableTarget(
       name: "CanvasBench",

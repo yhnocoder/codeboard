@@ -4,7 +4,7 @@ import CodeBoardModel
 import SwiftUI
 
 /// The vault tree under the title line: the vault's own row, then its folders, boards and resources. A click shows a
-/// board in the current tab (⌘-click: a new tab) and opens a resource (`Shell.onOpenResource`); a folder's name opens
+/// board in the current tab (⌘-click: a new tab) and opens a resource in the reading pane; a folder's name opens
 /// its folder board when it has one, its triangle only opens and closes it; a double-click on a name renames it in
 /// place. Boards, resources and folders are dragged between folders. Each board, and each folder with a folder board,
 /// has its seal at the far right, and each resource how many entries it has; clicking a seal edits it.
@@ -134,6 +134,11 @@ private struct RootRow: View {
           } action: {
             shell.newFolder(in: "")
           }
+          RowButton {
+            Image(systemName: "text.badge.plus")
+          } action: {
+            shell.newResource(in: "")
+          }
         }
       }
       .padding(.leading, 8)
@@ -188,6 +193,11 @@ private struct FolderRow: View {
             Image(systemName: "folder.badge.plus")
           } action: {
             shell.newFolder(in: folder.path)
+          }
+          RowButton {
+            Image(systemName: "text.badge.plus")
+          } action: {
+            shell.newResource(in: folder.path)
           }
           if own == nil {
             RowButton {
@@ -280,7 +290,7 @@ private struct ResourceRow: View {
       if isDoubleClick {
         shell.renaming = .resource(resource.id)
       } else {
-        shell.onOpenResource?(resource)
+        shell.openResource(resource)
       }
     }
     .draggable(VaultDrag.payload(resource.path))

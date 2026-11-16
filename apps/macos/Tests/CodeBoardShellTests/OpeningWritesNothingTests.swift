@@ -153,4 +153,30 @@ import Testing
     w.close(keepingVault: true)
     #expect(changed(before, files(v.root)) == [])
   }
+
+  /// A resource's tab opened from its row, the pane shown and hidden: nothing written in the vault
+  @Test func openingAResourcesTabWritesNothing() async throws {
+    let (v, fb) = try vault()
+    defer { try? fm.removeItem(at: v.root) }
+    let pkg = v.url(of: "Papers.resource")
+    try fm.createDirectory(at: pkg, withIntermediateDirectories: true)
+    try Data(#"{"fields": [], "id": "r1", "preset": "papers", "version": 1}"#.utf8)
+      .write(to: pkg.appending(path: Vault.resourceFileName))
+    try Data("%PDF".utf8).write(to: pkg.appending(path: "notes.pdf"))
+    try await inStep(v, fb)
+    let before = files(v.root)
+    let w = try await env.opened(v)
+    let r = try #require(w.shell.tree?.resources.first)
+    w.shell.openResource(r)
+    w.shell.openResource(r)
+    await env.until("its tab", in: w) { w.shell.reading.tabs.map(\.title) == ["Papers"] }
+    w.window.contentView?.layoutSubtreeIfNeeded()
+    await w.frames(12)
+    w.shell.reading.shown = false
+    w.window.contentView?.layoutSubtreeIfNeeded()
+    await w.frames(12)
+    for doc in w.panes.documents.values { doc.flush() }
+    w.close(keepingVault: true)
+    #expect(changed(before, files(v.root)) == [])
+  }
 }

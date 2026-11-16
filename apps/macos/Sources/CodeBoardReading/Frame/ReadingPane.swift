@@ -127,6 +127,17 @@ extension ReadingTab.Content {
     if selected == tab { selected = tabs.isEmpty ? nil : tabs[min(i, tabs.count - 1)].id }
   }
 
+  /// What the tabs show changed: `title` gives each tab its title now, nil when what it shows is gone and it closes
+  public func follow(_ title: (ReadingTab) -> String?) {
+    for tab in tabs {
+      guard let t = title(tab) else {
+        close(tab.id)
+        continue
+      }
+      if t != tab.title, let i = tabs.firstIndex(where: { $0.id == tab.id }) { tabs[i].title = t }
+    }
+  }
+
   public func move(_ tab: ReadingTab.ID, to index: Int) {
     guard let i = tabs.firstIndex(where: { $0.id == tab }) else { return }
     tabs.insert(tabs.remove(at: i), at: max(0, min(index, tabs.count)))

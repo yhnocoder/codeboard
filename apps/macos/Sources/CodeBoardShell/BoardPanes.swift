@@ -83,11 +83,15 @@ import CodeBoardNotes
   }
 
   /// The sidebar's Delete Folder: main's Delete Group question (actions.ts deleteGroup) in the words of what it does here,
-  /// where the boards go with their folder
-  static func deleteFolderQuestion(_ name: String, boards: Int) -> NSAlert {
-    destroying(
-      "Delete folder “\(name)”?",
-      boards == 1 ? "Its 1 board goes to the Trash with it." : "Its \(boards) boards go to the Trash with it.",
+  /// where the boards and resources go with their folder
+  static func deleteFolderQuestion(_ name: String, boards: Int, resources: Int = 0) -> NSAlert {
+    func count(_ n: Int, _ one: String) -> String { n == 1 ? "1 \(one)" : "\(n) \(one)s" }
+    let what =
+      resources == 0
+      ? count(boards, "board")
+      : boards == 0 ? count(resources, "resource") : "\(count(boards, "board")) and \(count(resources, "resource"))"
+    return destroying(
+      "Delete folder “\(name)”?", "Its \(what) \(boards + resources == 1 ? "goes" : "go") to the Trash with it.",
       "Delete Folder")
   }
 

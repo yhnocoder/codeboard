@@ -119,8 +119,6 @@ public struct ShellState: Codable, Equatable, Sendable {
   /// A board or subfolder deleted or moved away from the sidebar, before the tree is read again: its folder's folder
   /// board lets its card go (the folder's path, the entry)
   public var entryLeft: ((String, FolderEntry) -> Void)?
-  /// A resource's row clicked in the sidebar: it is to be opened
-  public var onOpenResource: ((VaultResource) -> Void)?
   /// What is being renamed in the sidebar: a board or resource by id, a folder by path
   public var renaming: Renaming?
   /// Where deleted boards and folders go: the system Trash; tests give a stand-in
@@ -199,6 +197,14 @@ public struct ShellState: Codable, Equatable, Sendable {
       treeError = nil
       byID = Dictionary(tree.allBoards.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
       for tab in tabs where byID[tab.board] == nil { close(tab.id) }
+      // a resource's tab takes its new name, and closes when it is gone
+      let resources = Dictionary(
+        tree.allFolders.flatMap(\.resources).map { (Self.readingKey($0.id), $0.title) }, uniquingKeysWith: { a, _ in a }
+      )
+      reading.follow { tab in
+        guard let key = tab.key, key.hasPrefix("resource:") else { return tab.title }
+        return resources[key]
+      }
       // a crumb whose board is gone cuts the crumbs there: what is past it is no way back
       func kept(_ cs: [Tab.Crumb]) -> [Tab.Crumb] { Array(cs.prefix { byID[$0.board] != nil }) }
       for i in tabs.indices {
@@ -287,6 +293,13 @@ public struct ShellState: Codable, Equatable, Sendable {
   public func openReadingTab(title: String, key: String) {
     reading.open(title, key: key)
   }
+
+  /// A resource's tab (its row clicked in the sidebar): opened, or gone to when it is open
+  public func openResource(_ r: VaultResource) {
+    openReadingTab(title: r.title, key: Self.readingKey(r.id))
+  }
+
+  static func readingKey(_ id: ResourceID) -> String { "resource:" + id.rawValue }
 
   public var canGoBack: Bool { current?.back.isEmpty == false }
   public var canGoForward: Bool { current?.forward.isEmpty == false }
