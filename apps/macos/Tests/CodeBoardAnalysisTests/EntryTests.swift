@@ -1,4 +1,3 @@
-import Foundation
 import Testing
 
 @testable import CodeBoardAnalysis
@@ -6,14 +5,12 @@ import Testing
 // As the "entry points" case of packages/analysis/test/symbols.test.ts, with cases for what it does not cover
 
 @Suite struct EntryPointTests {
-  @Test func readsPyprojectScriptsAndPackageExports() throws {
+  @Test func readsPyprojectScriptsAndPackageExports() {
     #expect(
       pyprojectScripts("[project]\nname=\"x\"\n[project.scripts]\nnv = \"nanovllm.cli:main\"\n") == [
         ProjectScript(name: "nv", module: "nanovllm.cli", func: "main")
       ])
-    let url = try #require(Bundle.module.url(forResource: "Fixtures", withExtension: nil))
-      .appendingPathComponent("nano-vllm/nanovllm/__init__.py")
-    #expect(initExports(try String(contentsOf: url, encoding: .utf8)).map(\.name) == ["LLM", "SamplingParams"])
+    #expect(initExports(Fixtures.nano("nanovllm/__init__.py")).map(\.name) == ["LLM", "SamplingParams"])
   }
 
   @Test func pyprojectScriptsOfPoetryOnlyInTheirSection() {

@@ -1,35 +1,45 @@
-import Foundation
 import Testing
 
 @testable import CodeBoardAnalysis
 
-// As packages/analysis/test/peek.test.ts. Each source (a nano-vllm file in Fixtures/nano-vllm, or a snippet in
-// Fixtures/peek) comes with the TypeScript `analyze` result for it in Fixtures/peek, so these test only peek.ts.
+// As packages/analysis/test/peek.test.ts: nano-vllm's files from Fixtures/nano-vllm, the other sources inline.
 
-private func fixture(_ path: String) throws -> String {
-  let url = try #require(Bundle.module.url(forResource: "Fixtures", withExtension: nil)).appendingPathComponent(path)
-  return try String(contentsOf: url, encoding: .utf8)
+/// A Python source, its analysis and its lines
+private func analyzed(_ text: String) -> (a: FileAnalysis, lines: [String]) {
+  (analyze("python", text), text.jsSplit("\n"))
 }
 
-private struct Analyzed: Decodable {
-  var lang: String
-  var symbols: [Sym]
-  var flags: [Int]
-  var calls: [CallSite]
-  var doc: String?
-}
+private func nano(_ path: String) -> (a: FileAnalysis, lines: [String]) { analyzed(Fixtures.nano(path)) }
 
-/// A source and its analysis: `source` under Fixtures, `name` the analysis's file in Fixtures/peek
-private func peekFixture(_ source: String, _ name: String) throws -> (a: FileAnalysis, lines: [String]) {
-  let text = try fixture(source)
-  let d = try JSONDecoder().decode(Analyzed.self, from: Data(try fixture("peek/\(name).json").utf8))
-  let a = FileAnalysis(lang: d.lang, symbols: d.symbols, flags: d.flags, calls: d.calls, doc: d.doc)
-  return (a, text.jsSplit("\n"))
-}
+private let fields = """
+  class Qwen3ForCausalLM:
+      packed_modules_mapping = {
+          "q_proj": ("qkv_proj", "q"),
+          "k_proj": ("qkv_proj", "k"),
+      }
+      tie = False
+
+  TABLE = [
+      1,
+      2,
+  ]
+  x = 1
+
+  """
+
+private let module = #"""
+  # mypy: allow-untyped-defs
+  """torch.multiprocessing is a wrapper around the native :mod:`multiprocessing` module.
+
+  It registers custom reducers, that use shared memory to provide shared
+  views on the same data in different processes."""
+  import sys
+
+  """#
 
 @Suite struct PeekPlanTests {
   @Test func aFieldShowsEveryFieldOfItsClass() throws {
-    let (a, lines) = try peekFixture("nano-vllm/nanovllm/config.py", "config")
+    let (a, lines) = nano("nanovllm/config.py")
     let p = peekPlan(a, lines, 17, word: "config.kvcache_block_size")
     #expect(p.kind == .field)
     #expect(p.rows == [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18])
@@ -38,7 +48,7 @@ private func peekFixture(_ source: String, _ name: String) throws -> (a: FileAna
   }
 
   @Test func aFunctionShowsItsSignatureAndFirstLinesWithoutTheDocstring() throws {
-    let (a, lines) = try peekFixture("nano-vllm/nanovllm/utils/loader.py", "loader")
+    let (a, lines) = nano("nanovllm/utils/loader.py")
     let p = peekPlan(a, lines, 12)
     #expect(p.kind == .function)
     #expect(p.rows == [12, 13, 14, 15])
@@ -47,7 +57,7 @@ private func peekFixture(_ source: String, _ name: String) throws -> (a: FileAna
   }
 
   @Test func aFieldOrModuleAssignmentOverSeveralLinesIsShownWhole() throws {
-    let (a, lines) = try peekFixture("peek/fields.py", "fields")
+    let (a, lines) = analyzed(fields)
     let f = peekPlan(a, lines, 2)
     #expect([2, 3, 4, 5].allSatisfy(f.rows.contains))
     let m = peekPlan(a, lines, 8)
@@ -61,7 +71,7 @@ private func peekFixture(_ source: String, _ name: String) throws -> (a: FileAna
   }
 
   @Test func selfAssignmentsInInitShowEverySelfAssignmentOfThatMethod() throws {
-    let (a, lines) = try peekFixture("nano-vllm/nanovllm/engine/scheduler.py", "scheduler")
+    let (a, lines) = nano("nanovllm/engine/scheduler.py")
     let l = try #require(lines.firstIndex { JSRegex(#"self\.max_num_seqs\s*="#).test($0) }) + 1
     let p = peekPlan(a, lines, l)
     #expect(p.kind == .field)
@@ -71,7 +81,7 @@ private func peekFixture(_ source: String, _ name: String) throws -> (a: FileAna
   }
 
   @Test func aModuleHasOnlyDocsNoSource() throws {
-    let (a, lines) = try peekFixture("peek/module.py", "module")
+    let (a, lines) = analyzed(module)
     #expect(isModuleDef(lines, 1, 0, "mp"))
     #expect(!isModuleDef(["mp = 1"], 1, 0, "mp"))
     let p = peekPlan(a, lines, 1, word: "mp", module: true)
@@ -119,3 +129,4 @@ private func peekFixture(_ source: String, _ name: String) throws -> (a: FileAna
     #expect(empty.doc == nil)
   }
 }
+

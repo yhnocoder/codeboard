@@ -1,33 +1,8 @@
-import Foundation
 import Testing
 
 @testable import CodeBoardAnalysis
 
-// As packages/analysis/test/bridge.test.ts. The cases that need `analyze` read its result for the same source from
-// Fixtures/bridge (written once by the TypeScript `analyze`), so they test only the functions of bridge.ts.
-
-private func fixture(_ path: String) throws -> String {
-  let url = try #require(Bundle.module.url(forResource: "Fixtures", withExtension: nil)).appendingPathComponent(path)
-  return try String(contentsOf: url, encoding: .utf8)
-}
-
-/// The parts of a TypeScript `analyze` result these tests use
-private struct Analyzed: Decodable {
-  var lang: String
-  var symbols: [Sym]
-  var flags: [Int]
-  var calls: [CallSite]
-  var doc: String?
-
-  var analysis: FileAnalysis { FileAnalysis(lang: lang, symbols: symbols, flags: flags, calls: calls, doc: doc) }
-}
-
-private func analyzed(_ name: String) throws -> (text: String, a: Analyzed) {
-  let src = try fixture("bridge/\(name)")
-  let base = (name as NSString).deletingPathExtension
-  let a = try JSONDecoder().decode(Analyzed.self, from: Data(try fixture("bridge/\(base).json").utf8))
-  return (src, a)
-}
+// As packages/analysis/test/bridge.test.ts, with its sources inline and analysed by `analyze` as there.
 
 private let pybind = """
   #include <pybind11/pybind11.h>
@@ -155,9 +130,32 @@ private let pybind = """
   }
 }
 
+private let pyo3 = """
+  use pyo3::prelude::*;
+
+  #[pyfunction]
+  fn tokenize(s: &str) -> usize { s.len() }
+
+  #[pyfunction]
+  #[pyo3(name = "radix_insert")]
+  fn insert_impl(k: u32) {}
+
+  #[pyclass]
+  struct Tree {}
+
+  #[pymethods]
+  impl Tree {
+      fn match_prefix(&self) {}
+  }
+
+  fn private_helper() {}
+
+  """
+
 @Suite struct PyO3Tests {
   @Test func pyfunctionRenamedByPyo3NameAndPymethodsMethods() throws {
-    let (src, a) = try analyzed("pyo3.rs")
+    let src = pyo3
+    let a = analyze("rust", src)
     #expect(pyo3Defs(src, a.symbols, "tokenize").map(\.qual) == ["tokenize"])
     #expect(pyo3Defs(src, a.symbols, "radix_insert").map(\.qual) == ["insert_impl"])
     #expect(pyo3Defs(src, a.symbols, "match_prefix").map(\.qual) == ["Tree::match_prefix"])
@@ -165,7 +163,30 @@ private let pybind = """
   }
 }
 
-// DeepEP v1.2.1 csrc/kernels/launch.cuh (cut down); intranode.cu is in Fixtures/bridge
+// DeepEP v1.2.1 csrc/kernels/intranode.cu and launch.cuh (cut down)
+private let intranode = #"""
+  template <int kNumRanks, int kNumThreads, int kNumTMABytesPerWarp>
+  __global__ void __launch_bounds__(kNumThreads, 1)
+  dispatch(int4* recv_x, int num_tokens) {
+  }
+
+  void dispatch(void* recv_x, int num_tokens, int num_ranks, cudaStream_t stream, int num_sms) {
+      constexpr int kNumThreads = 768;
+      constexpr int kNumTMABytesPerWarp = 8192;
+  #define DISPATCH_LAUNCH_CASE(ranks) { \
+      auto kernel = dispatch<ranks, kNumThreads, kNumTMABytesPerWarp>; \
+      SET_SHARED_MEMORY_FOR_TMA(kernel); \
+      LAUNCH_KERNEL(&cfg, kernel, \
+          reinterpret_cast<int4*>(recv_x), num_tokens); \
+      } break
+
+      SETUP_LAUNCH_CONFIG(num_sms, kNumThreads, stream);
+      SWITCH_RANKS(DISPATCH_LAUNCH_CASE);
+  #undef DISPATCH_LAUNCH_CASE
+  }
+
+  """#
+
 private let launchCuh = """
   #define SWITCH_RANKS(case_macro) \\
       switch (num_ranks) { \\
@@ -179,7 +200,8 @@ private let launchCuh = """
 
 @Suite struct LaunchMacroTests {
   @Test func switchRanksOfACaseMacroLaunchesTheKernelWithTheSwitchCases() throws {
-    let (src, a) = try analyzed("intranode.cu")
+    let src = intranode
+    let a = analyze("cuda-cpp", src)
     let call = try #require(a.calls.first { $0.name == "SWITCH_RANKS" })
     let lm = try #require(
       launchMacro(name: call.name, args: call.args, defs: macroDefs(src), switches: macroDefs(launchCuh)))
@@ -200,7 +222,7 @@ private let launchCuh = """
   }
 
   @Test func theCaseMacroItselfAndLaunchKernelWithAKernelArgument() throws {
-    let (src, _) = try analyzed("intranode.cu")
+    let src = intranode
     let defs = macroDefs(src)
     let own = try #require(
       launchMacro(name: "DISPATCH_LAUNCH_CASE", args: [Arg(text: "8")], defs: defs, switches: NameMap()))
@@ -279,9 +301,54 @@ private let launchCuh = """
   }
 }
 
+private let triton = """
+  import triton
+  import triton.language as tl
+
+  @triton.autotune(
+      configs=[
+          triton.Config({"BLOCK_M": 64, "BLOCK_N": 128}, num_stages=3, num_warps=4),
+          triton.Config({"BLOCK_M": 128, "BLOCK_N": 64}, num_stages=4, num_warps=8),
+      ],
+      key=["N"],
+  )
+  @triton.jit
+  def fused_kernel(a_ptr, N, group_n: tl.constexpr, BLOCK_K: tl.constexpr, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
+      pid = tl.program_id(0)
+
+
+  def launch(a, n):
+      grid = (n,)
+      fused_kernel[grid](a, n, 0, BLOCK_K=32)
+
+  """
+
+private let tilelang = """
+  import tilelang
+  import tilelang.language as T
+
+  @tilelang.jit(out_idx=[-1])
+  def flashmla_decode(h, block_N=64, num_stages=2):
+      blk = 32
+
+      @T.prim_func
+      def main(Q: T.Tensor):
+          with T.Kernel(1) as bx:
+              pass
+
+      return main
+
+
+  def run(q):
+      kernel = flashmla_decode(16, block_N=128, num_stages=2)
+      return kernel(q)
+
+  """
+
 @Suite struct TritonTileLangTests {
   @Test func constexprArgumentsAndAutotuneConfigsAsAlternatives() throws {
-    let (src, a) = try analyzed("triton.py")
+    let src = triton
+    let a = analyze("python", src)
     let sym = try #require(a.symbols.first { $0.name == "fused_kernel" })
     let info = tritonInfo(src.jsSplit("\n"), sym)
     #expect(info.jit)
@@ -316,7 +383,8 @@ private let launchCuh = """
   }
 
   @Test func tileLangFactoryLeadsToItsPrimFuncWithFactoryParametersAsValues() throws {
-    let (src, a) = try analyzed("tilelang.py")
+    let src = tilelang
+    let a = analyze("python", src)
     let lines = src.jsSplit("\n")
     let f = try #require(a.symbols.first { $0.qual == "flashmla_decode" })
     #expect(tilelangInner(lines, f, a.symbols)?.qual == "flashmla_decode.main")
@@ -338,9 +406,27 @@ private let launchCuh = """
   }
 }
 
+private let abstract = #"""
+  class Base:
+      def forward(self, x):
+          """Run it."""
+          raise NotImplementedError
+
+      @abstractmethod
+      def other(self):
+          return 1
+
+      def real(self, x):
+          return x + 1
+
+      def dots(self): ...
+
+  """#
+
 @Suite struct DynamicDispatchTests {
   @Test func abstractBaseMethods() throws {
-    let (src, a) = try analyzed("abstract.py")
+    let src = abstract
+    let a = analyze("python", src)
     let lines = src.jsSplit("\n")
     let results = try ["Base.forward", "Base.other", "Base.real", "Base.dots"].map { q in
       isAbstractBody(lines, try #require(a.symbols.first { $0.qual == q }))
