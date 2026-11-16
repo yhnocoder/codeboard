@@ -84,6 +84,8 @@ public struct ReadingTab: Codable, Equatable, Identifiable, Sendable {
   @ObservationIgnored public var entries = EntryIndex()
   /// Where Copy puts text: the general pasteboard; tests give one of their own
   @ObservationIgnored public var pasteboard = NSPasteboard.general
+  /// Reads a page that has no tab (a link pasted or dropped into a list): the shell's, none in tests
+  @ObservationIgnored public var readsPage: (@Sendable (URL) async -> PageRead?)?
   /// A passage taken to the board (Add to Board, ⌥↵)
   @ObservationIgnored public var onCollect: ((Collected) -> Void)?
   /// A board to show, in this pane's window (a board field's Open Board)
