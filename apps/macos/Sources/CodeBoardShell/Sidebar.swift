@@ -268,7 +268,7 @@ private struct BoardRow: View {
   }
 }
 
-/// A resource: its name, and how many entries it has at the far right; a click opens it
+/// A resource: its name, and how many entries it has at the far right; a click opens it, PDFs dropped on it are added
 private struct ResourceRow: View {
   let shell: Shell
   let resource: VaultResource
@@ -294,6 +294,8 @@ private struct ResourceRow: View {
       }
     }
     .draggable(VaultDrag.payload(resource.path))
+    // PDFs from Finder: added to it, as Add PDF… adds them
+    .dropDestination(for: URL.self) { urls, _ in shell.addPDFs(urls, to: resource) }
     .contextMenu { MenuItems(entries: shell.menu(resource: resource), moveTo: shell.moveTargets(resource: resource)) }
   }
 }

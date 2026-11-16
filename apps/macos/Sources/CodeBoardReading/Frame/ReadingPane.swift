@@ -1,41 +1,42 @@
 import AppKit
+import CodeBoardModel
+import CodeBoardResources
 import Observation
 
-/// A tab of the reading pane: what it shows and the name on its tab. `key` is what it was opened for (a resource):
-/// opening the same key again goes to this tab
+/// A tab of the reading pane: what it shows and the name on its tab. `key` is what it was opened for (a resource, a
+/// PDF): opening the same key again goes to this tab
 public struct ReadingTab: Codable, Equatable, Identifiable, Sendable {
   public let id: UUID
   public var key: String?
   public var title: String
-  public var content: Content
+  /// Which kind of view it shows (ReadingKinds); "" a blank page, as is a kind this build has not registered
+  public var kind: String
+  /// What its kind needs to show it again, saved with the tab
+  public var payload: [String: String]
 
-  /// What a tab shows; each kind makes its own view
-  public enum Content: Codable, Equatable, Sendable {
-    /// A blank page: the panel's paper
-    case empty
-  }
-
-  public init(title: String, key: String? = nil, content: Content = .empty) {
+  public init(title: String, key: String? = nil, kind: String = "", payload: [String: String] = [:]) {
     id = UUID()
     self.key = key
     self.title = title
-    self.content = content
+    self.kind = kind
+    self.payload = payload
   }
 
   /// The SF Symbol before its title; nil: none
-  public var icon: String? {
-    switch content {
-    case .empty: nil
-    }
-  }
-}
+  @MainActor public var icon: String? { ReadingKinds.icon(of: kind) }
 
-extension ReadingTab.Content {
-  /// The view the tab shows, made once when it opens and kept while it is open
-  @MainActor func makeView() -> NSView {
-    switch self {
-    case .empty: NSView()
-    }
+  private enum CodingKeys: String, CodingKey {
+    case id, key, title, kind, payload
+  }
+
+  // a tab saved before tabs had kinds is a blank page
+  public init(from decoder: any Decoder) throws {
+    let c = try decoder.container(keyedBy: CodingKeys.self)
+    id = try c.decode(UUID.self, forKey: .id)
+    key = try c.decodeIfPresent(String.self, forKey: .key)
+    title = try c.decode(String.self, forKey: .title)
+    kind = try c.decodeIfPresent(String.self, forKey: .kind) ?? ""
+    payload = try c.decodeIfPresent([String: String].self, forKey: .payload) ?? [:]
   }
 }
 
@@ -67,6 +68,20 @@ extension ReadingTab.Content {
     return min(max(width, minWidth), room - boardMinWidth).rounded()
   }
 
+  // What every tab's view reads and hands on, set by the shell
+  /// The open vault
+  @ObservationIgnored public var vault: Vault?
+  /// Its entries, as last read with its tree
+  @ObservationIgnored public var entries = EntryIndex()
+  /// Where Copy puts text: the general pasteboard; tests give one of their own
+  @ObservationIgnored public var pasteboard = NSPasteboard.general
+  /// A passage taken to the board (Add to Board, ⌥↵)
+  @ObservationIgnored public var onCollect: ((Collected) -> Void)?
+  /// This machine's data of the app, never in the vault: each kind has a folder in it (ReadingContext.dataFolder)
+  @ObservationIgnored public var machineFolder: URL?
+  /// The board's bar look in its theme now (the shell sets it); tabs' views follow it
+  public var barLook = ReadingBarLook.warmInk(dark: false)
+
   public init() {}
 
   public struct State: Codable, Equatable, Sendable {
@@ -95,15 +110,17 @@ extension ReadingTab.Content {
     selected = nil
   }
 
-  /// A tab titled `title` after the current one, selected, the pane shown; one opened for the same `key` is gone to
-  /// instead
-  @discardableResult public func open(_ title: String, key: String? = nil) -> ReadingTab.ID {
+  /// A tab titled `title` showing `kind` (its view made from `payload`) after the current one, selected, the pane
+  /// shown; one opened for the same `key` is gone to instead
+  @discardableResult public func open(
+    _ title: String, key: String? = nil, kind: String = "", payload: [String: String] = [:]
+  ) -> ReadingTab.ID {
     shown = true
     if let key, let tab = tabs.first(where: { $0.key == key }) {
       selected = tab.id
       return tab.id
     }
-    let tab = ReadingTab(title: title, key: key)
+    let tab = ReadingTab(title: title, key: key, kind: kind, payload: payload)
     tabs.insert(tab, at: currentIndex.map { $0 + 1 } ?? tabs.count)
     selected = tab.id
     return tab.id
@@ -136,6 +153,15 @@ extension ReadingTab.Content {
       }
       if t != tab.title, let i = tabs.firstIndex(where: { $0.id == tab.id }) { tabs[i].title = t }
     }
+  }
+
+  /// A tab's view changed what it shows: its title, what it saves, the key it is gone to by; nil leaves each as it is.
+  /// Its view stays
+  public func update(_ tab: ReadingTab.ID, title: String? = nil, payload: [String: String]? = nil, key: String? = nil) {
+    guard let i = tabs.firstIndex(where: { $0.id == tab }) else { return }
+    if let title, title != tabs[i].title { tabs[i].title = title }
+    if let payload, payload != tabs[i].payload { tabs[i].payload = payload }
+    if let key, key != tabs[i].key { tabs[i].key = key }
   }
 
   public func move(_ tab: ReadingTab.ID, to index: Int) {

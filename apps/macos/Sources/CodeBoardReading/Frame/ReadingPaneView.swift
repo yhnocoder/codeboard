@@ -2,12 +2,15 @@ import AppKit
 
 /// The reading pane's content below its tab row: each open tab's view, made when the tab opens and kept while it is
 /// open, the current one on screen; with no tab, nothing but the panel. A click in it, or a tab opened or switched to,
-/// gives it the keys, and while it has them the tab keys (Close Tab, Show Next and Previous Tab) are its tabs'
+/// gives it the keys (the current tab's view takes them when it can), and while it has them the tab keys (Close Tab,
+/// Show Next and Previous Tab) are its tabs'
 public final class ReadingPaneView: NSView, NSMenuItemValidation {
   public let pane: ReadingPane
   private(set) var views: [ReadingTab.ID: NSView] = [:]
   /// The tab on screen at the last sync, once there was one
   private var synced: ReadingTab.ID??
+  /// The bar look the tabs' views last followed
+  private var look: ReadingBarLook?
 
   public init(pane: ReadingPane) {
     self.pane = pane
@@ -22,7 +25,7 @@ public final class ReadingPaneView: NSView, NSMenuItemValidation {
 
   public override var isFlipped: Bool { true }
   public override var acceptsFirstResponder: Bool { true }
-  public override func mouseDown(with event: NSEvent) { window?.makeFirstResponder(self) }
+  public override func mouseDown(with event: NSEvent) { takeKeys() }
 
   /// Follows the tabs: new tabs get their view, closed ones lose it, the current one shows; one switched to since
   /// the last sync takes the keys
@@ -33,22 +36,30 @@ public final class ReadingPaneView: NSView, NSMenuItemValidation {
       views[id] = nil
     }
     for tab in pane.tabs where views[tab.id] == nil {
-      let view = tab.content.makeView()
+      let view = ReadingKinds.view(for: tab, in: self)
       view.frame = bounds
       view.autoresizingMask = [.width, .height]
       addSubview(view)
       views[tab.id] = view
     }
     for (id, view) in views { view.isHidden = id != pane.selected }
+    if look != pane.barLook {
+      look = pane.barLook
+      for case let v as ReadingLookFollower in views.values { v.barLookChanged(pane.barLook) }
+    }
     if let was = synced, was != pane.selected, pane.selected != nil { takeKeys() }
     synced = .some(pane.selected)
   }
 
-  /// The keys come here, unless something outside the pane is being typed in (the sidebar's rename or search field)
+  /// The keys go to the current tab's view when it takes them, else here; they stay where they are when a view in the
+  /// current tab has them already (a web tab's address field), or something outside the pane is being typed in (the
+  /// sidebar's rename or search field)
   public func takeKeys() {
     guard let window else { return }
     if let text = window.firstResponder as? NSText, !text.isDescendant(of: self) { return }
-    window.makeFirstResponder(self)
+    let current = pane.selected.flatMap { views[$0] }
+    if let current, let r = window.firstResponder as? NSView, r.isDescendant(of: current) { return }
+    window.makeFirstResponder(current?.acceptsFirstResponder == true ? current : self)
   }
 
   /// Whether the keys are here or in a view inside
