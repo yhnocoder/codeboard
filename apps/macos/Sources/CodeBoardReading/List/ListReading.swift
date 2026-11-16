@@ -121,7 +121,9 @@ struct ListRow: Equatable {
 
 /// A resource's tab: its entries in a table with the columns of its preset (ListColumn), sorted by its default until a
 /// header is clicked, narrowed by the filter at the top right. A click selects a row, ↑ ↓ move the selection, a
-/// double-click or Return opens it in a tab. An empty resource says so. Sort and filter are the tab's, not saved
+/// double-click or Return opens it in a tab. An empty resource says how to add to it. Files dropped on it, what ⌘V
+/// pastes and what the + beside the filter chooses are added to it as its preset takes them (ListAdding.swift). Sort and
+/// filter are the tab's, not saved
 final class ListTabView: NSView, ReadingLookFollower, NSTableViewDataSource, NSTableViewDelegate {
   /// The open list tabs' views by their tab, for their kind's follow to reach
   static let live = NSMapTable<NSUUID, ListTabView>.strongToWeakObjects()
@@ -136,8 +138,19 @@ final class ListTabView: NSView, ReadingLookFollower, NSTableViewDataSource, NST
   /// The last lookup of which boards each entry is on; the one going on (tests wait for it)
   private var boardsOf: [EntryID: [String]] = [:]
   private(set) var boardsRead: Task<Void, Never>?
-  let empty = NSTextField(labelWithString: "No entries yet")
+  let empty = NSTextField(labelWithString: "")
   let search = NSSearchField()
+  /// Beside the filter: files chosen in the open panel added (none for web pages, which take no file)
+  let addButton = NSButton()
+  /// On the bar's left: an arXiv paper being added, or why an add failed
+  let note = NSTextField(labelWithString: "")
+  /// Over the list while a drop it takes is held over it, in the theme's accent
+  let dropRing = ListDropRing()
+  /// What the + button asks for files with: the open panel; tests give their own
+  var choose: @MainActor (ResourcePreset, NSWindow?) async -> [URL] = { await ListTabView.openPanel($0, in: $1) }
+  /// The + button's choosing, an arXiv paper's adding, going on (tests wait for them)
+  var choosing: Task<Void, Never>?
+  var adding: Task<Void, Never>?
   let table = ListTable()
   private let header = ListHeaderView()
   private let scroll = NSScrollView()
@@ -155,6 +168,16 @@ final class ListTabView: NSView, ReadingLookFollower, NSTableViewDataSource, NST
     search.action = #selector(filterChanged)
     search.setAccessibilityIdentifier("ui-listfilter")
     addSubview(search)
+    addButton.image = NSImage(systemSymbolName: "plus", accessibilityDescription: "Add")
+    addButton.isBordered = false
+    addButton.imagePosition = .imageOnly
+    addButton.target = self
+    addButton.action = #selector(pressedAdd)
+    addButton.setAccessibilityIdentifier("ui-listadd")
+    addSubview(addButton)
+    note.font = .systemFont(ofSize: 11)
+    note.lineBreakMode = .byTruncatingTail
+    addSubview(note)
     table.style = .plain
     table.backgroundColor = .clear
     table.headerView = header
@@ -175,6 +198,9 @@ final class ListTabView: NSView, ReadingLookFollower, NSTableViewDataSource, NST
     addSubview(scroll)
     empty.font = .systemFont(ofSize: 12)
     addSubview(empty)
+    dropRing.isHidden = true
+    addSubview(dropRing)
+    registerForDraggedTypes([.fileURL, .URL, .string])
     Self.live.setObject(self, forKey: context.tab as NSUUID)
     // a translation's progress, or its failure
     watching.append(
@@ -242,6 +268,10 @@ final class ListTabView: NSView, ReadingLookFollower, NSTableViewDataSource, NST
     }
     table.rowHeight = twoLines ? 42 : 28
     table.sortDescriptors = ListColumn.defaultSort(p)
+    addButton.isHidden = p == .web
+    addButton.toolTip = p == .papers ? "Add PDFs…" : "Add Files…"
+    if rows.isEmpty { empty.stringValue = Self.emptyText(p) }
+    needsLayout = true
   }
 
   /// A row with what is known of it beyond its item: its boards, its translation
@@ -274,18 +304,23 @@ final class ListTabView: NSView, ReadingLookFollower, NSTableViewDataSource, NST
     } else {
       table.deselectAll(nil)
     }
-    empty.stringValue = rows.isEmpty ? "No entries yet" : "No matches"
+    empty.stringValue = rows.isEmpty ? Self.emptyText(preset) : "No matches"
     empty.isHidden = !shown.isEmpty
   }
 
-  @objc private func filterChanged() { reload() }
+  @objc func filterChanged() { reload() }
 
   override func layout() {
     super.layout()
     let w = min(200, max(0, bounds.width - 24))
     search.frame = CGRect(x: bounds.width - 12 - w, y: 8, width: w, height: 22)
+    addButton.frame = CGRect(x: search.frame.minX - 4 - 24, y: 8, width: 24, height: 22)
+    let left = addButton.isHidden ? search.frame.minX : addButton.frame.minX
+    // the bar's words and the empty line start where the titles do
+    note.frame = CGRect(x: 8, y: 11, width: max(0, left - 8 - 8), height: 16)
+    dropRing.frame = bounds.insetBy(dx: 6, dy: 6)
     scroll.frame = CGRect(x: 0, y: 38, width: bounds.width, height: max(0, bounds.height - 38))
-    empty.frame = CGRect(x: 14, y: 38 + header.frame.height + 10, width: max(0, bounds.width - 28), height: 18)
+    empty.frame = CGRect(x: 8, y: 38 + header.frame.height + 10, width: max(0, bounds.width - 16), height: 18)
   }
 
   /// The selected row, of those shown
@@ -316,6 +351,11 @@ final class ListTabView: NSView, ReadingLookFollower, NSTableViewDataSource, NST
   /// The board theme's ink on the header, the rows and the empty state
   private func paint() {
     empty.textColor = ink.withAlphaComponent(0.45)
+    note.textColor = ink.withAlphaComponent(0.55)
+    addButton.contentTintColor = ink.withAlphaComponent(0.6)
+    dropRing.accent = NSColor(cgColor: context.bar.accent) ?? .controlAccentColor
+    dropRing.radius = min(context.bar.radius, 8)
+    dropRing.needsDisplay = true
     header.ink = ink
     header.needsDisplay = true
     table.reloadData()
