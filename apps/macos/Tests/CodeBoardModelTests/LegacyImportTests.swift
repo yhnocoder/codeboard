@@ -564,6 +564,16 @@ private func unchanged(_ before: [String: Data], _ after: [String: Data]) -> [St
     ])
 }
 
+/// A group folder named like a package would be taken for one: a board's or a resource's
+@Test func aGroupNamedLikeAPackageGetsADash() throws {
+  let (vault, report, _) = try importing([
+    "Papers.board/1.json": oldBoard("b1", name: "One"), "Papers.resource/2.json": oldBoard("b2", name: "Two"),
+  ])
+  #expect(report.failed.isEmpty)
+  #expect(report.imported.map(\.destination) == ["Papers.board-/One.board", "Papers.resource-/Two.board"])
+  #expect(try vault.tree().folders.map(\.name) == ["Papers.board-", "Papers.resource-"])
+}
+
 @Test func boardIDFallsBackToTheFileName() throws {
   var b = oldBoard("x")
   b["id"] = nil

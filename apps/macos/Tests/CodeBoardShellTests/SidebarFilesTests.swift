@@ -237,4 +237,80 @@ import Testing
     targets[1].run()
     #expect(shell.tree?.folders.first { $0.name == "A" }?.folders.first?.boards.map(\.title) == ["Plan copy"])
   }
+
+  /// A resource package as the format writes it, with a folder entry and a file alone in it
+  func resource(_ vault: Vault, _ path: String, id: String) throws {
+    let pkg = vault.url(of: path)
+    try fm.createDirectory(at: pkg.appending(path: "Attention Is All You Need"), withIntermediateDirectories: true)
+    try Data(#"{"fields": [], "id": "\#(id)", "preset": "papers", "version": 1}"#.utf8)
+      .write(to: pkg.appending(path: Vault.resourceFileName))
+    try Data("{}".utf8).write(to: pkg.appending(path: "Attention Is All You Need/\(Vault.entryFileName)"))
+    try Data("%PDF".utf8).write(to: pkg.appending(path: "notes.pdf"))
+  }
+
+  /// Resources are listed after a folder's boards with how many entries each has, and one that cannot be read apart;
+  /// their menu renames, moves, reveals, copies the path of and deletes them as a board's does
+  @Test func resourcesAreListedWithTheirEntriesAndRenamedMovedAndDeletedAsBoardsAre() async throws {
+    let (vault, shell, _) = try vault()
+    defer { try? fm.removeItem(at: vault.root) }
+    try vault.newBoard(in: "", title: "Engine")
+    try vault.newFolder(in: "", name: "Reading")
+    try resource(vault, "Papers.resource", id: "r1")
+    let broken = vault.root.appending(path: "Broken.resource")
+    try fm.createDirectory(at: broken, withIntermediateDirectories: true)
+    try Data("{".utf8).write(to: broken.appending(path: Vault.resourceFileName))
+    let pb = NSPasteboard(name: NSPasteboard.Name("sidebar-\(UUID().uuidString)"))
+    shell.pasteboard = pb
+    let trash = vault.root.deletingLastPathComponent().appending(path: "trash-\(UUID().uuidString)")
+    try fm.createDirectory(at: trash, withIntermediateDirectories: true)
+    defer { try? fm.removeItem(at: trash) }
+    shell.trasher = { url in
+      let to = trash.appending(path: url.lastPathComponent)
+      try FileManager.default.moveItem(at: url, to: to)
+      return to
+    }
+    shell.apply(Result { try vault.tree() })
+    #expect(shell.tree?.boards.map(\.title) == ["Engine"])
+    #expect(shell.tree?.resources.map { "\($0.title): \($0.entryCount)" } == ["Papers: 2"])
+    #expect(shell.tree?.unreadableResources.map(\.title) == ["Broken"])
+    #expect(shell.tree?.folders.map(\.name) == ["Reading"])
+
+    let r = try #require(shell.tree?.resources.first)
+    let menu = shell.menu(resource: r)
+    #expect(
+      menu.map { $0?.title ?? "-" } == ["Rename", "Move to", "-", "Reveal in Finder", "Copy Path", "-", "Delete"])
+    menu[4]?.run()
+    #expect(
+      pb.string(forType: .string)
+        == vault.url(of: r.path).appending(path: Vault.resourceFileName).path(percentEncoded: false))
+    let bad = try #require(shell.tree?.unreadableResources.first)
+    shell.menu(unreadable: bad)[1]?.run()
+    #expect(pb.string(forType: .string) == broken.appending(path: Vault.resourceFileName).path(percentEncoded: false))
+
+    // renamed in place
+    menu[0]?.run()
+    #expect(shell.renaming == .resource(r.id))
+    shell.renaming = nil
+    shell.rename(resource: r, to: "Papers 2017")
+    let renamed = try #require(shell.tree?.resources.first { $0.id == r.id })
+    #expect(renamed.path == "Papers 2017.resource" && renamed.entryCount == 2)
+    // Move to: every folder but where it is
+    let targets = shell.moveTargets(resource: renamed)
+    #expect(targets.map(\.title) == ["Reading"])
+    targets[0].run()
+    #expect(shell.tree?.folder(at: "Reading")?.resources.map(\.id) == [r.id])
+
+    // deleted: asked first, saying how many entries go with it, then to the trash whole
+    var asked: [String] = []
+    shell.confirm = { a in
+      asked.append("\(a.messageText) \(a.informativeText)")
+      return true
+    }
+    let moved = try #require(shell.tree?.folder(at: "Reading")?.resources.first)
+    shell.menu(resource: moved).compactMap { $0 }.first { $0.title == "Delete" }?.run()
+    while shell.tree?.folder(at: "Reading")?.resources.isEmpty == false { try await Task.sleep(for: .milliseconds(5)) }
+    #expect(asked == ["Delete resource “Papers 2017”? Its 2 entries go to the Trash with it."])
+    #expect(fm.fileExists(atPath: trash.appending(path: "Papers 2017.resource/notes.pdf").path(percentEncoded: false)))
+    #expect(shell.tree?.boards.map(\.title) == ["Engine"])
+  }
 }

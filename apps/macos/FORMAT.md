@@ -37,7 +37,7 @@ A vault is a folder of its own. Its folder tree is the sidebar's tree: real fold
 - Names starting with `.` are never listed (so `.codeboard/` is not a folder in the sidebar). A folder whose name ends in
   `.board` is a board package, one whose name ends in `.resource` a resource package (Resources, below); neither is
   looked into as a folder, and any other folder is a folder. Files outside packages are ignored. Sidebar order is
-  Finder's (`localizedStandardCompare`): in a folder its boards, then its resources, then its subfolders.
+  Finder's (`localizedStandardCompare`): in a folder its subfolders, then its boards, then its resources.
 - The title lives only in the package name, so renaming in Finder renames the board; `board.json` has no title.
 - **Folder boards**: a folder (not the vault itself) may hold one board package named `.folder.board`
   (`Vault.folderBoardName`), hidden like every dot name and read as that folder's own board. Its title is always the
@@ -227,7 +227,8 @@ Papers.resource/
   <entry folder>/               an entry; the folder's name is the user's to change, the entry is known by its id
     entry.json
     <file>                      what its versions name: PDFs, a block list
-  <file>                        an entry that is only a file (no id, no metadata): its name is its title
+  <file>                        an entry that is only a file (no id, no metadata): its name without the extension
+                                is its title
 ```
 
 Both files are written and read like `board.json` (deterministic, strict, the same rules for growing: Versions, above),
@@ -251,6 +252,7 @@ translates (blocks of the two correspond by order). `language`: BCP 47 (`zh`, `e
   `<id>.zh.anchors.json` as written). Without `blocks` it is a plain PDF: text by page only.
 - `page: {hash, bytes}`: a web page saved whole, kept outside the vault by its content fingerprint (`hash`, as the
   saving service names the file); `bytes` its size.
+- `file: {file}`: any other file in the entry folder, opened as the system opens it; no places in it.
 
 An entry saved as a link alone has no versions. A new version of a paper is one more Version; the old ones stay, and
 every highlight, sidenote and card source keeps naming the version it was made on. Nothing is moved to the new one.
@@ -267,6 +269,10 @@ File names are plain file names, as in `images/`.
 **SourceAnchor** (a Place from outside the entry: a card's `source`, an image card's `resource`): `entry, version,
 block, range?`, a Place with the entry's id. The board does not check that the entry is there: a card whose entry is
 gone keeps its anchor and is drawn as missing its source.
+
+Read strictly besides: version, highlight and sidenote ids are each unique among their kind in the entry; a place's
+`version` is one of the entry's versions; `of` never names the version itself; an arXiv id has no `vN`. The sidebar
+lists a resource whose preset this CodeBoard does not know as one that cannot be read.
 
 **Highlight**: `id, place: Place, color: yellow|green|blue|pink|purple, at`. Stored in the entry, so it shows from
 whichever board the entry was opened. Never on a `rect`.
@@ -334,8 +340,8 @@ parent (compared as APFS does) gets ` 2`, ` 3`…; the import never puts anythin
 title go through `Vault.packageName`: `/ \ : * ? " < > |` become `-` (illegal on macOS, or break a clone on Windows), control
 characters go, leading dots go (they would hide the board), trailing dots and spaces go, it is cut to 200 bytes of UTF-8,
 stored precomposed (NFC), and an empty one is `Untitled`. A name already in the folder (compared without case or
-normalisation, as APFS does) gets ` 2`, ` 3`… in the order of the old files' paths. A group folder name ending in `.board`
-gets a `-`.
+normalisation, as APFS does) gets ` 2`, ` 3`… in the order of the old files' paths. A group folder name ending in `.board` or
+`.resource` gets a `-`.
 
 **Importing again never overwrites** (decided: a board is imported once and never overwritten). The import writes only
 files that are not in the vault yet; a file that is there is never written, whatever its content:

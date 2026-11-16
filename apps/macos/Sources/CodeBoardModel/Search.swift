@@ -206,13 +206,16 @@ public enum BoardSearch {
         return "`\(at)`\n\n\(fence(s.language, s.lines.joined(separator: "\n")))"
       }.joined(separator: "\n\n")
     case .image(let i):
-      let src: String
+      let src: String?
       switch i.source {
       case .file(let f): src = "\(Vault.imagesFolder)/\(f)"
       case .url(let u): src = u
+      // a resource's block has no address of its own: its alt alone
+      case .resource: src = nil
       }
       let alt = i.alt ?? ""
-      own = "![\(alt.filter { $0 != "[" && $0 != "]" })](<\(src)>)\(alt.isEmpty ? "" : "\n\n*\(alt)*")"
+      let picture = src.map { "![\(alt.filter { $0 != "[" && $0 != "]" })](<\($0)>)" }
+      own = [picture, alt.isEmpty ? nil : "*\(alt)*"].compactMap { $0 }.joined(separator: "\n\n")
     case .web(let w):
       own = [w.meta?.title.map { "**\($0)**" }, w.meta?.description, w.url].compactMap { $0 }.filter { !$0.isEmpty }
         .joined(separator: "\n\n")

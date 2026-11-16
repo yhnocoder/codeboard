@@ -102,11 +102,15 @@ public struct CardContent: Equatable, Sendable {
   public var title: String?
   /// Markdown, drawn under the card's body
   public var description: String?
+  /// Where in a resource entry it was taken from, shown at its foot; its content stays its own whatever becomes of the
+  /// entry. Never on an image card whose picture is a resource's (that names the place already)
+  public var source: SourceAnchor?
   public var body: Body
 
-  public init(title: String? = nil, description: String? = nil, body: Body) {
+  public init(title: String? = nil, description: String? = nil, source: SourceAnchor? = nil, body: Body) {
     self.title = title
     self.description = description
+    self.source = source
     self.body = body
   }
 }
@@ -325,11 +329,61 @@ public struct ImageCard: Codable, Equatable, Sendable {
   }
 }
 
-/// A later kind (an image in a resource item, referenced and not copied) is one more case
 public enum ImageSource: Equatable, Sendable {
   /// A file in the images folder next to the JSON that names it
   case file(String)
   case url(String)
+  /// A block of a resource entry (a figure, a table, a region of a PDF page), drawn from the entry's file: referenced,
+  /// not copied
+  case resource(SourceAnchor)
+}
+
+/// Where in a resource entry (FORMAT.md, Resources): a block of one of its versions, or characters of its text
+public struct Place: Equatable, Sendable {
+  public enum Block: Equatable, Sendable {
+    /// A block of the version's block list, or of a saved page, by the id that list or page gives it
+    case id(String)
+    /// A page of a plain PDF, from 1; `rect` a region of it
+    case page(Int, rect: Rect? = nil)
+  }
+
+  /// In PDF points from the page's bottom left
+  public struct Rect: Equatable, Sendable {
+    public var x: Double
+    public var y: Double
+    public var width: Double
+    public var height: Double
+
+    public init(x: Double, y: Double, width: Double, height: Double) {
+      self.x = x
+      self.y = y
+      self.width = width
+      self.height = height
+    }
+  }
+
+  public var version: VersionID
+  public var block: Block
+  /// Characters of the block's text in UTF-16 code units; nil: the whole block, or with a rect the region
+  public var range: Range<Int>?
+
+  public init(version: VersionID, block: Block, range: Range<Int>? = nil) {
+    self.version = version
+    self.block = block
+    self.range = range
+  }
+}
+
+/// A place in an entry named from outside it: a card's source, an image card's picture. The entry may be gone; the
+/// anchor stays
+public struct SourceAnchor: Equatable, Sendable {
+  public var entry: EntryID
+  public var place: Place
+
+  public init(entry: EntryID, place: Place) {
+    self.entry = entry
+    self.place = place
+  }
 }
 
 public struct Arrow: Codable, Equatable, Sendable {

@@ -501,6 +501,10 @@
           "tests": ["ReadingPaneTests/tabsOpenSwitchAndCloseAndTheSameKeyGoesToItsTab"]
         }
       }
+    },
+    "CodeBoardResourcesTests": {
+      "changed": "whole",
+      "important": "whole"
     }
   }
 }
