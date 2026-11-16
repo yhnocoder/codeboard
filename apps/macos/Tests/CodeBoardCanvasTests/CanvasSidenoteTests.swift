@@ -1040,3 +1040,54 @@ extension CanvasSidenoteTests {
     #expect(!other.canvas.listShown && CanvasView.listOutside == nil)
   }
 }
+
+extension CanvasSidenoteTests {
+  /// The popup as a host other than the canvas uses it (the reading pane's annotations): made, shown, written in and
+  /// heard through its package API alone, in a window of its own with no canvas; with no code to find, its input has
+  /// the ? and no switch to a code search
+  @Test func aPopupWithoutACanvasIsShownWrittenInAndHeardThroughItsOwnAPI() throws {
+    _ = NSApplication.shared
+    let window = NSWindow(
+      contentRect: CGRect(x: -30000, y: -30000, width: 600, height: 900), styleMask: [.titled], backing: .buffered,
+      defer: false)
+    window.isReleasedWhenClosed = false
+    defer { window.close() }
+    let host = try #require(window.contentView)
+    let pop = SidenotePop()
+    func type(_ s: String) { pop.field?.insertText(s, replacementRange: NSRange(location: NSNotFound, length: 0)) }
+    func enter() { pop.field?.doCommand(by: #selector(NSResponder.insertNewline(_:))) }
+    var heard: [SidenotePop.Action] = []
+    var sizes: [CGSize] = []
+    pop.onAction = { heard.append($0) }
+    pop.onSize = { sizes.append($0) }
+    host.addSubview(pop.view)
+    let shown = SidenotePop.Shown(
+      key: "paper-a1", theme: .warmInk, title: "Attention Is All You Need",
+      notes: [.init(id: "a1", body: .text("Scaled", q: nil, lines: false, always: false))], write: true,
+      folder: FileManager.default.temporaryDirectory)
+    let size = pop.show(shown, maxHeight: 560)
+    pop.view.frame = pop.frame(popupAt: CGPoint(x: 20, y: 20), flipped: host.isFlipped)
+    pop.view.alphaValue = 1
+    pop.focus()
+    #expect(size.height > 0 && sizes.last == size)
+    let composer = try #require(pop.bottom as? Composer)
+    #expect(composer.askButton != nil && composer.codeButton == nil, "no switch to a code search without findCode")
+    #expect(window.firstResponder === pop.field, "opened to write: the input has the keys")
+    // a question asked
+    #expect(pop.press("Question"))
+    type("Why divide by √d?")
+    enter()
+    #expect(heard == [.add("Why divide by √d?", ask: true)])
+    // the sidenote's own text written in place
+    #expect(pop.press("Edit", in: "a1"))
+    #expect(pop.writing)
+    type(" dot products")
+    enter()
+    #expect(heard.last == .write("a1", "Scaled dot products") && !pop.writing)
+    #expect(pop.press("Close"))
+    #expect(heard.last == .close)
+    pop.end()
+    pop.clear()
+    #expect(pop.key == nil)
+  }
+}

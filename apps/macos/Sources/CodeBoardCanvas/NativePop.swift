@@ -19,57 +19,98 @@ import TreeSitterHighlight
 package final class SidenotePop: NSObject {
   /// What the popup shows (notes.tsx HighlightPop / SpotPop's props)
   package struct Shown {
-    struct Answer: Equatable {
-      var id: String
-      var md: String
+    package struct Answer: Equatable {
+      package var id: String
+      package var md: String
+      package init(id: String, md: String) {
+        self.id = id
+        self.md = md
+      }
     }
-    struct Ask: Equatable {
-      var done: Bool
-      var answers: [Answer]
+    package struct Ask: Equatable {
+      package var done: Bool
+      package var answers: [Answer]
+      package init(done: Bool, answers: [Answer]) {
+        self.done = done
+        self.answers = answers
+      }
     }
     /// A code sidenote's head (notes.tsx CodeHead): its symbol or file and lines, where it is, its version; Free code:
     /// the address it was pasted from
-    struct Head: Equatable {
-      var title: String
-      var `where`: String
-      var version: String
-      var url: String?
+    package struct Head: Equatable {
+      package var title: String
+      package var `where`: String
+      package var version: String
+      package var url: String?
+      package init(title: String, where: String, version: String, url: String? = nil) {
+        self.title = title
+        self.where = `where`
+        self.version = version
+        self.url = url
+      }
     }
-    enum Body: Equatable {
+    package enum Body: Equatable {
       /// `lines`: on lines (Always Show can show it under them); `always`: shown so
       case text(String, q: Ask?, lines: Bool, always: Bool)
       case code(Head, start: Int, lines: [String], language: String, why: String?)
     }
     /// `fixed`: in a shared card's file, shown and not changed here; `place`: it can be placed on the board as a card;
     /// `review`: its second look, the version its lines changed in or "widened"
-    struct Note: Equatable {
-      var id: String
-      var fixed = false
-      var place = false
-      var review: String?
-      var body: Body
+    package struct Note: Equatable {
+      package var id: String
+      package var fixed = false
+      package var place = false
+      package var review: String?
+      package var body: Body
+      package init(id: String, fixed: Bool = false, place: Bool = false, review: String? = nil, body: Body) {
+        self.id = id
+        self.fixed = fixed
+        self.place = place
+        self.review = review
+        self.body = body
+      }
     }
 
     package var key: String
-    var theme: Theme
+    package var theme: Theme
     /// A Highlight's lines ("35–37"), shown before the title; nil for a spot's popup
-    var range: String?
-    var title: String
+    package var range: String?
+    package var title: String
     /// The title bar's delete: what it deletes (its label); nil when there is nothing to delete
-    var remove: String?
-    var notes: [Note]
+    package var remove: String?
+    package var notes: [Note]
     /// Opened to write a new one, the input ready (ask: as a question)
-    var write = false
-    var ask = false
+    package var write = false
+    package var ask = false
     /// A sidenote to show (the question list went to it)
-    var focus: String?
-    var folder: URL
-    var refs: [NoteRef]
+    package var focus: String?
+    /// Where the Markdown's relative images are
+    package var folder: URL
+    package var refs: [NoteRef]
     package var refList: RefCandidates?
+
+    package init(
+      key: String, theme: Theme, range: String? = nil, title: String, remove: String? = nil, notes: [Note],
+      write: Bool = false, ask: Bool = false, focus: String? = nil, folder: URL, refs: [NoteRef] = [],
+      refList: RefCandidates? = nil
+    ) {
+      self.key = key
+      self.theme = theme
+      self.range = range
+      self.title = title
+      self.remove = remove
+      self.notes = notes
+      self.write = write
+      self.ask = ask
+      self.focus = focus
+      self.folder = folder
+      self.refs = refs
+      self.refList = refList
+    }
   }
 
   /// What the user did in it
-  enum Action: Equatable {
+  package enum Action: Equatable {
     case add(String, ask: Bool)
     /// A code sidenote of the code the input's search found
     case addCode(Segment)
@@ -115,15 +156,15 @@ package final class SidenotePop: NSObject {
   static let bottomPad: CGFloat = 10
 
   package let view = PopView()
-  var onAction: ((Action) -> Void)?
+  package var onAction: ((Action) -> Void)?
   /// A sidenote's menu, for a right-click on it (notes.tsx noteMenu)
-  var menuOf: ((String) -> NSMenu?)?
+  package var menuOf: ((String) -> NSMenu?)?
   /// Its size as it changes (an entry added, a code sidenote opened, the input growing)
-  var onSize: ((CGSize) -> Void)?
+  package var onSize: ((CGSize) -> Void)?
   /// Something in it is being written, or not any more
-  var onWriting: ((Bool) -> Void)?
+  package var onWriting: ((Bool) -> Void)?
   /// Its title bar dragged: by how much since the press (view points), and whether the drag ended
-  var onDrag: ((CGSize, _ ended: Bool) -> Void)?
+  package var onDrag: ((CGSize, _ ended: Bool) -> Void)?
   /// What the input's code search finds for what is typed (the canvas's code)
   var findCode: ((String) -> [Found])?
   /// Where its editors copy to and paste from (the canvas's)
@@ -131,7 +172,7 @@ package final class SidenotePop: NSObject {
   /// The key of what it shows, nil when it shows nothing
   package private(set) var key: String?
   package private(set) var size = CGSize.zero
-  var writing: Bool { !fields.isEmpty }
+  package var writing: Bool { !fields.isEmpty }
 
   package private(set) var shown: Shown?
   private var limit: CGFloat = 560
@@ -144,7 +185,7 @@ package final class SidenotePop: NSObject {
   /// The bottom row: the + or the input
   private(set) var bottom: NSView?
 
-  override init() {
+  package override init() {
     super.init()
     view.pop = self
     view.alphaValue = 0
@@ -157,7 +198,7 @@ package final class SidenotePop: NSObject {
   var origin: CGPoint { CGPoint(x: Self.margin, y: Self.margin + Self.room) }
 
   /// The view's frame (in its superview, flipped or not) for the popup's top left at `p` there
-  func frame(popupAt p: CGPoint, flipped: Bool) -> CGRect {
+  package func frame(popupAt p: CGPoint, flipped: Bool) -> CGRect {
     let o = origin
     let w = size.width + 2 * Self.margin
     let h = size.height + 2 * (Self.margin + Self.room)
@@ -168,7 +209,7 @@ package final class SidenotePop: NSObject {
 
   /// Shows `d` (the same key: updated in place, what is being written kept), as tall as `maxHeight` at most; its size
   @discardableResult
-  func show(_ d: Shown, maxHeight: CGFloat) -> CGSize {
+  package func show(_ d: Shown, maxHeight: CGFloat) -> CGSize {
     view.appearance = NSAppearance(named: d.theme.dark ? .darkAqua : .aqua)
     limit = maxHeight
     if key == d.key, let was = shown, was.theme.same(as: d.theme) {
@@ -203,7 +244,7 @@ package final class SidenotePop: NSObject {
   }
 
   /// The input's field, or the popup, takes the keys (opened to write: at once)
-  func focus() {
+  package func focus() {
     guard let w = view.window else { return }
     if let c = bottom as? Composer, let t = (c.editor as NSView?) ?? c.search {
       w.makeFirstResponder(t)
@@ -213,10 +254,10 @@ package final class SidenotePop: NSObject {
   }
 
   /// Ends what is being written (what is written is kept: added, or saved) before the popup closes
-  func end() { endFields() }
+  package func end() { endFields() }
 
   /// Lets what it shows go; out of sight
-  func clear() {
+  package func clear() {
     endFields()
     key = nil
     shown = nil
@@ -233,7 +274,7 @@ package final class SidenotePop: NSObject {
     s.onEdit?()
   }
 
-  func close() {
+  package func close() {
     endFields()
     onAction?(.close)
   }
@@ -562,7 +603,8 @@ package final class SidenotePop: NSObject {
   /// and the next one is written in a new input (a question asked, an answer given: back to the + or the reply row);
   /// Esc, a press elsewhere or the popup closing add what is written; nothing written, it just goes
   private func composer(ask: Bool, reply: String?) -> Composer {
-    let c = Composer(theme: shown!.theme, replyTo: reply, ask: ask && reply == nil)
+    // the switch to a code search only where there is code to find
+    let c = Composer(theme: shown!.theme, replyTo: reply, ask: ask && reply == nil, code: findCode != nil)
     c.onAsk = { [weak self, weak c] in
       guard let c else { return }
       if c.mode == .code { self?.textMode(c) }
@@ -1624,7 +1666,7 @@ final class Composer: NSView, Fits {
   private(set) var codeButton: PopButton?
   private var box = CGRect.zero
 
-  init(theme: Theme, replyTo: String?, ask: Bool) {
+  init(theme: Theme, replyTo: String?, ask: Bool, code: Bool) {
     self.theme = theme
     self.replyTo = replyTo
     asking = ask
@@ -1633,12 +1675,14 @@ final class Composer: NSView, Fits {
     clipsToBounds = false
     if replyTo == nil {
       let a = PopButton.tool("Question", SidenotePop.icon("question"), theme) { [weak self] in self?.onAsk?() }
-      let c = PopButton.tool("Code", SidenotePop.icon("code"), theme) { [weak self] in self?.onCode?() }
       // takes no focus: pressing one keeps the caret where it is
       askButton = a
-      codeButton = c
       addSubview(a)
-      addSubview(c)
+      if code {
+        let c = PopButton.tool("Code", SidenotePop.icon("code"), theme) { [weak self] in self?.onCode?() }
+        codeButton = c
+        addSubview(c)
+      }
     }
   }
 
@@ -1649,10 +1693,12 @@ final class Composer: NSView, Fits {
   override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
   /// The text's width in a row that wide: the frame's border and padding (1 + 8 left, 2 + 1 right), the ? mark, the
-  /// two switches
+  /// switches (22 wide, 2 apart)
   func textWidth(_ w: CGFloat) -> CGFloat {
-    w - 12 - (asking && mode == .text ? 19 : 0) - (askButton == nil ? 0 : 48)
+    w - 12 - (asking && mode == .text ? 19 : 0) - 24 * CGFloat(switches)
   }
+
+  private var switches: Int { (askButton == nil ? 0 : 1) + (codeButton == nil ? 0 : 1) }
 
   func fit(width w: CGFloat) -> CGFloat {
     let left: CGFloat = 9 + (asking && mode == .text ? 19 : 0)
@@ -1670,7 +1716,7 @@ final class Composer: NSView, Fits {
     }
     let h = inner + 8
     box = CGRect(x: 0, y: 0, width: w, height: h)
-    let bx = w - 3 - (askButton == nil ? 0 : 46)
+    let bx = w - 3 - (24 * CGFloat(switches) - 2)
     askButton?.frame = CGRect(x: bx, y: 3, width: 22, height: 22)
     codeButton?.frame = CGRect(x: bx + 24, y: 3, width: 22, height: 22)
     askButton?.on = asking && mode == .text
