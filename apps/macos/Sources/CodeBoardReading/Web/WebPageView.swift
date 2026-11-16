@@ -16,6 +16,8 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
   let web: PageWebView
   let bar: WebBar
   private(set) var selectionBar: SelectionBar!
+  /// The picture of the page being dragged now, as the page's script last said
+  var draggedImage: WebImage?
   /// What is selected now, as the page's script last said
   private(set) var selection: WebSelection?
   /// The page's scroll as it last said
@@ -129,6 +131,8 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
     selecting = WKUserScript(
       source: WebReading.selectionScript, injectionTime: .atDocumentStart, forMainFrameOnly: true,
       in: WebReading.selectionWorld)
+    let dragged = ImageRelay()
+    userScripts.add(dragged, contentWorld: WebReading.selectionWorld, name: "image")
     self.scripts = WebScripts(scripts)
     let saving = SavingRelay()
     if self.scripts != nil {
@@ -143,6 +147,7 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
     relay.owner = self
     saving.owner = self
     selected.owner = self
+    dragged.owner = self
     web.allowsBackForwardNavigationGestures = true
     web.navigationDelegate = self
     web.uiDelegate = self
@@ -162,6 +167,7 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
     addSubview(selectionBar)
     web.onKey = { [weak self] in self?.collectKey($0) ?? false }
     web.dragsSelection = { [weak self] in self?.dragsSelection(at: $0) }
+    web.dragsImage = { [weak self] in self?.draggedImage != nil && self?.context.pane.vault != nil }
     web.collecting = { [weak self] in self?.collecting() }
     suggestions.isHidden = true
     suggestions.onChoose = { [weak self] url in self?.go(to: url) }
@@ -402,6 +408,10 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
     userScripts.removeAllUserScripts()
     userScripts.addUserScript(scroll)
     if !saved { userScripts.addUserScript(selecting) }
+    userScripts.addUserScript(
+      WKUserScript(
+        source: WebReading.imageScript, injectionTime: .atDocumentStart, forMainFrameOnly: true,
+        in: WebReading.selectionWorld))
     for s in (saved ? scripts?.saved : scripts?.online) ?? [] { userScripts.addUserScript(s) }
   }
 
@@ -834,6 +844,15 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
   /// selection in a translation, the whole original block); on a page online, the page's entry, the page saved as a
   /// link first when it is not saved. The heading before it is the source line's lighter part
   func collecting() -> Collected? {
+    if let i = draggedImage {
+      let entry: Entry?
+      if case .saved(let hash, _, _) = page { entry = savedVersion(hash)?.1 } else { entry = linkEntry() }
+      guard let entry else { return nil }
+      return Collected(
+        body: .picture(url: i.url, alt: i.alt, width: i.width, height: i.height),
+        source: SourceAnchor(entry: entry.id), title: web.title.flatMap { $0.isEmpty ? nil : $0 } ?? entry.title,
+        label: "")
+    }
     guard let s = selection else { return nil }
     let label = s.heading ?? ""
     if case .saved(let hash, _, let title) = page {
