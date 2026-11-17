@@ -79,7 +79,10 @@ extension CanvasView {
   /// earlier answer; `again`: a new card even when it was expanded before
   func expandCall(_ c: CallAt, drop: CGPoint? = nil, pick: CallChoice? = nil, again: Bool = false) {
     guard let host = callHost, let doc = document else { return }
-    if !again, drop == nil, pick == nil, let had = expandedTo(c) { return goToRef(.card(had), writing: false) }
+    if !again, drop == nil, pick == nil, let had = expandedTo(c) {
+      flashLine(c)
+      return goToRef(.card(had), writing: false)
+    }
     let key = "\(c.card.rawValue):\(c.segment.id.rawValue):\(c.call.line):\(c.call.col)"
     guard callsAsked.insert(key).inserted else { return }
     let at = viewRect(c.rect)
@@ -123,10 +126,11 @@ extension CanvasView {
   func placeCall(_ c: CallAt, _ s: Segment, title: String?, drop: CGPoint?) {
     guard let doc = document, let host = liveRect(.card(c.card)) else { return }
     let b = doc.board
-    let size = CGSize(width: Self.codeWidth(s), height: 52 + Double(s.lines.count) * 19)
+    let size = Self.codeSize(s)
     let rect = { (id: CardID) in self.liveRect(.card(id)) }
     var at: CGPoint
     var pushed: [CardID] = []
+    let dy = (size.height + CallPlace.sibGap).rounded()
     if let drop {
       at = CGPoint(x: drop.x.rounded(), y: drop.y.rounded())
     } else {
@@ -185,8 +189,11 @@ extension CanvasView {
       id: id, x: at.x, y: at.y, width: size.width,
       content: .own(CardContent(title: title, body: .code(CodeCard(segments: [s])))))
     let section = b.card(c.card)?.section
+    // the cards made room for slide down to their places, as Tidy Up's do
+    if !pushed.isEmpty {
+      tidySlide = TidySlide(from: Dictionary(uniqueKeysWithValues: pushed.map { ($0, CGVector(dx: 0, dy: -dy)) }))
+    }
     let from = Endpoint(card: c.card, segment: c.segment.id, line: c.call.line)
-    let dy = (size.height + CallPlace.sibGap).rounded()
     settle(id, size, "Expand Call", keepSection: section != nil) { b in
       for p in pushed { if let i = b.cards.firstIndex(where: { $0.id == p }) { b.cards[i].y += dy } }
       var n = card
@@ -194,7 +201,60 @@ extension CanvasView {
       b.cards.append(n)
       _ = b.addArrow(ArrowID(rawValue: Board.newID("l")), from: from, to: Endpoint(card: id))
     }
+    flashLine(c)
     followCall(c, CGRect(origin: at, size: size))
+  }
+
+  /// The call's line flashes once in the accent (styles.css .rowbg.flash: 28 % of it fading to the row's colour in
+  /// 600 ms), over the card's picture
+  func flashLine(_ c: CallAt) {
+    guard let card = liveRect(.card(c.card)) else { return }
+    let l = CALayer()
+    l.frame = CGRect(x: card.minX, y: c.rect.minY, width: card.width, height: c.rect.height)
+    l.zPosition = 3
+    let fade = CABasicAnimation(keyPath: "backgroundColor")
+    fade.fromValue = theme.accent.copy(alpha: 0.28)
+    fade.toValue = theme.linkedRow
+    fade.duration = 0.6
+    fade.timingFunction = CAMediaTimingFunction(name: .easeOut)
+    CATransaction.begin()
+    CATransaction.setCompletionBlock { [weak l] in l?.removeFromSuperlayer() }
+    withoutAnimation { world.addSublayer(l) }
+    l.add(fade, forKey: "flash")
+    CATransaction.commit()
+    flashedLine = c.call.line
+  }
+
+  /// While a call is dragged: the code cards whose function it calls ringed in the function colour (.card.drop-cand:
+  /// 1.5 at 70 %), the card under the pointer more (.drop-hot: 2.5 of it over 6 of its 16 %); nil: none
+  func ringCallTargets(_ c: CallAt?, hot: CardID?) {
+    withoutAnimation {
+      for l in callRings { l.removeFromSuperlayer() }
+      callRings = []
+      guard let c, let b = document?.board, let s = scene else { return }
+      let fn = theme.syntax[.function] ?? theme.ink
+      func ring(_ r: CGRect, tilt: CGFloat, width: CGFloat, _ color: CGColor) {
+        let l = CALayer()
+        l.bounds = CGRect(origin: .zero, size: r.insetBy(dx: -width, dy: -width).size)
+        l.position = CGPoint(x: r.midX, y: r.midY)
+        if tilt != 0 { l.setAffineTransform(CGAffineTransform(rotationAngle: tilt)) }
+        l.cornerRadius = theme.cardRadius + width
+        l.borderWidth = width
+        l.borderColor = color
+        l.zPosition = 3
+        world.addSublayer(l)
+        callRings.append(l)
+      }
+      for card in b.cards where card.id != c.card && (card.id == hot || CallPlace.callee(card, c.call.name)) {
+        guard let it = s.items.first(where: { $0.owner == .card(card.id) }) else { continue }
+        if card.id == hot {
+          ring(it.rect, tilt: it.tilt, width: 6, fn.copy(alpha: 0.16) ?? fn)
+          ring(it.rect, tilt: it.tilt, width: 2.5, fn)
+        } else {
+          ring(it.rect, tilt: it.tilt, width: 1.5, fn.copy(alpha: 0.7) ?? fn)
+        }
+      }
+    }
   }
 
   /// The view's width without the room kept free, on the board at zoom `z` (camera.ts usableW)

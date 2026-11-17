@@ -147,14 +147,17 @@ let scheduleCall = CallSpan(line: 11, col: 26, end: 34, name: "schedule", recv: 
     #expect(r.doc.board.arrows.count == 1)
     #expect(a.from == Endpoint(card: cid("c"), segment: caller, line: 11) && a.to == Endpoint(card: n.id))
     #expect(r.doc.selection == [.card(n.id)])
-    // clicked again: the card it went to is shown and selected, nothing asked
+    #expect(c.flashedLine == 11, "its line flashes")
+    // clicked again: the card it went to is shown and selected, its line flashed, nothing asked
     await r.settle()
     r.doc.select([])
+    c.flashedLine = nil
     r.click(CGPoint(x: b.midX, y: b.midY))
     await r.settle()
     #expect(
       host.expanded.count == 1 && r.doc.board.cards.count == 3 && r.doc.selection == [.card(n.id)],
       "\(host.expanded.count) \(r.doc.board.cards.count) \(r.doc.selection)")
+    #expect(c.flashedLine == 11)
     // one step
     r.doc.undo()
     #expect(r.doc.board.cards.count == 2 && r.doc.board.arrows.isEmpty)
@@ -230,7 +233,10 @@ let scheduleCall = CallSpan(line: 11, col: 26, end: 34, name: "schedule", recv: 
     let (r, host, b) = try await Self.clickable { _ in .card(scheduleDef, title: nil) }
     defer { r.close() }
     let from = CGPoint(x: b.midX, y: b.midY)
-    r.drag(from, r.centre("f"))
+    var rings = 0
+    r.drag(from, r.centre("f")) { rings = r.canvas.callRings.count }
+    #expect(rings == 2, "the card under the pointer ringed twice (.drop-hot)")
+    #expect(r.canvas.callRings.isEmpty, "gone once let go")
     #expect(host.expanded.isEmpty)
     #expect(
       r.doc.board.arrows.map(\.from) == [Endpoint(card: cid("c"), segment: caller, line: 11)]
@@ -258,6 +264,44 @@ let scheduleCall = CallSpan(line: 11, col: 26, end: 34, name: "schedule", recv: 
     #expect(c.callTint.isHidden)
     #expect(!c.pendingRefresh, "nothing drawn again")
     _ = drawn
+  }
+
+  @Test func theCardsOfTheCallGraphItLandsOnSlideDownInTheSameStep() async throws {
+    var board = callsBoard()
+    // what line 12 calls, already in the column where line 11's card goes
+    let g = Segment(
+      id: SegmentID(rawValue: "g1"), source: .file(path: "g.py", hash: nil), language: "python", firstLine: 1,
+      lines: ["def g():", "    pass"], symbol: Symbol(name: "g", kind: .function))
+    board.cards.append(
+      Card(id: cid("g"), x: 516, y: 60, width: 380, content: .own(CardContent(body: .code(CodeCard(segments: [g]))))))
+    board.arrows.append(
+      Arrow(
+        id: ArrowID(rawValue: "a"), from: Endpoint(card: cid("c"), segment: caller, line: 12),
+        to: Endpoint(card: cid("g"))))
+    let (r, host, b) = try await Self.clickable(board) { _ in .card(scheduleDef, title: nil) }
+    defer { r.close() }
+    #expect(r.canvas.callAt(CGPoint(x: b.midX, y: b.midY)) != nil)
+    r.click(CGPoint(x: b.midX, y: b.midY))
+    await r.until("its card") { r.doc.board.cards.count == 4 }
+    #expect(host.expanded.count == 1, "\(r.canvas.toastText ?? "") \(r.doc.selection)")
+    let n = try #require(r.doc.board.cards.first { !["c", "f", "g"].contains($0.id.rawValue) })
+    #expect(n.y == Double((b.midY - 18).rounded()), "\(n.y - Double((b.midY - 18).rounded()))")
+    // pushed down by the new card's height and the gap, and sliding there
+    #expect(r.card("g").y == 60 + 52 + 2 * 19 + 24)
+    #expect(r.canvas.tidySlide?.from[cid("g")] == CGVector(dx: 0, dy: -(52 + 2 * 19 + 24)))
+    r.doc.undo()
+    #expect(r.doc.board.cards.count == 3 && r.card("g").y == 60)
+  }
+
+  @Test func aMoveAlongARowLaysItsCallsOutOnce() async throws {
+    let (r, _, b) = try await Self.clickable { _ in .said }
+    defer { r.close() }
+    let c = r.canvas
+    #expect(c.callAt(CGPoint(x: b.midX, y: b.midY))?.call == scheduleCall)
+    let kept = try #require(c.callRow)
+    #expect(c.callAt(CGPoint(x: b.minX + 1, y: b.midY))?.call == scheduleCall)
+    #expect(c.callAt(CGPoint(x: b.minX - 20, y: b.midY)) == nil)
+    #expect(c.callRow?.boxes == kept.boxes && c.callRow?.card == kept.card && c.callRow?.at == kept.at)
   }
 }
 

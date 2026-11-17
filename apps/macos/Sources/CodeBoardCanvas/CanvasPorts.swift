@@ -216,7 +216,11 @@ extension CanvasView {
   func dragConnect(_ c: inout Connect, to p: CGPoint) {
     c.pointer = p
     let t = connectTarget(c, at: p)
-    if t?.card != c.target?.card { aim(t?.card, from: c.target?.card, at: p) }
+    if let call = c.call {
+      if t?.card != c.target?.card || callRings.isEmpty { ringCallTargets(call, hot: t?.card) }
+    } else if t?.card != c.target?.card {
+      aim(t?.card, from: c.target?.card, at: p)
+    }
     c.target = t
   }
 
@@ -309,7 +313,10 @@ extension CanvasView {
       }
     }
     defer { drawChrome() }
-    if let call = c.call { return dropCall(call, on: c.target?.card, at: c.pointer) }
+    if let call = c.call {
+      ringCallTargets(nil, hot: nil)
+      return dropCall(call, on: c.target?.card, at: c.pointer)
+    }
     guard let doc = document, let t = c.target else { return }
     if let id = c.arrow {
       var b = doc.board

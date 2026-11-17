@@ -99,7 +99,7 @@ extension CanvasView {
       switch c.body {
       case .note: CGSize(width: Board.newNoteWidth, height: 160)
       case .image(_, let w, let h): c.source == nil ? nil : CGSize(width: w.rounded(), height: h)
-      case .code(let s): CGSize(width: Self.codeWidth(s), height: 52 + Double(s.lines.count) * 19)
+      case .code(let s): Self.codeSize(s)
       case .picture(_, _, let w, let h):
         w > 0 && h > 0 ? CGSize(width: Self.pictureWidth(w), height: Self.pictureWidth(w) * h / w) : nil
       }
@@ -115,6 +115,10 @@ extension CanvasView {
       (links.lazy.compactMap { webAddress($0.absoluteString) }.first
       ?? pb.string(forType: .string).flatMap(webAddress)).map(Held.web)
   }
+
+  /// How big a new code card is taken to be before it is laid out: as wide as its code, as tall as its lines with
+  /// the card's head
+  static func codeSize(_ s: Segment) -> CGSize { CGSize(width: codeWidth(s), height: 52 + Double(s.lines.count) * 19) }
 
   /// A new code card's width: its longest line's, tabs as four spaces, within 380…760 (layout.ts defaultWidth)
   static func codeWidth(_ s: Segment) -> Double {

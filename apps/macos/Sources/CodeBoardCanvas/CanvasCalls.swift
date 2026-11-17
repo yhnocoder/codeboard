@@ -76,6 +76,16 @@ public enum CallAnswer: Equatable, Sendable {
   func expand(_ s: Segment, call: CallSpan, pick: CallChoice?, at: CGRect, on canvas: CanvasView) async -> CallAnswer
 }
 
+/// The calls of the row last under the pointer, where they are drawn (board units)
+struct CallRow {
+  var card: CardID
+  var at: CGPoint
+  var height: CGFloat
+  var text: String
+  var calls: [CallSpan]
+  var boxes: [CGRect?]
+}
+
 /// A call under the pointer: on which card, segment and line, and where it is drawn (board units)
 struct CallAt: Equatable {
   var card: CardID
@@ -116,11 +126,21 @@ extension CanvasView {
       guard case .line(let si, let n?, let text, _) = row.row, si < d.calls.count,
         p.y >= top + row.y, p.y < top + row.y + row.height
       else { continue }
-      let x0 = placed.rect.minX + c.layout.gutter + c.layout.shift
-      for call in d.calls[si] where call.line == n {
-        guard let r = Drawing.callBox(call, text: text, font: font, x: x0, y: top + row.y, height: row.height),
-          r.minX <= p.x, p.x < r.maxX, let seg = segment(of: id, at: si)
-        else { continue }
+      let at = CGPoint(x: placed.rect.minX + c.layout.gutter + c.layout.shift, y: top + row.y)
+      let calls = d.calls[si].filter { $0.line == n }
+      // the row's boxes kept while the pointer stays on it: a move along it lays out no text
+      if callRow.map({ $0.card != id || $0.at != at || $0.height != row.height || $0.text != text || $0.calls != calls }
+      )
+        ?? true
+      {
+        let boxes = calls.map {
+          Drawing.callBox($0, text: text, font: font, x: at.x, y: at.y, height: row.height)
+        }
+        callRow = CallRow(card: id, at: at, height: row.height, text: text, calls: calls, boxes: boxes)
+      }
+      guard let kept = callRow else { return nil }
+      for (call, box) in zip(kept.calls, kept.boxes) {
+        guard let r = box, r.minX <= p.x, p.x < r.maxX, let seg = segment(of: id, at: si) else { continue }
         return CallAt(card: id, segment: seg, call: call, rect: r)
       }
       return nil

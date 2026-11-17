@@ -199,7 +199,11 @@ public final class CanvasView: NSView {
   var measuredInline: [SidenoteID: (note: NoteBody, width: Double, size: NoteMetrics)] = [:]
   /// The pointer or key gesture under way; while one runs nothing is redrawn or swapped
   var gesture: Gesture? {
-    didSet { if oldValue == nil && gesture != nil { gestureStarts += 1 } }
+    didSet {
+      if oldValue == nil && gesture != nil { gestureStarts += 1 }
+      // a call dragged and ended any way: its rings go
+      if gesture == nil && !callRings.isEmpty { ringCallTargets(nil, hot: nil) }
+    }
   }
   /// Gestures begun, pointer, key or camera: a redraw that ends cancelled counts against the gesture rule only when one
   /// began while it ran (one cancelled by anything else, a camera placed or a tab hidden, ran into no gesture)
@@ -386,6 +390,10 @@ public final class CanvasView: NSView {
   var callsAsked: Set<String> = []
   /// The call under the pointer, tinted (styles.css .call:hover)
   let callTint = CALayer()
+  /// The calls of the row last under the pointer (CanvasCalls.swift callAt)
+  var callRow: CallRow?
+  /// The code cards a dragged call may link to, ringed, and the one under the pointer
+  var callRings: [CALayer] = []
   /// What the shell's version checks found of the board's segments (none: as pinned, or not checked); its header shows
   /// them on each code card (CodeHead.tsx .rev). Changed cards are drawn again in one refresh, their code not laid out
   /// again
@@ -452,6 +460,8 @@ public final class CanvasView: NSView {
   var refPress: (card: CardID, box: NoteRefBox)?
   /// The card last flashed (tests), its ring and how it is drawn some way out
   package var flashed: CardID?
+  /// The line of a call last flashed (tests)
+  package var flashedLine: Int?
   var flashRing: (CAShapeLayer, (CGFloat) -> CGPath)?
   /// The previews open beside sub-board cards (CanvasSubPreviews.swift)
   var subPreviews = SubPreviews()
