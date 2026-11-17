@@ -155,7 +155,19 @@ extension CanvasView {
           menuItem("Background", checked: c.framed) { [weak self] in
             self?.editCode(id, "Background") { $0.framed.toggle() }
           },
-        ])
+        ] + annotationItems(id, c))
+    ]
+  }
+
+  /// Show Annotations (on by default) for a card of a repository's code: its repository's Highlights and sidenotes,
+  /// which every card showing those lines shows
+  func annotationItems(_ id: CardID, _ c: CodeCard) -> [NSMenuItem] {
+    guard c.segments.contains(where: { if case .git? = $0.source { true } else { false } }) else { return [] }
+    let shown = c.annotationsHidden != true
+    return [
+      menuItem("Show Annotations", checked: shown) { [weak self] in
+        self?.document?.edit("Show Annotations") { $0.setAnnotationsHidden(id, shown) }
+      }
     ]
   }
 

@@ -32,7 +32,9 @@ struct SavedWindow: Codable, Equatable {
   /// Each shell before its window is made, and each window's panes once made (the app delegate's settings)
   @ObservationIgnored var prepare: (Shell) -> Void = { _ in }
   @ObservationIgnored var configure: (BoardPanes) -> Void = { _ in }
-  @ObservationIgnored var repositories: RepositoriesModel?
+  @ObservationIgnored var repositories: RepositoriesModel? {
+    didSet { documents.codeKeys.repositories = repositories }
+  }
   /// Puts a window made after the first on screen; a driver keeps it behind everything
   @ObservationIgnored var present: (NSWindow) -> Void = { $0.makeKeyAndOrderFront(nil) }
   /// Gives a window the keys (a board tab moved into it); a driver never brings it in front

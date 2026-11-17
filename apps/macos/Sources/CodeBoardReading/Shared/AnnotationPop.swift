@@ -6,11 +6,22 @@ import CodeBoardResources
 /// passage's annotations look and take keys as a card's sidenotes do. The tab hears what is done in it and places it;
 /// where it goes beside the passage is worked out here
 @MainActor public struct AnnotationPop {
+  /// One annotation it shows
+  public struct Note: Equatable {
+    public var id: SidenoteID
+    public var note: TextNote
+
+    public init(id: SidenoteID, note: TextNote) {
+      self.id = id
+      self.note = note
+    }
+  }
+
   /// What it shows: the passage's annotations under the title bar (its title, the pages in its pill)
   public struct Shown: Equatable {
     public var title: String
     public var range: String?
-    public var notes: [EntrySidenote]
+    public var notes: [Note]
     /// Opened to write a new one, the input ready
     public var write: Bool
     /// The entry's folder, where the Markdown's relative images are
@@ -19,7 +30,7 @@ import CodeBoardResources
     public var maxHeight: CGFloat
 
     public init(
-      title: String, range: String?, notes: [EntrySidenote], write: Bool, folder: URL, look: ReadingBarLook,
+      title: String, range: String?, notes: [Note], write: Bool, folder: URL, look: ReadingBarLook,
       maxHeight: CGFloat
     ) {
       self.title = title

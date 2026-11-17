@@ -19,6 +19,8 @@ extension ShellCode {
     var vault: Vault
     var all: [VaultBoard]
     var open: [BoardID: BoardDocument]
+    /// The vault's code annotations
+    var notes: CodeNotes?
   }
 
   /// A code card with a source, on a board
@@ -445,7 +447,9 @@ extension ShellCode {
 extension BoardPanes {
   /// The vault's boards, the open ones' documents with them
   var vaultBoards: ShellCode.Boards? {
-    shell.vault.map { ShellCode.Boards(vault: $0, all: shell.tree?.allBoards ?? [], open: documents) }
+    shell.vault.map {
+      ShellCode.Boards(vault: $0, all: shell.tree?.allBoards ?? [], open: documents, notes: boardDocuments.code)
+    }
   }
 
   /// A code card's file name clicked on a canvas (CanvasView.onOpenCode): opened in the reading pane, or what is

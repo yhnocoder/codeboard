@@ -1,6 +1,7 @@
 import AppKit
 import CodeBoardCanvas
 import CodeBoardModel
+import CodeBoardReading
 import CodeBoardWorkspace
 import CoreServices
 import Observation
@@ -60,6 +61,8 @@ enum VersionPause {
   /// The canvases whose banner was dismissed, until they show another board
   private var dismissed: [ObjectIdentifier: BoardID] = [:]
   private var banners: [ObjectIdentifier: NSHostingView<VersionBanner>] = [:]
+  /// A kept segment's newer version as first seen kept (its label): another one is the code changing again
+  private var keptAt: [SegmentID: String] = [:]
   private static let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "CodeBoard", category: "versions")
 
   init(code: ShellCode) {
@@ -179,10 +182,18 @@ enum VersionPause {
     guard !Task.isCancelled, let doc = boards[id]?.doc else { return }
     var st = states[id] ?? [:]
     var moved: [(SegmentID, Int, CodeSource)] = []
+    var unkept: Set<SegmentID> = []
     for (sid, s) in segs {
       st[sid] = nil
       switch found[sid.rawValue] {
-      case .changed(let hidden, let label)?: st[sid] = .changed(hiddenOnly: hidden, label: label)
+      // Keep: no mark for the version kept; a later one is the code changing again, and the keep goes
+      case .changed(_, let label)? where s.keep == true && (keptAt[sid] ?? label) == label: keptAt[sid] = label
+      case .changed(let hidden, let label)?:
+        if s.keep == true { unkept.insert(sid) }
+        keptAt[sid] = nil
+        st[sid] = .changed(hiddenOnly: hidden, label: label)
+      // Keep Old Version: its code not found is not marked again
+      case .lost? where s.keepOld == true, .many? where s.keepOld == true: break
       case .lost?: st[sid] = .lost
       case .many?: st[sid] = .many
       case .uncommitted?: st[sid] = .uncommitted
@@ -194,6 +205,11 @@ enum VersionPause {
     if !moved.isEmpty {
       following = true
       doc.derive { Self.follow(&$0, moved) }
+      following = false
+    }
+    if !unkept.isEmpty {
+      following = true
+      doc.derive { $0.unkeep(unkept) }
       following = false
     }
     let now = Self.segments(doc.board)
@@ -375,6 +391,9 @@ enum VersionPause {
       return
     }
     let st = states[doc.id] ?? [:]
+    if what == .newVersion, code.version(st) == .lost {
+      return lost(card, code, st, at: r, on: canvas, doc: doc)
+    }
     let seg =
       what == .newVersion
       ? code.segments.first { if case .changed? = st[$0.id] { true } else { false } } ?? code.segments.first
@@ -405,6 +424,7 @@ enum VersionPause {
         VersionDiffView(
           diff: d, impact: Self.impact(doc.board, card, seg.id),
           update: d.newSeg == nil ? nil : { [weak self] in self?.update(card, seg.id, to: d, in: doc, on: canvas) },
+          keep: worktree ? nil : { [weak self] in self?.keep(card, seg.id, in: doc) },
           duplicate: d.newSeg == nil ? nil : { [weak self] in self?.duplicate(card, seg.id, as: d, in: doc) },
           close: { VersionPopover.close() }),
         at: r, of: canvas)
@@ -486,6 +506,8 @@ enum VersionPause {
     s.firstLine = ns.start
     s.lines = ns.text
     s.source = src
+    s.keep = nil
+    s.keepOld = nil
     return s
   }
 
@@ -509,6 +531,93 @@ enum VersionPause {
       canvas.toast("Updated to the new version\(review)")
     }
     return true
+  }
+
+  /// Keep (core keepVersion): the segment stays on its version; its newer version is not marked until the code changes
+  /// again
+  func keep(_ card: CardID, _ seg: SegmentID, in doc: BoardDocument.Seat) {
+    if case .changed(_, let label)? = states[doc.id]?[seg] { keptAt[seg] = label }
+    states[doc.id]?[seg] = nil
+    doc.edit("Keep Version") { $0.keepVersion(card, seg) }
+    push(doc.id)
+  }
+
+  /// A card whose code is not found any more (CodeCard.tsx .cmiss): said in a popover at its chip, with Relocate (its
+  /// function or class where it is now, among those of its name and those of its file) and Keep Old Version
+  private func lost(
+    _ card: CardID, _ code: CodeCard, _ st: [SegmentID: VersionState], at r: CGRect, on canvas: CanvasView,
+    doc: BoardDocument.Seat
+  ) {
+    let gone = code.segments.filter { [.lost, .many].contains(st[$0.id]) }
+    guard let seg = gone.first(where: { $0.symbol != nil }) ?? gone.first else { return }
+    let many = gone.contains { st[$0.id] == .many } && !gone.contains { st[$0.id] == .lost }
+    let view = LostCode(
+      message: many
+        ? "This snippet now appears in several places. Showing the saved version."
+        : "Symbol not found in the current code (deleted or renamed). Showing the saved version.",
+      keepOld: { [weak self] in
+        VersionPopover.close()
+        guard let self else { return }
+        for s in gone { self.states[doc.id]?[s.id] = nil }
+        doc.edit("Keep Old Version") { $0.keepOldVersion(card, Set(gone.map(\.id))) }
+        self.push(doc.id)
+      },
+      places: { [weak self] in await self?.places(for: seg) ?? [] },
+      relocate: { [weak self] p in
+        VersionPopover.close()
+        Task { await self?.relocate(card, seg, to: p, in: doc, on: canvas) }
+      })
+    VersionPopover.show(view, at: r, of: canvas)
+  }
+
+  /// Where a segment's function or class may be now: those of its name the repository's names index, and those of
+  /// its file
+  func places(for s: Segment) async -> [RelocatePlace] {
+    guard let l = await local(s) else { return [] }
+    var out: [RelocatePlace] = []
+    func add(_ label: String, _ abs: String, _ start: Int, _ end: Int, _ line: Int, _ isClass: Bool) {
+      guard abs.hasPrefix(l.root + "/"), !out.contains(where: { $0.path == abs && $0.start == start }) else { return }
+      out.append(
+        RelocatePlace(label: label, path: abs, root: l.root, start: start, end: end, line: line, isClass: isClass))
+    }
+    if let name = s.symbol?.name.split(separator: ".").last {
+      for e in await l.sources.lookup.index.lookupName(String(name)) {
+        add(e.qual, e.abs, e.start, e.end, e.defLine, e.kind == .class)
+      }
+    }
+    let abs = l.abs
+    if let text = await Task.detached(operation: { try? String(contentsOfFile: abs, encoding: .utf8) }).value {
+      for y in l.sources.lookup.analysis.symbolsOf(l.sources.lookup.langOf(abs), text) {
+        add(y.qual, abs, y.start, y.end, y.defLine, y.kind == .class)
+      }
+    }
+    for i in out.indices { out[i].path = String(out[i].path.dropFirst(l.root.count + 1)) }
+    return out
+  }
+
+  /// Relocate (host relocate): the segment becomes the code at the place picked, its id kept, what is on its lines
+  /// following them by content, one undo step
+  func relocate(
+    _ card: CardID, _ old: Segment, to p: RelocatePlace, in doc: BoardDocument.Seat, on canvas: CanvasView?
+  ) async {
+    guard let code else { return }
+    let f = CodeFile(repository: p.root, name: "", path: p.path)
+    let url = URL(filePath: p.root, directoryHint: .isDirectory).appending(path: p.path)
+    let text = await Task.detached { try? String(contentsOf: url, encoding: .utf8) }.value
+    let pick = text.map {
+      CodePick(
+        text: $0.replacingOccurrences(of: "\r\n", with: "\n"), lines: p.start...p.end,
+        symbol: Symbol(name: p.label, kind: p.isClass ? .class : .function))
+    }
+    guard let pick, var ns = await code.segment(f, pick) else { return NSSound.beep() }
+    ns.id = old.id
+    ns.hidden = []
+    let map = mapLines(old.lines, old.firstLine, ns.lines, ns.firstLine)
+    doc.edit("Relocate") { $0.rebaseSegment(card, ns, map: { map[$0] }) }
+    states[doc.id]?[old.id] = nil
+    boards[doc.id]?.checked[old.id] = doc.board.segment(card, old.id)
+    push(doc.id)
+    canvas?.toast("Relocated to \(p.label)")
   }
 
   /// Duplicate as New Version: a copy of the card beside it, at the new version (its own ids), the old one kept
@@ -648,7 +757,7 @@ enum VersionColors {
 @MainActor enum VersionPopover {
   private static var shown: NSPopover?
 
-  static func show(_ view: VersionDiffView, at r: CGRect, of v: NSView) {
+  static func show(_ view: some View, at r: CGRect, of v: NSView) {
     close()
     guard v.window != nil else { return }
     let p = NSPopover()
@@ -670,6 +779,8 @@ struct VersionDiffView: View {
   let diff: VersionDiff
   let impact: String
   let update: (() -> Void)?
+  /// Keep (core keepVersion); nil against the working tree
+  var keep: (() -> Void)? = nil
   let duplicate: (() -> Void)?
   let close: () -> Void
 
@@ -757,6 +868,14 @@ struct VersionDiffView: View {
           close()
         }.disabled(duplicate == nil)
         Spacer()
+        if let keep {
+          Button(
+            "Keep \(diff.left.label.hasPrefix("Pinned ") ? String(diff.left.label.dropFirst(7)) : diff.left.label)"
+          ) {
+            keep()
+            close()
+          }
+        }
         Button(
           "Update to \(diff.right.label.hasPrefix("HEAD ") ? String(diff.right.label.dropFirst(5)) : diff.right.label)"
         ) {
@@ -910,5 +1029,68 @@ extension BoardPanes {
   /// The window's canvases, each with the board it shows
   var shownBoards: [(canvas: CanvasView, doc: BoardDocument)] {
     panes.values.compactMap { p in p.document.map { (p.canvas, $0) } }
+  }
+}
+
+/// A function or class Relocate may move a card's code to
+struct RelocatePlace: Hashable, Sendable {
+  var label: String
+  /// From the git root `root`
+  var path: String
+  var root: String
+  var start: Int
+  var end: Int
+  var line: Int
+  var isClass: Bool
+}
+
+/// What a card whose code is not found says at its chip (CodeCard.tsx .cmiss): why, Relocate's places once found, and
+/// Keep Old Version
+struct LostCode: View {
+  let message: String
+  let keepOld: () -> Void
+  let places: () async -> [RelocatePlace]
+  let relocate: (RelocatePlace) -> Void
+  @State private var found: [RelocatePlace]?
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 10) {
+      Text(message).font(.system(size: 12.5)).fixedSize(horizontal: false, vertical: true)
+      Text("Relocate to").font(.system(size: 11.5, weight: .semibold)).foregroundStyle(Color(VersionColors.ink3))
+      if let found {
+        if found.isEmpty {
+          Text("No function or class of its name found here.").font(.system(size: 12))
+            .foregroundStyle(Color(VersionColors.ink3))
+        }
+        ScrollView {
+          VStack(alignment: .leading, spacing: 2) {
+            ForEach(found.prefix(20), id: \.self) { p in
+              Button {
+                relocate(p)
+              } label: {
+                HStack {
+                  Text(p.label).font(.system(size: 12, design: .monospaced)).lineLimit(1)
+                  Spacer()
+                  Text("\(p.path):\(p.line)").font(.system(size: 11)).foregroundStyle(Color(VersionColors.ink3))
+                    .lineLimit(1).truncationMode(.middle)
+                }
+                .contentShape(Rectangle())
+              }
+              .buttonStyle(.borderless).accessibilityIdentifier("relocate-\(p.label)")
+            }
+          }
+        }
+        .frame(maxHeight: 220)
+      } else {
+        ProgressView().controlSize(.small)
+      }
+      HStack {
+        Spacer()
+        Button("Keep Old Version", action: keepOld)
+      }
+    }
+    .padding(14)
+    .frame(width: 360, alignment: .leading)
+    .task { found = await places() }
   }
 }

@@ -1,8 +1,9 @@
 # Vault and board format
 
-Format version 2: everything a VS Code board of version 17 holds that the app keeps, ready for editing (step 2). Code:
-`Sources/CodeBoardModel` (`Board.swift` the types, `BoardFile.swift` reading and writing, `Vault.swift` the folder,
-`LegacyUpgrade.swift` and `LegacyImport.swift` the importer). `Tests/CodeBoardModelTests/Fixtures` has an old storage
+Format version 3: everything a VS Code board of version 17 holds that the app keeps, ready for editing (step 2), with the
+Highlights and sidenotes on a repository's code kept in the vault once for that repository (Code annotations, below).
+Code: `Sources/CodeBoardModel` (`Board.swift` the types, `BoardFile.swift` reading and writing, `Vault.swift` the folder,
+`CodeNotes*.swift` the code annotations, `LegacyUpgrade.swift` and `LegacyImport.swift` the importer). `Tests/CodeBoardModelTests/Fixtures` has an old storage
 folder (`storage/`) and the vault it imports to (`vault/`), byte for byte, and `upgrade.json` (see Importing).
 
 **Status**: the canvas draws everything stored here: code, Notes, Texts, Boxes (Note, Text and Box through the web page
@@ -31,6 +32,7 @@ A vault is a folder of its own. Its folder tree is the sidebar's tree: real fold
   .codeboard/                   the app's own data (Vault.appDataFolder)
     shared/<card id>.json       shared cards
     shared/images/<file>        their images
+    code/<random id>.json       Highlights and sidenotes on one repository's code (Code annotations, below)
     site-rules/<domain>.json    the user's rule for reading and saving pages of a site, read and written by the saving
                                 service alone (the app hands it what the page scripts give and asks it for a host's
                                 rules); files there whose names start with a dot (`.tmp` leftovers) are not rules
@@ -70,7 +72,7 @@ A vault is a folder of its own. Its folder tree is the sidebar's tree: real fold
 ## board.json
 
 ```json
-{ "version": 2, "id": "…", "cards": [Card], "arrows": [Arrow], "sections": [Section], "sidenotes": [Sidenote],
+{ "version": 3, "id": "…", "cards": [Card], "arrows": [Arrow], "sections": [Section], "sidenotes": [Sidenote],
   "stickers": [Sticker], "shelf": [ShelfEntry], "seal"?: Seal, "hideComments": false }
 ```
 
@@ -93,7 +95,7 @@ outside 0–1, a sub-board card's `previewColumns` other than 2, a Text with a f
   change to what an existing field means, is not an addition.
 - **An older build never drops what it does not know.** It refuses the file instead, saying which field or kind and that
   a newer CodeBoard may have written it, and asks to update CodeBoard (`cards[0].content: no kind this CodeBoard knows: …`,
-  `cards[1].extra: not in format 2 as this CodeBoard knows it; …`). It does not write a file it could not read, so the
+  `cards[1].extra: not in format 3 as this CodeBoard knows it; …`). It does not write a file it could not read, so the
   newer content stays on disk as it was. A `null` is refused as never written.
 - **A breaking change raises the version**, with an upgrade step in the app from the version before (in `strictDecode`,
   `BoardFile.swift`, the one place a file's version is checked), applied when the file is read; the file is written in
@@ -102,6 +104,19 @@ outside 0–1, a sub-board card's `previewColumns` other than 2, a Text with a f
   (`olderFormat`: import the board again).
 - The sidebar lists a board of another version too (its id is all the tree reads); opening it shows why it cannot be
   read. Shared card files follow the same rules with their own `version`.
+- **2 → 3** (code annotations): a version 2 file reads as version 3 with nothing changed in it. What changes is where
+  the Highlights and line sidenotes of a repository's code are: when an open board (`BoardDocument` given the vault's
+  `CodeNotes`) reads a file whose sourced segments still carry them, it adds them to the repository's file (Code
+  annotations) and writes that file first, then the board without them, in version 3. This departs from "read upgrades,
+  save writes" on purpose: the move has to be on disk before the board loses them, so a crash between the two leaves
+  them in both places, never in neither. The step is repeatable: Highlight ids are made from the board, card, segment and
+  line range (`h` + the FNV-1a 64 of them), so a second run finds them there; a sidenote whose id and content are in the
+  file already is skipped, one whose id is there with other content comes in under an id made from the board and its id.
+  Two boards upgraded at once each add theirs (the writes go one after the other, `CodeFiles.lock`); the same Highlight
+  (lines and text) from two boards is one, every sidenote is kept. A shared card file is upgraded the same way when a
+  board that shows it is opened; a board never opened stays version 2 until it is. Known gap: an old board that arrives
+  later (a git checkout of the vault, a backup, a late sync) adds its annotations again, bringing back ones the user had
+  deleted since.
 
 Optional fields (`?`) are left out when absent. Enums are an object with exactly one key naming the case, e.g.
 `{"git": {…}}`, `{"note": {}}`: a new case (a resource source, an image from a resource) is a new key, not a format break.
@@ -124,16 +139,25 @@ is its own and stays as written whatever becomes of the entry; never on an image
 which names the place already), and one of `code`,
 `note`, `text`, `image`, `web`, `links`, `board`.
 
-**code**: `segments: [Segment], hide: {comments, docstrings, blankLines}, wrap, framed`. `framed: false` draws the code on
-the canvas without a card. Free code is a code card whose segments have no `source`.
+**code**: `segments: [Segment], hide: {comments, docstrings, blankLines}, wrap, framed, annotationsHidden?`. `framed:
+false` draws the code on the canvas without a card. Free code is a code card whose segments have no `source`.
+`annotationsHidden: true` (only written as true; the card menu's View, Show Annotations, turned off): the card shows none
+of its repository's Highlights and sidenotes; its segments' `annotations` it still shows.
 
 **Segment**: `id, source?, language, firstLine, lines: [String], symbol?: {name, kind: function|class|module}, scope?,
-hidden: [[a, b]], highlights: [[a, b]], annotations: [{line, from, to, text, color, below}], url?, languagePicked?`. Line numbers are the file's
+hidden: [[a, b]], highlights: [[a, b]], annotations: [{line, from, to, text, color, below}], url?, languagePicked?,
+keep?, keepOld?`. Line numbers are the file's
 own, 1-based; the last line is `firstLine + lines.count - 1` (not stored: it cannot disagree). `lines` is the code at the
 source's version, so a card draws without the source. Free code (no `source`) may have `url`, the address it was pasted
 from, and `languagePicked: true`, its language picked by hand and never guessed again from what is written (absent: it
 may be); neither is on a segment with a source. `language` is a VS Code language id (`python`, `cpp`,
-`cuda-cpp`…). Ranges are inclusive; highlights sorted, never overlapping.
+`cuda-cpp`…). Ranges are inclusive; highlights sorted, never overlapping. On a segment of a repository's code (a `git`
+source whose repository has a key, Code annotations) `highlights` and the sidenotes on its lines are not in the board
+file: they are the repository's, and the board shows them from there; a segment whose repository has no key keeps them
+here. `keep: true` (Keep, in the newer version's diff): the segment stays on its version, and that newer version is not
+marked until the code changes again (then it is marked, and `keep` goes); `keepOld: true` (Keep Old Version, for code
+not found any more): its saved code is kept and not marked as lost again. Both are only written as true, only on a
+segment with a `source`, and both go when the segment is updated or relocated.
 
 **source** (where the lines come from, one of):
 - `git: {repository?, commit, path, uncommitted, checkout?}`: `repository` is the git remote URL, absent when the old data
@@ -328,7 +352,7 @@ Markdown, `question: {at, done, answers}` as there, so it is in the same questio
 
 ## Shared card file
 
-`.codeboard/shared/<id>.json`: `{"version": 2, "id": "<id>", "content": CardContent, "sidenotes": [Sidenote]}`, written
+`.codeboard/shared/<id>.json`: `{"version": 3, "id": "<id>", "content": CardContent, "sidenotes": [Sidenote]}`, written
 and read like `board.json`. The `id` must equal the file name; its sidenotes travel with it and are on it (never
 board-only). Every board that shows it has a card with `shared: true` and the same id.
 
@@ -342,9 +366,61 @@ new id when one of its id is in `.codeboard/shared/` already; `Board.paste(_:sha
 board it was copied from it is a copy, which Reference makes another place of the original (`Board.makeTwin`, `same`)
 and Copy a card of its own again (`Board.detachTwin`).
 
+## Code annotations
+
+Highlights and sidenotes on a repository's code belong to the repository: every card of every board in the vault that
+shows those lines shows them, and so does the reading pane's code tab of that file (its selection's bar has Highlight and
+Sidenote, `S` too; a sidenote's first line has a dot beside the line numbers). Free code has none of these. Code:
+`CodeNotes.swift` (the file), `CodeNotesStore.swift` (the vault's, in memory), `CodeNotesBoard.swift` (what a board shows
+of them), and in the app `ShellCodeNotes.swift` (keys, the code tab's).
+
+`.codeboard/code/<random id>.json`, one per repository:
+
+```json
+{ "version": 1, "repository": "<key>",
+  "files": { "<path from the repository's root>": { "highlights": [CodeHighlight], "sidenotes": [CodeSidenote] } } }
+```
+
+Written as `board.json` is (keys sorted, canonical), whole and atomically (a new file renamed over the old one, never
+written in place). A file entry with nothing in it is left out; a repository with nothing left has its file deleted, at
+once (not to the Trash: there is nothing in it to get back).
+
+- **Key**: a repository with a remote is its remote URL normalised as `Repositories` compares them (`repositoryKey`: no
+  scheme or user, `host/owner/name`, lower case, no `.git`, ssh and https the same), the `origin` remote when there are
+  several. One without a remote is `root:<its first commit's hash>` (the lowest of them when it has several roots), never
+  a path of this Mac. A shallow clone with a remote has its remote's key; one without has no key, and its cards keep their
+  Highlights and sidenotes in the board file as before. Once a repository found here has a remote, its `root:` key is
+  read too, and what was kept under it is that repository's (merged as two files of one key are, below). A renamed remote
+  is another key (known limit).
+- **CodePlace**: `{commit?, lines: [a, b], text: [String]}`, the lines at a commit (absent: the working tree, not
+  committed then) with their text then, exactly one string per line (`b − a + 1` of them, `a` from 1); an entry whose
+  place does not hold is dropped when read, and said in the log. What a card shows: an entry whose lines lie in the
+  segment and are there as `text` (the commit is not compared). A code tab shows it where its text is in the file as
+  shown, else where the lines went since its commit.
+- **CodeHighlight**: `{id, place, at}` (`at` ms since 1970). **CodeSidenote**: `{id, place, text, alwaysShow,
+  question?}`, a text sidenote as on a board. Ids are unique within a file, Highlights and sidenotes each among their
+  own; an entry under an id already read in the file is dropped.
+- **On a board**: a card shows every Highlight on its lines; a sidenote shows once per board, on the first card that
+  shows its lines. Added, changed or deleted on a card, it is so in the repository's file. A card deleted, put on the
+  shelf or with Show Annotations off changes nothing there. Updated to a newer version, a card takes the entries on its
+  lines along to where those lines went; one whose lines are gone is kept in the file and shown nowhere.
+- **Two files of one key** (two Macs, a sync): read, they are one in memory, and nothing is written for reading them. The
+  next change to that repository writes them as one, into the name that sorts first, and the others are renamed beside
+  it to `<name>.merged` (then `.merged-2`…), never deleted. An entry with the same id and content in both is one; one with
+  the same id and other content is kept under a new id (`<id>-<hash of the later file's name and its id>`). Highlights on
+  the same lines with the same text are one, whatever their commits, with the earlier `at`.
+- **Writing** takes in first what another writer added to the file since it was read here (entries whose ids were not
+  there then). A file of a newer version is not written over: that repository's changes are kept in memory only, and
+  said.
+- File renames within a repository are not followed (known limit): an entry stays under the path it was made on.
+
 ## Importing old boards (LegacyImport)
 
-`LegacyImport.run(from: <old storage folder>, to: <vault>)` → `ImportReport`. The only code that knows the old format.
+`LegacyImport.run(from: <old storage folder>, to: <vault>, key:)` → `ImportReport`. The only code that knows the old
+format. `key` gives a `git` source's repository key (Code annotations; the app gives the remote's, a source without a
+remote has none): a sourced segment's Highlights and line sidenotes go straight into that repository's file, added as an
+open board adds them, written before the board package; without a key they stay on the card, to move when the board is
+opened.
 
 **Source**: the VS Code extension's storage folder (`.codeboard/` in a project, or its own `boards/`). It reads files of
 version 13 to 17 (17 is `BOARD_VERSION` in `packages/core/src/model.ts`). An older file is refused, asking the user to open
