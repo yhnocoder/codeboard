@@ -3,7 +3,7 @@
 import { emptyBoard, type Board, type NoteCard } from "@codeboard/core";
 import type { Page } from "playwright-core";
 import { cpuSpans, put, shot, type Host } from "../harness";
-import { test, open, check, until, idle, focusSettled } from "../fixtures";
+import { test, open, check, until, idle, focusSettled, pmHasSelection } from "../fixtures";
 
 const close = (h: Host) => h.page.context().close();
 const md = (h: Host, id: string) =>
@@ -31,6 +31,8 @@ async function editNote(h: Host, id: string) {
   // 双击把光标放在点的地方；查找从光标往后数，这里从头开始，计数才是固定的
   await focusSettled(h.page);
   await h.page.keyboard.press("Control+Home");
+  // the browser moves the caret and ProseMirror takes it up from the selectionchange that follows: the search counts from it
+  await pmHasSelection(h.page);
 }
 
 const NOTE = "alpha beta Alpha\n\n**alpha** in bold and `alpha` in code\n\n```python\nalpha = 1\n```\n\nend alpha";
