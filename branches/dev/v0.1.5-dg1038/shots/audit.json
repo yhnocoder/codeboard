@@ -1,0 +1,38 @@
+[
+ {
+  "step": "1-first-card",
+  "issues": []
+ },
+ {
+  "step": "2-flow",
+  "issues": []
+ },
+ {
+  "step": "3-peek",
+  "issues": []
+ },
+ {
+  "step": "4-sidenote",
+  "issues": []
+ },
+ {
+  "step": "5-search",
+  "issues": []
+ },
+ {
+  "step": "6-board",
+  "issues": []
+ },
+ {
+  "step": "7a-settings",
+  "issues": []
+ },
+ {
+  "step": "7b-diagnostics",
+  "issues": []
+ },
+ {
+  "step": "7-uncommitted",
+  "issues": []
+ }
+]
