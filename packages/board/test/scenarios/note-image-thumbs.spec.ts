@@ -94,9 +94,19 @@ test("noteImageThumbnail", async () => {
     await until(h, `zoomed in to ${z * 100}%`, async () => (await zoom(h)) >= z);
   };
   await zoomTo(1.5);
+  // this has timed out beside other scenarios (passing alone): what the image showed and which copies were asked for, if it does
+  let seen: unknown = null;
   const mid = await until(h, "the 1600 px copy shows", async () => {
     const i = await imgOf(h, "n1");
-    return i?.loaded && i.natural === 1600 ? i : null;
+    if (i?.loaded && i.natural === 1600) return i;
+    seen = {
+      img: i,
+      z: await zoom(h),
+      asked: h.sent.filter((m) => JSON.stringify(m).includes('"thumb"')).map((m) => JSON.stringify(m)),
+    };
+    return null;
+  }).catch((e: Error) => {
+    throw new Error(`${e.message}; last seen: ${JSON.stringify(seen)}`);
   });
   check("noteImageThumbnail steps up to a larger copy", /-1600\.png$/.test(mid.src), { ...mid, z: await zoom(h) });
   await zoomTo(2.45);
