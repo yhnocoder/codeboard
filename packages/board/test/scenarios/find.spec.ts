@@ -54,7 +54,10 @@ test("noteFindReplace", async () => {
   await pg.locator(".md-find .md-findq").waitFor();
   const opened = await focusIn(pg);
   await pg.keyboard.type("alpha");
-  await until(h, "matches are counted", async () => (await count(pg)) === "1/6");
+  let shown: string | null = null;
+  await until(h, "matches are counted", async () => (shown = await count(pg)) === "1/6").catch((e: Error) => {
+    throw new Error(`${e.message}; the find bar shows ${JSON.stringify(shown)}`);
+  });
   /** 画出来的匹配：正文里的是 CSS Custom Highlight 的 StaticRange（读字时转成 Range），代码块里的是 CodeMirror 的装饰 */
   const marks = () =>
     pg.evaluate(() => {
