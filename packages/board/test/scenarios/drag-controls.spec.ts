@@ -228,17 +228,48 @@ test("panKeepsGoingOverCards", async () => {
   );
 
   // a pan dragged with the middle button from the empty canvas below the card, slow and fast
-  const dragRuns: { steps: number; moved: Pt; want: Pt }[] = [];
+  const dragRuns: { steps: number; moved: Pt; want: Pt; path: Pt[]; events: string[] }[] = [];
   for (const steps of [60, 4]) {
     const r = await box(h, N0);
     const from = { x: r.x, y: r.bottom + 40 },
       to = { x: r.x - 120, y: r.top - 30 };
     const c0 = await camOf(h);
+    // what the pointer did besides moving, and where the camera was along the way: this has failed beside other scenarios with
+    // the camera stopping about 10 steps in, the same numbers each time, and never alone
+    await pg.evaluate(() => {
+      const w = window as unknown as { panEvents?: string[] };
+      if (w.panEvents) {
+        w.panEvents = [];
+        return;
+      }
+      w.panEvents = [];
+      for (const t of [
+        "pointerdown",
+        "pointerup",
+        "pointercancel",
+        "gotpointercapture",
+        "lostpointercapture",
+        "auxclick",
+      ])
+        window.addEventListener(
+          t,
+          (e) =>
+            w.panEvents?.push(
+              `${t}@${String((e.target as Element).className ?? "")}${e.isTrusted ? "" : " synthetic"}`,
+            ),
+          true,
+        );
+    });
+    const path: Pt[] = [];
     await pg.mouse.move(from.x, from.y);
     await pg.mouse.down({ button: "middle" });
     for (let i = 1; i <= steps; i++) {
       await pg.mouse.move(from.x + ((to.x - from.x) * i) / steps, from.y + ((to.y - from.y) * i) / steps);
       await frames(pg);
+      if (i % Math.ceil(steps / 12) === 0) {
+        const c = await camOf(h);
+        path.push({ x: Math.round(c.x - c0.x), y: Math.round(c.y - c0.y) });
+      }
     }
     await hold(h, FLING_WINDOW + 90, "held still before the release, longer than the fling window: no fling");
     await pg.mouse.up({ button: "middle" });
@@ -248,6 +279,8 @@ test("panKeepsGoingOverCards", async () => {
       steps,
       moved: { x: Math.round(c1.x - c0.x), y: Math.round(c1.y - c0.y) },
       want: { x: Math.round(to.x - from.x), y: Math.round(to.y - from.y) },
+      path,
+      events: await pg.evaluate(() => (window as unknown as { panEvents: string[] }).panEvents),
     });
   }
   check(

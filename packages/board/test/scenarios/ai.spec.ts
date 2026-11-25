@@ -88,7 +88,9 @@ test("aiSettingsSection", async () => {
   await sec.locator(".st-dsm").fill("deepseek-vision");
   await sec.locator(".st-dsm").press("Enter");
   await sec.locator(".st-check", { hasText: "Think First" }).locator("input").check();
-  await until(h, "five settings are sent", () => sentOf(h, "setSetting").length >= 5);
+  await until(h, "five settings are sent", () => sentOf(h, "setSetting").length >= 5).catch((e: Error) => {
+    throw new Error(`${e.message}; sent: ${settingsSent(h).join(" ")}`);
+  });
   await shoot(h, "59-ai-settings.png", '.settings [data-sec="ai"]');
   check(
     "aiSettingsSection the choices are saved as settings",
